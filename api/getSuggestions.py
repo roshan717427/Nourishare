@@ -345,8 +345,26 @@ class SmartSuggestionsEngine:
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
+        """Handle POST requests to get smart suggestions"""
         try:
+            # Set CORS headers for cross-origin requests
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+            self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+            self.end_headers()
+            
+            # Get request body
             content_length = int(self.headers.get('Content-Length', 0))
+            if content_length == 0:
+                response = {
+                    'error': 'Request body is required',
+                    'status': 'error'
+                }
+                self.wfile.write(json.dumps(response).encode())
+                return
+            
             body = self.rfile.read(content_length)
             data = json.loads(body.decode('utf-8'))
             
@@ -354,32 +372,41 @@ class handler(BaseHTTPRequestHandler):
             limit = data.get('limit', 10)
             
             if not username:
-                self.send_response(400)
-                self.send_header('Content-Type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps({
-                    'error': 'Username is required'
-                }).encode('utf-8'))
+                response = {
+                    'error': 'Username is required',
+                    'status': 'error'
+                }
+                self.wfile.write(json.dumps(response).encode())
                 return
             
             # Generate suggestions
             engine = SmartSuggestionsEngine()
             result = engine.get_suggestions(username, limit)
             
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps({
+            # Return success response
+            response = {
                 'status': 'success',
                 **result
-            }).encode('utf-8'))
+            }
+            self.wfile.write(json.dumps(response).encode())
         
         except Exception as e:
-            self.send_response(500)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps({
+            # Return error response
+            error_response = {
+                'status': 'error',
                 'error': str(e),
                 'message': 'Failed to generate suggestions'
-            }).encode('utf-8'))
+            }
+            try:
+                self.wfile.write(json.dumps(error_response).encode())
+            except:
+                pass  # If we can't write, the connection might be closed
+    
+    def do_OPTIONS(self):
+        """Handle preflight CORS requests"""
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()
 
