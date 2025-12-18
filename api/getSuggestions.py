@@ -1,12 +1,8 @@
 from http.server import BaseHTTPRequestHandler
 import json
-import sys
 import os
 from collections import Counter
-from datetime import datetime, timedelta
-
-# Add the functions directory to Python path
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'functions'))
+from datetime import datetime
 
 # Import Firebase Admin SDK
 from firebase_admin import firestore
