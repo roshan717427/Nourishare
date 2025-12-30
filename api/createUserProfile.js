@@ -1,17 +1,32 @@
 const { initializeApp, cert, getApps } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 
-if (!getApps().length) {
-  const serviceAccount = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
-  initializeApp({ credential: cert(serviceAccount) });
+let db;
+try {
+  if (!getApps().length) {
+    if (!process.env.GOOGLE_SERVICE_ACCOUNT) {
+      throw new Error('GOOGLE_SERVICE_ACCOUNT environment variable is not set');
+    }
+    const serviceAccount = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
+    initializeApp({ credential: cert(serviceAccount) });
+  }
+  db = getFirestore();
+} catch (error) {
+  console.error('Firebase initialization error:', error);
+  // db will be undefined, which will cause errors in the handler
 }
-const db = getFirestore();
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     res.status(405).send('Method Not Allowed');
     return;
   }
+  
+  if (!db) {
+    res.status(500).json({ error: 'Database not initialized. Check Firebase credentials.' });
+    return;
+  }
+  
   const {
     username,
     name,
@@ -30,7 +45,8 @@ module.exports = async (req, res) => {
   }
 
   try {
-    await db.collection('users').doc(username).set({
+    // Filter out undefined values before saving to Firestore
+    const userData = {
       username,
       name,
       email,
@@ -40,10 +56,22 @@ module.exports = async (req, res) => {
       topDishes,
       favoriteIngredients,
       cookingStats
+    };
+    
+    // Remove undefined values
+    Object.keys(userData).forEach(key => {
+      if (userData[key] === undefined) {
+        delete userData[key];
+      }
     });
+    
+    await db.collection('users').doc(username).set(userData);
     res.status(201).json({ message: 'User profile created', username });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Failed to create user profile' });
+    console.error('Error creating user profile:', error);
+    res.status(500).json({ 
+      error: 'Failed to create user profile',
+      details: error.message 
+    });
   }
 };
