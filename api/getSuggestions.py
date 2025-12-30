@@ -10,17 +10,21 @@ import firebase_admin
 from firebase_admin import credentials
 
 # Initialize Firebase Admin SDK
-if not firebase_admin._apps:
-    if 'GOOGLE_SERVICE_ACCOUNT' in os.environ:
-        # Production environment (Vercel)
-        cred_dict = json.loads(os.environ['GOOGLE_SERVICE_ACCOUNT'])
-        cred = credentials.Certificate(cred_dict)
-    else:
-        # Local development
-        cred = credentials.Certificate('../serviceAccountKey.json')
-    firebase_admin.initialize_app(cred)
-
-db = firestore.client()
+db = None
+try:
+    if not firebase_admin._apps:
+        if 'GOOGLE_SERVICE_ACCOUNT' in os.environ:
+            # Production environment (Vercel)
+            cred_dict = json.loads(os.environ['GOOGLE_SERVICE_ACCOUNT'])
+            cred = credentials.Certificate(cred_dict)
+        else:
+            # Local development
+            cred = credentials.Certificate('../serviceAccountKey.json')
+        firebase_admin.initialize_app(cred)
+    db = firestore.client()
+except Exception as e:
+    print(f'Firebase initialization error: {e}')
+    # db will be None, which will cause errors in the handler
 
 class SmartSuggestionsEngine:
     """Smart Suggestions Engine for recipe recommendations"""
@@ -355,14 +359,25 @@ class handler(BaseHTTPRequestHandler):
             self.send_header('Access-Control-Allow-Headers', 'Content-Type')
             self.end_headers()
             
+            # Check if database is initialized
+            if db is None:
+                error_response = {
+                    'status': 'error',
+                    'error': 'Database not initialized. Check Firebase credentials.',
+                    'message': 'Failed to generate suggestions'
+                }
+                self.wfile.write(json.dumps(error_response).encode())
+                return
+            
             # Get request body
             content_length = int(self.headers.get('Content-Length', 0))
             if content_length == 0:
-                response = {
+                error_response = {
+                    'status': 'error',
                     'error': 'Request body is required',
-                    'status': 'error'
+                    'message': 'Failed to generate suggestions'
                 }
-                self.wfile.write(json.dumps(response).encode())
+                self.wfile.write(json.dumps(error_response).encode())
                 return
             
             body = self.rfile.read(content_length)
@@ -372,11 +387,12 @@ class handler(BaseHTTPRequestHandler):
             limit = data.get('limit', 10)
             
             if not username:
-                response = {
+                error_response = {
+                    'status': 'error',
                     'error': 'Username is required',
-                    'status': 'error'
+                    'message': 'Failed to generate suggestions'
                 }
-                self.wfile.write(json.dumps(response).encode())
+                self.wfile.write(json.dumps(error_response).encode())
                 return
             
             # Generate suggestions
@@ -390,6 +406,17 @@ class handler(BaseHTTPRequestHandler):
             }
             self.wfile.write(json.dumps(response).encode())
         
+        except json.JSONDecodeError as e:
+            # Return error response for JSON decode errors
+            error_response = {
+                'status': 'error',
+                'error': f'Invalid JSON in request body: {str(e)}',
+                'message': 'Failed to generate suggestions'
+            }
+            try:
+                self.wfile.write(json.dumps(error_response).encode())
+            except:
+                pass
         except Exception as e:
             # Return error response
             error_response = {
