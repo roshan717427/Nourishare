@@ -27,6 +27,37 @@ module.exports = async (req, res) => {
     return;
   }
   
+  const normalizeProfileData = body => {
+    const {
+      username,
+      name,
+      email,
+      bio,
+      profilePhotoUrl,
+      profile_photo_url,
+      kitchenPersona,
+      kitchen_persona,
+      topDishes,
+      top_dishes,
+      favoriteIngredients,
+      favorite_ingredients,
+      cookingStats,
+      cooking_stats
+    } = body;
+
+    return {
+      username,
+      name,
+      email,
+      bio,
+      profilePhotoUrl: profilePhotoUrl ?? profile_photo_url,
+      kitchenPersona: kitchenPersona ?? kitchen_persona,
+      topDishes: topDishes ?? top_dishes,
+      favoriteIngredients: favoriteIngredients ?? favorite_ingredients,
+      cookingStats: cookingStats ?? cooking_stats
+    };
+  };
+
   const {
     username,
     name,
@@ -37,7 +68,7 @@ module.exports = async (req, res) => {
     topDishes,
     favoriteIngredients,
     cookingStats
-  } = req.body;
+  } = normalizeProfileData(req.body);
 
   if (!username) {
     res.status(400).json({ error: 'Username is required' });

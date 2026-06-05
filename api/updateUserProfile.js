@@ -27,12 +27,41 @@ module.exports = async (req, res) => {
     return;
   }
   
-  const { username, ...updates } = req.body;
+  const normalizeProfileUpdates = updates => {
+    const normalized = { ...updates };
+    if (normalized.profile_photo_url !== undefined && normalized.profilePhotoUrl === undefined) {
+      normalized.profilePhotoUrl = normalized.profile_photo_url;
+    }
+    if (normalized.kitchen_persona !== undefined && normalized.kitchenPersona === undefined) {
+      normalized.kitchenPersona = normalized.kitchen_persona;
+    }
+    if (normalized.top_dishes !== undefined && normalized.topDishes === undefined) {
+      normalized.topDishes = normalized.top_dishes;
+    }
+    if (normalized.favorite_ingredients !== undefined && normalized.favoriteIngredients === undefined) {
+      normalized.favoriteIngredients = normalized.favorite_ingredients;
+    }
+    if (normalized.cooking_stats !== undefined && normalized.cookingStats === undefined) {
+      normalized.cookingStats = normalized.cooking_stats;
+    }
+
+    delete normalized.profile_photo_url;
+    delete normalized.kitchen_persona;
+    delete normalized.top_dishes;
+    delete normalized.favorite_ingredients;
+    delete normalized.cooking_stats;
+
+    return normalized;
+  };
+
+  const { username, ...rawUpdates } = req.body;
   if (!username) {
     res.status(400).json({ error: 'Username is required' });
     return;
   }
   
+  const updates = normalizeProfileUpdates(rawUpdates);
+
   // Filter out undefined values before updating
   Object.keys(updates).forEach(key => {
     if (updates[key] === undefined) {
