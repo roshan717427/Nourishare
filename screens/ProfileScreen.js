@@ -29,6 +29,31 @@ import { colors, radii, spacing } from '../constants/theme';
 import { buildPersonalityDescription } from '../utils/personalityCopy';
 
 const PORTFOLIO_FAVORITES_MAX = 2;
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const COOKING_FREQUENCY_MONTHS = 7;
+
+function computeCookingFrequencyFromLogs(logs, numMonths = COOKING_FREQUENCY_MONTHS) {
+  const counts = {};
+  for (const log of logs) {
+    const ms = log.created_at_ms || 0;
+    if (!ms) continue;
+    const d = new Date(ms);
+    const key = `${d.getFullYear()}-${d.getMonth()}`;
+    counts[key] = (counts[key] || 0) + 1;
+  }
+
+  const result = [];
+  const now = new Date();
+  for (let i = numMonths - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${d.getMonth()}`;
+    result.push({
+      month: MONTH_LABELS[d.getMonth()],
+      value: counts[key] || 0,
+    });
+  }
+  return result;
+}
 
 function resolvePortfolioDishes(dishes, favoriteIds) {
   if (!Array.isArray(favoriteIds)) return [];
@@ -230,7 +255,7 @@ export default function ProfileScreen({ navigation, route }) {
 
   useFocusEffect(
     useCallback(() => {
-      if (passedProfile) {
+      if (passedProfile && !isOwnProfile) {
         setProfile(passedProfile);
         setFavoriteIds(passedProfile.portfolio_favorites || passedProfile.portfolioFavorites || []);
         setError(null);
@@ -240,7 +265,7 @@ export default function ProfileScreen({ navigation, route }) {
       }
       fetchDishes();
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [username, passedProfile, fetchDishes])
+    }, [username, passedProfile, fetchDishes, isOwnProfile])
   );
 
   const handleToggleFollow = () => {
@@ -342,6 +367,18 @@ export default function ProfileScreen({ navigation, route }) {
     () => resolvePortfolioDishes(dishes, favoriteIds),
     [dishes, favoriteIds]
   );
+
+  const cookingFrequencyData = useMemo(() => {
+    if (profile?.cookingFrequency?.length) return profile.cookingFrequency;
+    if (isOwnProfile || dishes.length > 0) {
+      return computeCookingFrequencyFromLogs(dishes);
+    }
+    return null;
+  }, [profile?.cookingFrequency, dishes, isOwnProfile]);
+
+  const showCookingFrequency =
+    cookingFrequencyData?.length > 0 &&
+    (isOwnProfile || cookingFrequencyData.some((item) => item.value > 0));
 
   const togglePortfolioFavorite = async (dishId) => {
     if (!isOwnProfile || !user?.username) return;
@@ -817,14 +854,14 @@ export default function ProfileScreen({ navigation, route }) {
           </View>
         </View>
 
-        {profile?.cookingFrequency && profile.cookingFrequency.length > 0 && (
+        {showCookingFrequency && (
           <View style={styles.section}>
             <View style={styles.sectionTitleRow}>
               <Ionicons name="calendar-outline" size={20} color={colors.accentDark} />
               <Text style={styles.sectionTitle}>Cooking Frequency</Text>
             </View>
-            <Text style={styles.subtitle}>Recipes cooked per month</Text>
-            <BarChart data={profile.cookingFrequency} />
+            <Text style={styles.subtitle}>Recipes Cooked Per Month</Text>
+            <BarChart data={cookingFrequencyData} />
           </View>
         )}
 

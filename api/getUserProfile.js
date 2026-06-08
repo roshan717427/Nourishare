@@ -2,6 +2,44 @@ const { initializeApp, cert, getApps } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 const { refreshUserPersonality, isPersonalityStale } = require('./personalityHelper');
 
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const COOKING_FREQUENCY_MONTHS = 7;
+
+function toMillis(value) {
+  if (!value) return 0;
+  if (typeof value.toMillis === 'function') return value.toMillis();
+  if (typeof value.seconds === 'number') return value.seconds * 1000;
+  if (typeof value === 'number') return value;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+/** Count logs per calendar month for the last N months (rolling window). */
+function computeCookingFrequency(logsSnap, numMonths = COOKING_FREQUENCY_MONTHS) {
+  const counts = {};
+
+  logsSnap.forEach((logDoc) => {
+    const logData = logDoc.data() || {};
+    const ms = toMillis(logData.createdAt || logData.created_at);
+    if (!ms) return;
+    const d = new Date(ms);
+    const key = `${d.getFullYear()}-${d.getMonth()}`;
+    counts[key] = (counts[key] || 0) + 1;
+  });
+
+  const result = [];
+  const now = new Date();
+  for (let i = numMonths - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${d.getMonth()}`;
+    result.push({
+      month: MONTH_LABELS[d.getMonth()],
+      value: counts[key] || 0,
+    });
+  }
+  return result;
+}
+
 let db;
 try {
   if (!getApps().length) {
@@ -105,6 +143,8 @@ module.exports = async (req, res) => {
       // Live counts (override stored values). ProfileScreen renders both.
       followers: followersCount,
       following: followingCount,
+      // Always derive from logs so bars reflect real activity (zeros when no logs).
+      cookingFrequency: computeCookingFrequency(logsSnap),
     };
 
     res.status(200).json(response);

@@ -13,18 +13,22 @@ export default function BarChart({ data }) {
     <View style={styles.container}>
       <View style={styles.chartContainer}>
         {data.map((item, index) => {
-          const height = maxValue > 0 ? (item.value / maxValue) * 150 : 0;
+          const value = item.value || 0;
+          const height =
+            value > 0 && maxValue > 0 ? (value / maxValue) * 150 : 0;
           return (
             <View key={index} style={styles.barWrapper}>
               <View style={styles.barContainer}>
-                <View
-                  style={[
-                    styles.bar,
-                    {
-                      height: Math.max(height, 8), // Minimum height for visibility
-                    },
-                  ]}
-                />
+                {value > 0 ? (
+                  <View
+                    style={[
+                      styles.bar,
+                      {
+                        height: Math.max(height, 8),
+                      },
+                    ]}
+                  />
+                ) : null}
               </View>
               <Text style={styles.label}>{item.month}</Text>
             </View>
@@ -61,7 +65,6 @@ const styles = StyleSheet.create({
     width: '100%',
     backgroundColor: '#e0e0e0',
     borderRadius: 4,
-    minHeight: 8,
   },
   label: {
     fontSize: 12,
