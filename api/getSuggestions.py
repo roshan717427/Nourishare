@@ -105,7 +105,7 @@ class SmartSuggestionsEngine:
         if not ingredients:
             return []
         if isinstance(ingredients, list):
-            raw_items = [str(item) for item in ingredients if item]
+            raw_items = [str(item) for item in ingredients if item is not None and item != '']
         else:
             raw = str(ingredients).strip()
             if not raw:
@@ -118,6 +118,141 @@ class SmartSuggestionsEngine:
             if cleaned:
                 tokens.append(cleaned)
         return tokens
+
+    def _normalize_title(self, title):
+        """Normalize a dish title for fuzzy duplicate detection."""
+        if not title:
+            return ''
+        normalized = str(title).lower().strip()
+        normalized = re.sub(r'[^\w\s]', ' ', normalized)
+        return re.sub(r'\s+', ' ', normalized).strip()
+
+    _TITLE_STOP_WORDS = {
+        'with', 'and', 'the', 'a', 'an', 'your', 'fresh', 'twist', 'easy', 'quick',
+        'next', 'level', 'inspired', 'logged', 'dish', 'chef', 'favorite', 'style',
+    }
+
+    def _title_keywords(self, title):
+        words = self._normalize_title(title).split()
+        return {word for word in words if len(word) >= 3 and word not in self._TITLE_STOP_WORDS}
+
+    def _titles_similar(self, title_a, title_b):
+        """Case-insensitive fuzzy match: exact, substring, or shared dish keywords."""
+        a = self._normalize_title(title_a)
+        b = self._normalize_title(title_b)
+        if not a or not b:
+            return False
+        if a == b:
+            return True
+        shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
+        if len(shorter) >= 4 and shorter in longer:
+            return True
+
+        keywords_a = self._title_keywords(title_a)
+        keywords_b = self._title_keywords(title_b)
+        if not keywords_a or not keywords_b:
+            return False
+        overlap = keywords_a & keywords_b
+        if len(overlap) >= 2:
+            return True
+        if len(overlap) == 1 and (len(keywords_a) <= 2 or len(keywords_b) <= 2):
+            return True
+        return False
+
+    def _ingredient_overlap_ratio(self, tokens_a, tokens_b):
+        if not tokens_a or not tokens_b:
+            return 0.0
+        set_a = set(tokens_a)
+        set_b = set(tokens_b)
+        overlap = set_a & set_b
+        if not overlap:
+            for token_a in tokens_a:
+                for token_b in tokens_b:
+                    if token_a in token_b or token_b in token_a:
+                        overlap.add(token_a)
+        denominator = max(len(set_a), len(set_b), 1)
+        return len(overlap) / denominator
+
+    def _build_tried_profile(self, username, logs):
+        """Everything the user has already cooked — titles, ids, ingredients, photos."""
+        normalized_titles = set()
+        log_ids = set()
+        recipe_ids = set()
+        log_entries = []
+        log_photos = set()
+
+        for log in logs:
+            title = (log.get('title') or '').strip()
+            if not title:
+                continue
+            normalized_titles.add(self._normalize_title(title))
+            log_ids.add(str(log.get('id') or ''))
+            for field in ('recipe_id', 'recipeId', 'source_recipe_id'):
+                value = log.get(field)
+                if value is not None and value != '':
+                    recipe_ids.add(str(value))
+            photo = log.get('photoUrl')
+            if photo:
+                log_photos.add(photo)
+            log_entries.append({
+                'title': title,
+                'tokens': self._normalize_ingredients(log.get('ingredients')),
+                'id': str(log.get('id') or ''),
+            })
+
+        cooked_titles = {title for title in normalized_titles if title}
+        try:
+            recipes_ref = db.collection('recipe_posts').where('username', '==', username).stream()
+            for recipe in recipes_ref:
+                recipe_name = self._normalize_title(recipe.to_dict().get('recipe_name') or '')
+                if recipe_name:
+                    cooked_titles.add(recipe_name)
+                    normalized_titles.add(recipe_name)
+        except Exception as e:
+            print(f"Error getting cooked titles from recipe_posts: {str(e)}")
+
+        return {
+            'normalized_titles': normalized_titles,
+            'cooked_titles': cooked_titles,
+            'log_ids': {item for item in log_ids if item},
+            'recipe_ids': recipe_ids,
+            'log_entries': log_entries,
+            'log_photos': log_photos,
+        }
+
+    def _is_already_tried(self, name, ingredients, recipe_id, tried_profile):
+        """Skip dishes the user has logged or that are too close to a prior meal."""
+        normalized = self._normalize_title(name)
+        if not normalized:
+            return True
+
+        if normalized in tried_profile.get('normalized_titles', set()):
+            return True
+        if normalized in tried_profile.get('cooked_titles', set()):
+            return True
+
+        candidate_id = str(recipe_id or '').strip()
+        if candidate_id:
+            if candidate_id in tried_profile.get('log_ids', set()):
+                return True
+            if candidate_id in tried_profile.get('recipe_ids', set()):
+                return True
+            if candidate_id.startswith('log-variant-'):
+                return True
+
+        candidate_tokens = self._normalize_ingredients(ingredients)
+        for entry in tried_profile.get('log_entries', []):
+            if self._titles_similar(name, entry['title']):
+                return True
+            if candidate_tokens and entry.get('tokens'):
+                overlap_ratio = self._ingredient_overlap_ratio(candidate_tokens, entry['tokens'])
+                shared = len(set(candidate_tokens) & set(entry['tokens']))
+                if overlap_ratio >= 0.55 and shared >= 3:
+                    return True
+                if overlap_ratio >= 0.7 and self._title_keywords(name) & self._title_keywords(entry['title']):
+                    return True
+
+        return False
 
     def _ingredient_overlap_score(self, candidate_tokens, user_tokens):
         """Score 0-40 based on shared ingredient keywords."""
@@ -229,24 +364,12 @@ class SmartSuggestionsEngine:
             'ingredient_counter': ingredient_counter,
             'top_cuisines': top_cuisines,
             'photo_by_cuisine': photo_by_cuisine,
-            'log_photos': [log['photoUrl'] for log in logs if log.get('photoUrl')],
+            'log_photos': {log['photoUrl'] for log in logs if log.get('photoUrl')},
             'avg_rating': sum(ratings) / len(ratings) if ratings else None,
             'preferred_difficulty': Counter(difficulties).most_common(1)[0][0] if difficulties else 'medium',
             'typical_time': times[0] if times else '30 min',
         }
 
-    def _get_cooked_titles(self, username, logs):
-        """Titles the user has already cooked (logs + legacy recipe_posts)."""
-        cooked = {log['title'].lower().strip() for log in logs}
-        try:
-            recipes_ref = db.collection('recipe_posts').where('username', '==', username).stream()
-            for recipe in recipes_ref:
-                recipe_name = (recipe.to_dict().get('recipe_name') or '').lower().strip()
-                if recipe_name:
-                    cooked.add(recipe_name)
-        except Exception as e:
-            print(f"Error getting cooked titles from recipe_posts: {str(e)}")
-        return cooked
     
     def _get_followed_users(self, username):
         """Get list of users that the current user follows"""
@@ -311,10 +434,11 @@ class SmartSuggestionsEngine:
     def _calculate_suggestion_score(self, recipe, user_recipes, user_preferences=None):
         """Calculate a score for how good this suggestion is (0-100)"""
         score = 0.0
-        recipe_name = recipe.get('recipe_name', '').lower().strip()
-        
-        # Skip if user has already cooked this
-        if recipe_name in user_recipes:
+        recipe_name = (recipe.get('recipe_name') or '').strip()
+        normalized_name = self._normalize_title(recipe_name)
+
+        # Skip if user has already cooked this (exact normalized title)
+        if normalized_name in user_recipes:
             return 0.0
         
         # Score based on rating (0-40 points)
@@ -381,7 +505,9 @@ class SmartSuggestionsEngine:
         
         # Score based on user preferences if available (0-10 points)
         if user_preferences:
-            recipe_cuisine = self._detect_cuisine(recipe_name, recipe.get('ingredients', []))
+            recipe_cuisine = self._detect_cuisine(
+                recipe_name.lower(), recipe.get('ingredients', [])
+            )
             if recipe_cuisine in user_preferences.get('top_cuisines', []):
                 score += 10
         
@@ -418,29 +544,30 @@ class SmartSuggestionsEngine:
             'typical_time': log_profile.get('typical_time', '30 min'),
         }
 
-    def _recipe_image(self, recipe, fallback_index=0):
-        """Resolve display image from community post, log photo, or stock fallback."""
+    def _recipe_image(self, recipe, fallback_index=0, blocked_urls=None):
+        """Resolve image from community post fields; never reuse the user's own log photos."""
+        blocked = set(blocked_urls or [])
         image = (
             recipe.get('image')
             or recipe.get('photoUrl')
             or recipe.get('photo_url')
             or recipe.get('dish_photo_url')
         )
-        if image:
+        if image and image not in blocked:
             return image
         return FALLBACK_IMAGES[fallback_index % len(FALLBACK_IMAGES)]
 
     def _format_subtitle(self, recipe):
         difficulty = recipe.get('difficulty_level') or recipe.get('difficulty') or ''
-        if difficulty:
-            difficulty = str(difficulty).capitalize()
         cooking_time = recipe.get('cooking_time') or recipe.get('time') or ''
-        if cooking_time:
-            cooking_time = str(cooking_time)
-        parts = [part for part in [difficulty, cooking_time] if part]
+        parts = []
+        if difficulty not in (None, ''):
+            parts.append(str(difficulty).capitalize())
+        if cooking_time not in (None, ''):
+            parts.append(str(cooking_time))
         return ', '.join(parts) if parts else 'Suggested for you'
 
-    def _format_suggestion(self, recipe, score, why_suggested, fallback_index=0):
+    def _format_suggestion(self, recipe, score, why_suggested, fallback_index=0, blocked_urls=None):
         """Normalize a recipe document into a suggestion payload."""
         recipe_name = recipe.get('recipe_name') or recipe.get('title') or recipe.get('name') or 'Recipe'
         ingredients = recipe.get('ingredients')
@@ -463,7 +590,7 @@ class SmartSuggestionsEngine:
             'cooking_time': recipe.get('cooking_time') or recipe.get('time') or '',
             'ingredients': ingredients_value,
             'steps': recipe.get('steps') or recipe.get('instructions') or '',
-            'image': self._recipe_image(recipe, fallback_index),
+            'image': self._recipe_image(recipe, fallback_index, blocked_urls),
             'subtitle': self._format_subtitle(recipe),
             'recooks_count': recipe.get('recooks_count', 0),
             'likes_count': recipe.get('likes_count', 0),
@@ -472,13 +599,17 @@ class SmartSuggestionsEngine:
             'why_suggested': why_suggested,
         }
 
-    def _calculate_preference_score(self, recipe, cooked_titles, log_profile, user_preferences):
+    def _calculate_preference_score(self, recipe, tried_profile, log_profile, user_preferences):
         """Score how well a recipe matches the user's logged cooking history."""
-        recipe_name = (recipe.get('recipe_name') or recipe.get('title') or '').lower().strip()
-        if not recipe_name or recipe_name in cooked_titles:
+        recipe_name = (recipe.get('recipe_name') or recipe.get('title') or '').strip()
+        recipe_id = recipe.get('id') or recipe.get('recipe_id') or ''
+        if self._is_already_tried(recipe_name, recipe.get('ingredients'), recipe_id, tried_profile):
             return 0.0
 
-        score = self._calculate_suggestion_score(recipe, cooked_titles, user_preferences)
+        cooked_titles = tried_profile.get('cooked_titles', set())
+        score = self._calculate_suggestion_score(
+            recipe, cooked_titles, user_preferences
+        )
         if score <= 0:
             score = 5.0
 
@@ -489,7 +620,9 @@ class SmartSuggestionsEngine:
         )
 
         top_cuisines = user_preferences.get('top_cuisines', [])
-        recipe_cuisines = self._detect_cuisines(recipe_name, candidate_ingredients)
+        recipe_cuisines = self._detect_cuisines(
+            recipe_name.lower(), candidate_ingredients
+        )
         if any(cuisine in top_cuisines for cuisine in recipe_cuisines):
             score += 20
 
@@ -502,7 +635,7 @@ class SmartSuggestionsEngine:
 
         return score
 
-    def _score_community_recipes(self, username, log_profile, cooked_titles, user_preferences, limit):
+    def _score_community_recipes(self, username, log_profile, tried_profile, user_preferences, limit):
         """Match community recipe_posts against ingredients/cuisines from user logs."""
         scored_suggestions = []
         seen_recipes = set()
@@ -513,22 +646,32 @@ class SmartSuggestionsEngine:
             for recipe in recipes_ref:
                 recipe_data = recipe.to_dict() or {}
                 recipe_data['id'] = recipe.id
-                recipe_name = (recipe_data.get('recipe_name') or '').lower().strip()
-                if not recipe_name or recipe_name in cooked_titles:
+                recipe_name = (recipe_data.get('recipe_name') or '').strip()
+                normalized_name = self._normalize_title(recipe_name)
+                if not normalized_name:
                     continue
                 if recipe_data.get('username', '') == username:
                     continue
-                if recipe_name in seen_recipes:
+                if self._is_already_tried(
+                    recipe_name,
+                    recipe_data.get('ingredients'),
+                    recipe_data.get('id'),
+                    tried_profile,
+                ):
+                    continue
+                if normalized_name in seen_recipes:
                     continue
 
-                seen_recipes.add(recipe_name)
+                seen_recipes.add(normalized_name)
                 score = self._calculate_preference_score(
-                    recipe_data, cooked_titles, log_profile, user_preferences
+                    recipe_data, tried_profile, log_profile, user_preferences
                 )
                 if score <= 0:
                     continue
 
-                recipe_cuisine = self._detect_cuisine(recipe_name, recipe_data.get('ingredients', []))
+                recipe_cuisine = self._detect_cuisine(
+                    recipe_name.lower(), recipe_data.get('ingredients', [])
+                )
                 if recipe_cuisine in top_cuisines:
                     reason = f'matches your love of {recipe_cuisine} flavors'
                 elif log_profile.get('ingredient_tokens'):
@@ -547,57 +690,38 @@ class SmartSuggestionsEngine:
         scored_suggestions.sort(key=lambda item: item['score'], reverse=True)
         return scored_suggestions[:limit]
 
-    def _variation_name(self, log_title):
-        """Build a 'more like what you cook' variant title."""
-        title = log_title.strip()
-        if not title:
-            return 'Chef\'s Twist on a Favorite'
-        lower = title.lower()
-        if lower.startswith('easy ') or lower.startswith('quick '):
-            return f'Next-Level {title}'
-        return f'{title} with a Fresh Twist'
-
-    def _generate_from_log_patterns(self, logs, log_profile, cooked_titles, needed, existing_names):
-        """Generate structured suggestions from log title/ingredient/cuisine patterns."""
+    def _generate_from_log_patterns(self, log_profile, tried_profile, needed, existing_names):
+        """Generate new template suggestions from ingredient/cuisine patterns (no log variants)."""
         generated = []
-        seen_names = set(name.lower() for name in existing_names)
+        seen_names = {self._normalize_title(name) for name in existing_names}
+        blocked_urls = tried_profile.get('log_photos', set())
         image_index = 0
 
         def add_suggestion(recipe_dict, score, reason):
             nonlocal image_index
             name = (recipe_dict.get('recipe_name') or recipe_dict.get('name') or '').strip()
-            name_lower = name.lower()
-            if not name or name_lower in cooked_titles or name_lower in seen_names:
+            if not name:
                 return False
-            seen_names.add(name_lower)
+            if self._is_already_tried(
+                name,
+                recipe_dict.get('ingredients'),
+                recipe_dict.get('id'),
+                tried_profile,
+            ):
+                return False
+            normalized_name = self._normalize_title(name)
+            if normalized_name in seen_names:
+                return False
+            seen_names.add(normalized_name)
             generated.append(
-                self._format_suggestion(recipe_dict, score, reason, image_index)
+                self._format_suggestion(
+                    recipe_dict, score, reason, image_index, blocked_urls
+                )
             )
             image_index += 1
             return True
 
-        # 1) "More like your recent logs" — reuse log photoUrl when available.
-        for log in logs[:3]:
-            if len(generated) >= needed:
-                break
-            variant_name = self._variation_name(log['title'])
-            cuisines = self._detect_cuisines(log['title'], self._normalize_ingredients(log.get('ingredients')))
-            cuisine = cuisines[0]
-            image = log.get('photoUrl') or log_profile.get('photo_by_cuisine', {}).get(cuisine)
-            recipe_dict = {
-                'id': f'log-variant-{log["id"]}',
-                'recipe_name': variant_name,
-                'ingredients': log.get('ingredients') or '',
-                'difficulty_level': str(log.get('difficulty') or log_profile.get('preferred_difficulty', 'medium')),
-                'cooking_time': str(log.get('time') or log_profile.get('typical_time', '30 min')),
-                'image': image,
-                'notes': log.get('notes') or '',
-                'rating': log_profile.get('avg_rating') or 0,
-            }
-            reason = f'inspired by your logged dish "{log["title"]}"'
-            add_suggestion(recipe_dict, 72, reason)
-
-        # 2) Top-ingredient ideas.
+        # Top-ingredient ideas — stock images only (no user log photos).
         for token, _ in log_profile.get('ingredient_counter', Counter()).most_common(8):
             if len(generated) >= needed:
                 break
@@ -607,12 +731,11 @@ class SmartSuggestionsEngine:
                 idea_recipe = {
                     'id': f'ingredient-{key}',
                     **idea,
-                    'image': log_profile.get('log_photos', [None])[0],
                 }
                 if add_suggestion(idea_recipe, 65, f'features {token}, an ingredient you cook with often'):
                     break
 
-        # 3) Cuisine templates aligned with detected log cuisines.
+        # Cuisine templates aligned with detected log cuisines.
         for cuisine in log_profile.get('top_cuisines', ['general']):
             if len(generated) >= needed:
                 break
@@ -626,7 +749,6 @@ class SmartSuggestionsEngine:
                     'ingredients': template['ingredients'],
                     'cooking_time': template['cooking_time'],
                     'difficulty_level': template['difficulty_level'],
-                    'image': log_profile.get('photo_by_cuisine', {}).get(cuisine),
                 }
                 add_suggestion(
                     template_recipe,
@@ -634,14 +756,13 @@ class SmartSuggestionsEngine:
                     f'fits your recent {cuisine} cooking' if cuisine != 'general' else 'based on your recent meals',
                 )
 
-        # 4) General fallback so first-log users always see picks.
+        # General fallback so first-log users always see picks.
         for template in CUISINE_TEMPLATES['general']:
             if len(generated) >= needed:
                 break
             template_recipe = {
                 'id': f'fallback-{template["name"].lower().replace(" ", "-")}',
                 **template,
-                'image': log_profile.get('log_photos', [None])[0],
             }
             add_suggestion(template_recipe, 50, 'a great next meal based on what you have been cooking')
 
@@ -653,11 +774,12 @@ class SmartSuggestionsEngine:
             return []
 
         log_profile = self._build_log_profile(logs)
-        cooked_titles = self._get_cooked_titles(username, logs)
+        tried_profile = self._build_tried_profile(username, logs)
         user_preferences = self._get_user_preferences(username, log_profile)
+        blocked_urls = tried_profile.get('log_photos', set())
 
         community_hits = self._score_community_recipes(
-            username, log_profile, cooked_titles, user_preferences, limit
+            username, log_profile, tried_profile, user_preferences, limit
         )
 
         suggestions = []
@@ -665,20 +787,22 @@ class SmartSuggestionsEngine:
         for index, hit in enumerate(community_hits):
             existing_names.append(hit['recipe'].get('recipe_name', ''))
             suggestions.append(
-                self._format_suggestion(hit['recipe'], hit['score'], hit['reason'], index)
+                self._format_suggestion(
+                    hit['recipe'], hit['score'], hit['reason'], index, blocked_urls
+                )
             )
 
         target_count = max(3, min(limit, 6))
         if len(suggestions) < target_count:
             needed = target_count - len(suggestions)
             generated = self._generate_from_log_patterns(
-                logs, log_profile, cooked_titles, needed, existing_names
+                log_profile, tried_profile, needed, existing_names
             )
             suggestions.extend(generated)
 
         return suggestions[:limit]
 
-    def _get_friend_suggestions(self, username, cooked_titles, log_profile, followed_users, limit=6):
+    def _get_friend_suggestions(self, username, tried_profile, log_profile, followed_users, limit=6):
         """Suggest recipes from people the user follows."""
         if not followed_users:
             return []
@@ -688,15 +812,25 @@ class SmartSuggestionsEngine:
             return []
 
         user_preferences = self._get_user_preferences(username, log_profile)
+        cooked_titles = tried_profile.get('cooked_titles', set())
+        blocked_urls = tried_profile.get('log_photos', set())
         scored_suggestions = []
         seen_recipes = set()
 
         for index, recipe in enumerate(friends_recipes):
-            recipe_name = recipe.get('recipe_name', '').lower().strip()
-            if not recipe_name or recipe_name in seen_recipes:
+            recipe_name = (recipe.get('recipe_name') or '').strip()
+            normalized_name = self._normalize_title(recipe_name)
+            if not normalized_name or normalized_name in seen_recipes:
+                continue
+            if self._is_already_tried(
+                recipe_name,
+                recipe.get('ingredients'),
+                recipe.get('id') or recipe.get('recipe_id'),
+                tried_profile,
+            ):
                 continue
 
-            seen_recipes.add(recipe_name)
+            seen_recipes.add(normalized_name)
             score = self._calculate_suggestion_score(recipe, cooked_titles, user_preferences)
             if score <= 0:
                 continue
@@ -707,6 +841,7 @@ class SmartSuggestionsEngine:
                     score,
                     self._get_suggestion_reason(recipe, score),
                     index,
+                    blocked_urls,
                 )
             )
 
@@ -719,7 +854,7 @@ class SmartSuggestionsEngine:
             logs = self._get_user_logs(username)
             has_logs = len(logs) >= 1
             log_profile = self._build_log_profile(logs) if logs else {}
-            cooked_titles = self._get_cooked_titles(username, logs)
+            tried_profile = self._build_tried_profile(username, logs)
             followed_users = self._get_followed_users(username)
 
             preference_suggestions = []
@@ -731,7 +866,7 @@ class SmartSuggestionsEngine:
             friend_suggestions = []
             if followed_users:
                 friend_suggestions = self._get_friend_suggestions(
-                    username, cooked_titles, log_profile, followed_users, limit
+                    username, tried_profile, log_profile, followed_users, limit
                 )
 
             return {

@@ -105,8 +105,6 @@ function mapApiSuggestions(items, imageOffset = 0) {
     subtitle: s.subtitle || formatSubtitle(s),
     image:
       s.image ||
-      s.photoUrl ||
-      s.photo_url ||
       FALLBACK_IMAGES[(imageOffset + index) % FALLBACK_IMAGES.length],
     ingredients: s.ingredients,
     steps: s.steps || undefined,
