@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Platform,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -74,11 +75,18 @@ function timeAgo(ms) {
   return `${weeks}w`;
 }
 
-function StoryAvatar({ name, avatar, index }) {
+function StoryAvatar({ name, avatar, index, selected, hasSelection, onPress }) {
   const accent = CARD_ACCENTS[index % CARD_ACCENTS.length];
+  const ringColor = selected
+    ? colors.primary
+    : hasSelection
+      ? colors.textMuted
+      : accent;
+  const ringWidth = selected ? 3 : 2.5;
+
   return (
-    <View style={styles.story}>
-      <View style={[styles.storyRing, { borderColor: accent }]}>
+    <TouchableOpacity style={styles.story} onPress={onPress} activeOpacity={0.7}>
+      <View style={[styles.storyRing, { borderColor: ringColor, borderWidth: ringWidth }]}>
         {avatar ? (
           <Image source={{ uri: avatar }} style={styles.storyAvatar} />
         ) : (
@@ -89,10 +97,13 @@ function StoryAvatar({ name, avatar, index }) {
           </View>
         )}
       </View>
-      <Text style={styles.storyName} numberOfLines={1}>
+      <Text
+        style={[styles.storyName, selected && styles.storyNameSelected]}
+        numberOfLines={1}
+      >
         {name}
       </Text>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -162,6 +173,10 @@ export default function HomeScreen({ navigation }) {
   const [feed, setFeed] = useState([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedStoryUsername, setSelectedStoryUsername] = useState(null);
+
+  const feedScrollRef = useRef(null);
+  const postOffsetsRef = useRef({});
 
   const hasFollowing = following.length > 0;
 
@@ -210,19 +225,81 @@ export default function HomeScreen({ navigation }) {
     });
   };
 
-  const stories = [];
-  const seenStory = new Set();
+  const storyByUser = new Map();
+  following.forEach((u) => {
+    storyByUser.set(u, {
+      username: u,
+      name: u,
+      avatar: null,
+      latestPostMs: 0,
+    });
+  });
   feed.forEach((item) => {
     const u = item.user?.username || item.username;
-    if (u && !seenStory.has(u)) {
-      seenStory.add(u);
-      stories.push({
+    if (!u) return;
+    const postMs = item.created_at_ms || 0;
+    const existing = storyByUser.get(u) || {
+      username: u,
+      name: u,
+      avatar: null,
+      latestPostMs: 0,
+    };
+    if (postMs >= existing.latestPostMs) {
+      storyByUser.set(u, {
         username: u,
-        name: item.user?.name || u,
-        avatar: item.user?.profilePhotoUrl || null,
+        name: item.user?.name || existing.name || u,
+        avatar: item.user?.profilePhotoUrl || existing.avatar,
+        latestPostMs: postMs,
       });
     }
   });
+  const stories = Array.from(storyByUser.values()).sort(
+    (a, b) => b.latestPostMs - a.latestPostMs
+  );
+
+  const mostRecentPostKeyByUser = useMemo(() => {
+    const map = new Map();
+    feed.forEach((item) => {
+      const u = item.user?.username || item.username;
+      if (!u) return;
+      const postMs = item.created_at_ms || 0;
+      const key = `${item.postSource}:${item.id}`;
+      const existing = map.get(u);
+      if (!existing || postMs > existing.ms) {
+        map.set(u, { key, ms: postMs });
+      }
+    });
+    return map;
+  }, [feed]);
+
+  const handleStoryPress = (story) => {
+    if (selectedStoryUsername === story.username) {
+      setSelectedStoryUsername(null);
+      return;
+    }
+
+    const postInfo = mostRecentPostKeyByUser.get(story.username);
+    if (!postInfo) {
+      Alert.alert('No posts yet', `No posts yet from ${story.name}`);
+      return;
+    }
+
+    const scrollToPost = () => {
+      const y = postOffsetsRef.current[postInfo.key];
+      if (y == null) {
+        Alert.alert('No posts yet', `No posts yet from ${story.name}`);
+        return;
+      }
+      setSelectedStoryUsername(story.username);
+      feedScrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true });
+    };
+
+    if (postOffsetsRef.current[postInfo.key] == null) {
+      requestAnimationFrame(scrollToPost);
+    } else {
+      scrollToPost();
+    }
+  };
 
   const showEmpty = !hasFollowing || (!loading && feed.length === 0);
 
@@ -252,38 +329,61 @@ export default function HomeScreen({ navigation }) {
       {showEmpty ? (
         <EmptyFeed />
       ) : (
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={() => loadFeed(true)} tintColor={colors.primary} />
-          }
-        >
-          {loading && feed.length === 0 ? (
-            <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />
-          ) : null}
-
+        <View style={styles.feedContainer}>
           {stories.length > 0 ? (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.storiesRow}
-            >
-              {stories.map((s, i) => (
-                <StoryAvatar key={s.username} name={s.name} avatar={s.avatar} index={i} />
-              ))}
-            </ScrollView>
+            <View style={styles.storiesBar}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.storiesRow}
+              >
+                {stories.map((s, i) => (
+                  <StoryAvatar
+                    key={s.username}
+                    name={s.name}
+                    avatar={s.avatar}
+                    index={i}
+                    selected={selectedStoryUsername === s.username}
+                    hasSelection={selectedStoryUsername != null}
+                    onPress={() => handleStoryPress(s)}
+                  />
+                ))}
+              </ScrollView>
+            </View>
           ) : null}
 
-          {feed.map((item, index) => (
-            <FeedCard
-              key={`${item.postSource}:${item.id}`}
-              item={item}
-              accentColor={CARD_ACCENTS[index % CARD_ACCENTS.length]}
-              onPress={() => openPost(item)}
-            />
-          ))}
-        </ScrollView>
+          <ScrollView
+            ref={feedScrollRef}
+            style={styles.feedScroll}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={() => loadFeed(true)} tintColor={colors.primary} />
+            }
+          >
+            {loading && feed.length === 0 ? (
+              <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />
+            ) : null}
+
+            {feed.map((item, index) => {
+            const postKey = `${item.postSource}:${item.id}`;
+            return (
+              <View
+                key={postKey}
+                onLayout={(e) => {
+                  postOffsetsRef.current[postKey] = e.nativeEvent.layout.y;
+                }}
+              >
+                <FeedCard
+                  item={item}
+                  accentColor={CARD_ACCENTS[index % CARD_ACCENTS.length]}
+                  onPress={() => openPost(item)}
+                />
+              </View>
+            );
+            })}
+          </ScrollView>
+        </View>
       )}
 
       <BottomNavigation navigation={navigation} activeTab="Home" />
@@ -323,6 +423,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  feedContainer: {
+    flex: 1,
+  },
+  storiesBar: {
+    backgroundColor: colors.card,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    zIndex: 2,
+  },
+  feedScroll: {
+    flex: 1,
   },
   scrollContent: {
     paddingBottom: 24,
@@ -388,6 +500,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.text,
     fontWeight: '500',
+  },
+  storyNameSelected: {
+    color: colors.primary,
+    fontWeight: '700',
   },
   card: {
     flexDirection: 'row',

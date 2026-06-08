@@ -58,6 +58,11 @@
  *   - userLogs      GET   ?action=userLogs&username=<u>
  *                   resp  { logs: [<normalized post from `logs` collection>...] }
  *                   Returns a user's own logged meals, newest-first.
+ *   - portfolioFavorites  POST  ?action=portfolioFavorites
+ *                   body  { username, dishId }
+ *                   Toggles a logged dish in the user's public portfolio showcase
+ *                   (max 3). Stored on users/{username}.portfolio_favorites.
+ *                   resp  { portfolio_favorites: [dishId...] }
  *
  * Likes / comments data model (top-level collections keyed by post document id,
  * which is a globally-unique Firestore auto-id so logs and recipe_posts never
@@ -655,6 +660,45 @@ async function handleLike(req, res) {
 }
 
 const USER_LOGS_LIMIT = 50;
+const PORTFOLIO_FAVORITES_MAX = 3;
+
+async function handlePortfolioFavorites(req, res) {
+  if (req.method !== 'POST') return methodNotAllowed(res);
+
+  const { username, dishId } = req.body;
+  if (!username || !dishId) {
+    return res.status(400).json({ error: 'username and dishId are required' });
+  }
+
+  const userRef = db.collection('users').doc(username);
+  const userDoc = await userRef.get();
+  if (!userDoc.exists) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  const data = userDoc.data() || {};
+  let favorites = Array.isArray(data.portfolio_favorites) ? [...data.portfolio_favorites] : [];
+  const existingIndex = favorites.indexOf(dishId);
+
+  if (existingIndex >= 0) {
+    favorites.splice(existingIndex, 1);
+  } else {
+    const logDoc = await db.collection('logs').doc(dishId).get();
+    if (!logDoc.exists || logDoc.data().username !== username) {
+      return res.status(400).json({ error: 'Dish not found for this user' });
+    }
+    if (favorites.length >= PORTFOLIO_FAVORITES_MAX) {
+      return res.status(400).json({
+        error: `You can only showcase up to ${PORTFOLIO_FAVORITES_MAX} favorite dishes`,
+        portfolio_favorites: favorites,
+      });
+    }
+    favorites.push(dishId);
+  }
+
+  await userRef.set({ portfolio_favorites: favorites }, { merge: true });
+  res.status(200).json({ portfolio_favorites: favorites });
+}
 
 async function handleUserLogs(req, res) {
   if (req.method !== 'GET') return methodNotAllowed(res);
@@ -731,7 +775,8 @@ const handlers = {
   likes: handleLikes,
   like: handleLike,
   unlike: handleUnlike,
-  userlogs: handleUserLogs
+  userlogs: handleUserLogs,
+  portfoliofavorites: handlePortfolioFavorites,
 };
 
 module.exports = async (req, res) => {

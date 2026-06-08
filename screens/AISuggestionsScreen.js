@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Platform,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,6 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import BottomNavigation from '../components/BottomNavigation';
 import { useAuth } from '../context/AuthContext';
+import { useNextUp } from '../context/NextUpContext';
 import { API_URL } from '../config/api';
 import { colors, radii } from '../constants/theme';
 
@@ -150,7 +152,7 @@ const FRIEND_SUGGESTIONS = [
   },
 ];
 
-function RecipeCard({ recipe, onPress, accentColor }) {
+function RecipeCard({ recipe, onPress, onAddPress, isInNextUp, accentColor }) {
   return (
     <TouchableOpacity style={styles.recipeCard} onPress={onPress} activeOpacity={0.85}>
       <View style={styles.recipeImageWrap}>
@@ -159,6 +161,22 @@ function RecipeCard({ recipe, onPress, accentColor }) {
           colors={['transparent', 'rgba(0,0,0,0.45)']}
           style={styles.recipeImageGradient}
         />
+        <TouchableOpacity
+          style={[styles.addButton, isInNextUp && styles.addButtonActive]}
+          onPress={(e) => {
+            e?.stopPropagation?.();
+            onAddPress?.();
+          }}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel={isInNextUp ? 'Already in Next Up' : 'Add to Next Up'}
+        >
+          <Ionicons
+            name={isInNextUp ? 'checkmark' : 'add'}
+            size={18}
+            color={isInNextUp ? colors.card : colors.primary}
+          />
+        </TouchableOpacity>
         {recipe.rating ? (
           <View style={styles.ratingBadge}>
             <Ionicons name="star" size={12} color={colors.star} />
@@ -187,6 +205,7 @@ function formatSubtitle(suggestion) {
 
 export default function AISuggestionsScreen({ navigation }) {
   const { user } = useAuth();
+  const { addToNextUp, isInNextUp } = useNextUp();
   const username = user?.username || 'current_user';
   const displayName = user?.name || username;
 
@@ -247,6 +266,17 @@ export default function AISuggestionsScreen({ navigation }) {
     navigation.navigate('RecipeDetail', { recipe });
   };
 
+  const handleAddToNextUp = (recipe) => {
+    if (isInNextUp(recipe.id)) {
+      Alert.alert('Already saved', `"${recipe.name}" is already in your Next Up list.`);
+      return;
+    }
+    const added = addToNextUp(recipe);
+    if (added) {
+      Alert.alert('Added to Next Up', `"${recipe.name}" was added to your private Next Up portfolio.`);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar style="dark" />
@@ -300,6 +330,8 @@ export default function AISuggestionsScreen({ navigation }) {
               key={recipe.id}
               recipe={recipe}
               accentColor={colors.primary}
+              isInNextUp={isInNextUp(recipe.id)}
+              onAddPress={() => handleAddToNextUp(recipe)}
               onPress={() => openRecipe(recipe)}
             />
           ))}
@@ -319,6 +351,8 @@ export default function AISuggestionsScreen({ navigation }) {
               key={recipe.id}
               recipe={recipe}
               accentColor={colors.accent}
+              isInNextUp={isInNextUp(recipe.id)}
+              onAddPress={() => handleAddToNextUp(recipe)}
               onPress={() => openRecipe(recipe)}
             />
           ))}
@@ -406,6 +440,24 @@ const styles = StyleSheet.create({
   },
   recipeImageWrap: {
     position: 'relative',
+  },
+  addButton: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    zIndex: 2,
+  },
+  addButtonActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   recipeImage: {
     width: 180,

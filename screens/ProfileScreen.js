@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Platform,
+  Alert,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,10 +19,108 @@ import StatsCard from '../components/StatsCard';
 import BarChart from '../components/BarChart';
 import Tag from '../components/Tag';
 import { useAuth } from '../context/AuthContext';
+import { useNextUp } from '../context/NextUpContext';
+import PortfolioGalleryModal from '../components/PortfolioGalleryModal';
 import { API_URL } from '../config/api';
 import { colors, radii } from '../constants/theme';
 
-function DishCard({ dish, onPress }) {
+const PORTFOLIO_FAVORITES_MAX = 3;
+
+function resolvePortfolioDishes(dishes, favoriteIds) {
+  if (!Array.isArray(favoriteIds)) return [];
+  return favoriteIds
+    .map((id) => dishes.find((dish) => dish.id === id))
+    .filter(Boolean)
+    .slice(0, PORTFOLIO_FAVORITES_MAX);
+}
+
+function PortfolioPreview({ favoriteDishes, totalCount, onDishPress, onViewAll }) {
+  return (
+    <View style={styles.portfolioPreview}>
+      <View style={styles.portfolioPreviewImages}>
+        {favoriteDishes.length > 0 ? (
+          favoriteDishes.map((dish, index) => (
+            <TouchableOpacity
+              key={dish.id}
+              style={[styles.portfolioThumb, index > 0 && styles.portfolioThumbOverlap]}
+              onPress={() => onDishPress(dish)}
+              activeOpacity={0.85}
+            >
+              {dish.photoUrl ? (
+                <Image source={{ uri: dish.photoUrl }} style={styles.portfolioThumbImage} />
+              ) : (
+                <View style={[styles.portfolioThumbImage, styles.dishImagePlaceholder]}>
+                  <Ionicons name="restaurant-outline" size={22} color={colors.textMuted} />
+                </View>
+              )}
+              <View style={styles.portfolioFavoriteBadge}>
+                <Ionicons name="heart" size={10} color={colors.card} />
+              </View>
+            </TouchableOpacity>
+          ))
+        ) : (
+          <View style={[styles.portfolioThumb, styles.portfolioThumbGhost]}>
+            <Ionicons name="heart-outline" size={22} color={colors.textMuted} />
+          </View>
+        )}
+      </View>
+
+      <View style={styles.portfolioPreviewMeta}>
+        <Text style={styles.portfolioPreviewTitle}>Featured dishes</Text>
+        <Text style={styles.portfolioPreviewCount}>
+          {favoriteDishes.length} of {PORTFOLIO_FAVORITES_MAX} showcased · {totalCount} total
+        </Text>
+        <TouchableOpacity
+          style={styles.portfolioOpenButton}
+          onPress={onViewAll}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="grid" size={18} color={colors.card} />
+          <Text style={styles.portfolioOpenButtonText}>View full portfolio</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+function NextUpCard({ recipe, onPress, onRemove }) {
+  return (
+    <TouchableOpacity style={styles.nextUpCard} onPress={onPress} activeOpacity={0.85}>
+      {recipe.image ? (
+        <Image source={{ uri: recipe.image }} style={styles.nextUpImage} />
+      ) : (
+        <View style={[styles.nextUpImage, styles.dishImagePlaceholder]}>
+          <Ionicons name="sparkles-outline" size={24} color={colors.textMuted} />
+        </View>
+      )}
+      <View style={styles.nextUpInfo}>
+        <Text style={styles.dishTitle} numberOfLines={2}>
+          {recipe.name}
+        </Text>
+        {recipe.subtitle ? (
+          <Text style={styles.nextUpSubtitle} numberOfLines={1}>
+            {recipe.subtitle}
+          </Text>
+        ) : null}
+      </View>
+      {onRemove ? (
+        <TouchableOpacity
+          style={styles.nextUpRemove}
+          onPress={(e) => {
+            e.stopPropagation?.();
+            onRemove();
+          }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityLabel="Remove from Next Up"
+        >
+          <Ionicons name="close-circle" size={20} color={colors.textMuted} />
+        </TouchableOpacity>
+      ) : null}
+    </TouchableOpacity>
+  );
+}
+
+function DishCard({ dish, onPress, isFavorited, onToggleFavorite, showFavorite }) {
   return (
     <TouchableOpacity style={styles.dishCard} onPress={onPress} activeOpacity={0.85}>
       {dish.photoUrl ? (
@@ -31,6 +130,23 @@ function DishCard({ dish, onPress }) {
           <Ionicons name="restaurant-outline" size={24} color={colors.textMuted} />
         </View>
       )}
+      {showFavorite ? (
+        <TouchableOpacity
+          style={[styles.dishFavoriteButton, isFavorited && styles.dishFavoriteButtonActive]}
+          onPress={(e) => {
+            e.stopPropagation?.();
+            onToggleFavorite?.();
+          }}
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          accessibilityLabel={isFavorited ? 'Remove from portfolio favorites' : 'Add to portfolio favorites'}
+        >
+          <Ionicons
+            name={isFavorited ? 'heart' : 'heart-outline'}
+            size={16}
+            color={isFavorited ? colors.card : colors.primary}
+          />
+        </TouchableOpacity>
+      ) : null}
       <View style={styles.dishInfo}>
         <Text style={styles.dishTitle} numberOfLines={2}>
           {dish.title}
@@ -47,12 +163,15 @@ function DishCard({ dish, onPress }) {
 }
 
 export default function ProfileScreen({ navigation, route }) {
-  const { user, isFollowing, follow, unfollow } = useAuth();
+  const { user, isFollowing, follow, unfollow, signOut } = useAuth();
+  const { items: nextUpItems, loading: nextUpLoading, removeFromNextUp } = useNextUp();
   const [profile, setProfile] = useState(null);
   const [dishes, setDishes] = useState([]);
   const [dishesLoading, setDishesLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [galleryVisible, setGalleryVisible] = useState(false);
+  const [favoriteIds, setFavoriteIds] = useState([]);
 
   const username = route?.params?.username || user?.username || 'current_user';
   const passedProfile = route?.params?.profile;
@@ -84,6 +203,7 @@ export default function ProfileScreen({ navigation, route }) {
     useCallback(() => {
       if (passedProfile) {
         setProfile(passedProfile);
+        setFavoriteIds(passedProfile.portfolio_favorites || passedProfile.portfolioFavorites || []);
         setError(null);
         setLoading(false);
       } else {
@@ -140,6 +260,7 @@ export default function ProfileScreen({ navigation, route }) {
       }
 
       setProfile(data);
+      setFavoriteIds(data.portfolio_favorites || data.portfolioFavorites || []);
     } catch (err) {
       console.log('Error fetching profile, using mock data:', err.message);
       setProfile(getMockProfile());
@@ -182,6 +303,41 @@ export default function ProfileScreen({ navigation, route }) {
       collection: dish.postSource || 'logs',
       post: dish,
     });
+  };
+
+  const openNextUpRecipe = (recipe) => {
+    navigation.navigate('RecipeDetail', { recipe });
+  };
+
+  const portfolioDishes = useMemo(
+    () => resolvePortfolioDishes(dishes, favoriteIds),
+    [dishes, favoriteIds]
+  );
+
+  const togglePortfolioFavorite = async (dishId) => {
+    if (!isOwnProfile || !user?.username) return;
+
+    try {
+      const response = await fetch(`${API_URL}/social?action=portfolioFavorites`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: user.username, dishId }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        Alert.alert('Cannot update favorites', data.error || 'Please try again.');
+        return;
+      }
+      const nextFavorites = data.portfolio_favorites || [];
+      setFavoriteIds(nextFavorites);
+      setProfile((prev) => (prev ? { ...prev, portfolio_favorites: nextFavorites } : prev));
+    } catch (err) {
+      Alert.alert('Cannot update favorites', err.message);
+    }
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
   };
 
   if (loading) {
@@ -228,8 +384,6 @@ export default function ProfileScreen({ navigation, route }) {
           : 'They enjoy experimenting with new flavors while also cherishing classic, heartwarming dishes.'
       }`
     : 'No personality data available yet.';
-
-  const dishesSectionTitle = isOwnProfile ? 'My Dishes' : 'Recipes Cooked';
 
   return (
     <View style={styles.container}>
@@ -281,11 +435,52 @@ export default function ProfileScreen({ navigation, route }) {
           )}
         </LinearGradient>
 
-        {/* My Dishes / Recipes Cooked */}
+        {isOwnProfile && (
+          <View style={styles.section}>
+            <View style={styles.sectionTitleRow}>
+              <Ionicons name="bookmark" size={20} color={colors.accent} />
+              <Text style={styles.sectionTitle}>Next Up</Text>
+              <View style={styles.privateBadge}>
+                <Ionicons name="lock-closed" size={11} color={colors.textMuted} />
+                <Text style={styles.privateBadgeText}>Only you</Text>
+              </View>
+            </View>
+            {nextUpLoading ? (
+              <ActivityIndicator color={colors.accent} style={{ marginVertical: 16 }} />
+            ) : nextUpItems.length === 0 ? (
+              <View style={styles.emptyDishes}>
+                <Ionicons name="add-circle-outline" size={36} color={colors.textMuted} />
+                <Text style={styles.emptyDishesTitle}>Nothing queued yet</Text>
+                <Text style={styles.emptyDishesText}>
+                  Tap the + on any AI suggestion to save recipes you want to cook next.
+                </Text>
+              </View>
+            ) : (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.dishesRow}
+              >
+                {nextUpItems.map((recipe) => (
+                  <NextUpCard
+                    key={recipe.id}
+                    recipe={recipe}
+                    onPress={() => openNextUpRecipe(recipe)}
+                    onRemove={() => removeFromNextUp(recipe.id)}
+                  />
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        )}
+
         <View style={styles.section}>
           <View style={styles.sectionTitleRow}>
-            <Ionicons name="restaurant" size={20} color={colors.primary} />
-            <Text style={styles.sectionTitle}>{dishesSectionTitle}</Text>
+            <Ionicons name="images" size={20} color={colors.primary} />
+            <Text style={styles.sectionTitle}>Culinary Portfolio</Text>
+            {isOwnProfile ? (
+              <Text style={styles.portfolioHint}>Favorite up to 3</Text>
+            ) : null}
           </View>
           {dishesLoading ? (
             <ActivityIndicator color={colors.primary} style={{ marginVertical: 16 }} />
@@ -297,20 +492,43 @@ export default function ProfileScreen({ navigation, route }) {
               </Text>
               <Text style={styles.emptyDishesText}>
                 {isOwnProfile
-                  ? 'Tap Post to log your first meal — it will appear here!'
+                  ? 'Tap Post to log your first meal — then favorite up to 3 for your portfolio!'
                   : `${profile?.name || 'This user'} hasn't logged any meals yet.`}
               </Text>
             </View>
           ) : (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.dishesRow}
-            >
-              {dishes.map((dish) => (
-                <DishCard key={dish.id} dish={dish} onPress={() => openDish(dish)} />
-              ))}
-            </ScrollView>
+            <>
+              <PortfolioPreview
+                favoriteDishes={portfolioDishes}
+                totalCount={dishes.length}
+                onDishPress={openDish}
+                onViewAll={() => setGalleryVisible(true)}
+              />
+              {isOwnProfile ? (
+                <View style={styles.allDishesSection}>
+                  <Text style={styles.allDishesTitle}>All your dishes</Text>
+                  <Text style={styles.allDishesHint}>
+                    Tap the heart to showcase a dish on your portfolio (max {PORTFOLIO_FAVORITES_MAX}).
+                  </Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.dishesRow}
+                  >
+                    {dishes.map((dish) => (
+                      <DishCard
+                        key={dish.id}
+                        dish={dish}
+                        onPress={() => openDish(dish)}
+                        showFavorite
+                        isFavorited={favoriteIds.includes(dish.id)}
+                        onToggleFavorite={() => togglePortfolioFavorite(dish.id)}
+                      />
+                    ))}
+                  </ScrollView>
+                </View>
+              ) : null}
+            </>
           )}
         </View>
 
@@ -369,9 +587,33 @@ export default function ProfileScreen({ navigation, route }) {
             <BarChart data={profile.cookingFrequency} />
           </View>
         )}
+
+        {isOwnProfile && (
+          <View style={styles.signOutSection}>
+            <TouchableOpacity
+              style={styles.signOutButton}
+              onPress={handleSignOut}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="log-out-outline" size={20} color={colors.primary} />
+              <Text style={styles.signOutButtonText}>Sign out</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
 
       <BottomNavigation navigation={navigation} activeTab="Profile" />
+
+      <PortfolioGalleryModal
+        visible={galleryVisible}
+        dishes={dishes}
+        ownerName={profile?.name}
+        onClose={() => setGalleryVisible(false)}
+        onDishPress={(dish) => {
+          setGalleryVisible(false);
+          openDish(dish);
+        }}
+      />
     </View>
   );
 }
@@ -513,6 +755,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
     gap: 8,
+    flexWrap: 'wrap',
+  },
+  privateBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginLeft: 'auto',
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: radii.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  privateBadgeText: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontWeight: '600',
   },
   sectionTitle: {
     fontSize: 18,
@@ -551,6 +811,153 @@ const styles = StyleSheet.create({
   },
   dishesRow: {
     paddingRight: 8,
+  },
+  nextUpCard: {
+    width: 150,
+    marginRight: 12,
+    backgroundColor: colors.card,
+    borderRadius: radii.md,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border,
+    position: 'relative',
+  },
+  nextUpImage: {
+    width: 150,
+    height: 100,
+    backgroundColor: colors.borderLight,
+  },
+  nextUpInfo: {
+    padding: 10,
+    paddingRight: 28,
+  },
+  nextUpSubtitle: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  nextUpRemove: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: colors.card,
+    borderRadius: 12,
+  },
+  portfolioPreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderRadius: radii.lg,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 16,
+  },
+  portfolioPreviewImages: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  portfolioThumb: {
+    width: 72,
+    height: 72,
+    borderRadius: radii.md,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: colors.card,
+    backgroundColor: colors.borderLight,
+  },
+  portfolioThumbOverlap: {
+    marginLeft: -20,
+  },
+  portfolioThumbGhost: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.backgroundAlt,
+  },
+  portfolioThumbImage: {
+    width: '100%',
+    height: '100%',
+  },
+  portfolioPreviewMeta: {
+    flex: 1,
+  },
+  portfolioPreviewTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  portfolioPreviewCount: {
+    fontSize: 13,
+    color: colors.textMuted,
+    marginBottom: 12,
+  },
+  portfolioOpenButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    backgroundColor: colors.primary,
+    borderRadius: radii.pill,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  portfolioOpenButtonText: {
+    color: colors.card,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  portfolioHint: {
+    marginLeft: 'auto',
+    fontSize: 12,
+    color: colors.textMuted,
+    fontWeight: '600',
+  },
+  portfolioFavoriteBadge: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: colors.like,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: colors.card,
+  },
+  allDishesSection: {
+    marginTop: 20,
+  },
+  allDishesTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  allDishesHint: {
+    fontSize: 13,
+    color: colors.textMuted,
+    marginBottom: 12,
+    lineHeight: 18,
+  },
+  dishFavoriteButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    zIndex: 2,
+  },
+  dishFavoriteButtonActive: {
+    backgroundColor: colors.like,
+    borderColor: colors.like,
   },
   dishCard: {
     width: 140,
@@ -609,5 +1016,28 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  signOutSection: {
+    paddingHorizontal: 20,
+    paddingTop: 32,
+    paddingBottom: 8,
+    alignItems: 'center',
+  },
+  signOutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    borderRadius: radii.pill,
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    backgroundColor: colors.card,
+  },
+  signOutButtonText: {
+    color: colors.primary,
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

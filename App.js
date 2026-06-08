@@ -2,6 +2,7 @@ import React from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import LoginScreen from './screens/LoginScreen';
 import SignUpScreen from './screens/SignUpScreen';
 import ForgotPasswordScreen from './screens/ForgotPasswordScreen';
@@ -12,7 +13,10 @@ import AISuggestionsScreen from './screens/AISuggestionsScreen';
 import ExploreScreen from './screens/ExploreScreen';
 import PostDetailScreen from './screens/PostDetailScreen';
 import RecipeDetailScreen from './screens/RecipeDetailScreen';
+import OnboardingTour, { ONBOARDING_STEPS } from './components/OnboardingTour';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { OnboardingProvider } from './context/OnboardingContext';
+import { NextUpProvider } from './context/NextUpContext';
 
 const Stack = createStackNavigator();
 
@@ -54,10 +58,23 @@ function RootNavigator() {
   );
 }
 
+function AppShell() {
+  return (
+    <OnboardingProvider totalSteps={ONBOARDING_STEPS.length}>
+      <RootNavigator />
+      <OnboardingTour />
+    </OnboardingProvider>
+  );
+}
+
 export default function App() {
   return (
-    <AuthProvider>
-      <RootNavigator />
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <NextUpProvider>
+          <AppShell />
+        </NextUpProvider>
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }
