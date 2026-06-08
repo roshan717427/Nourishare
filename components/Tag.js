@@ -1,18 +1,26 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { colors, radii } from '../constants/theme';
 
-export default function Tag({ text }) {
+const VARIANTS = {
+  default: { bg: colors.borderLight, text: colors.text },
+  coral: { bg: colors.chipCoral, text: colors.chipCoralText },
+  teal: { bg: colors.chipTeal, text: colors.chipTealText },
+  amber: { bg: colors.chipAmber, text: colors.chipAmberText },
+};
+
+export default function Tag({ text, variant = 'default' }) {
+  const palette = VARIANTS[variant] || VARIANTS.default;
   return (
-    <View style={styles.container}>
-      <Text style={styles.text}>{text}</Text>
+    <View style={[styles.container, { backgroundColor: palette.bg }]}>
+      <Text style={[styles.text, { color: palette.text }]}>{text}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#f0f0f0',
-    borderRadius: 16,
+    borderRadius: radii.pill,
     paddingHorizontal: 12,
     paddingVertical: 6,
     marginHorizontal: 4,
@@ -20,8 +28,6 @@ const styles = StyleSheet.create({
   },
   text: {
     fontSize: 14,
-    color: '#000',
-    fontWeight: '500',
+    fontWeight: '600',
   },
 });
-

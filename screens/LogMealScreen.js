@@ -13,10 +13,13 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { StatusBar } from 'expo-status-bar';
+import { Ionicons } from '@expo/vector-icons';
 import BottomNavigation from '../components/BottomNavigation';
+import { useAuth } from '../context/AuthContext';
 import { API_URL } from '../config/api';
 
 export default function LogMealScreen({ navigation }) {
+  const { user } = useAuth();
   const [mealName, setMealName] = useState('');
   const [photo, setPhoto] = useState(null);
   const [ingredients, setIngredients] = useState('');
@@ -100,7 +103,7 @@ export default function LogMealScreen({ navigation }) {
 
       // Prepare log data - matching API expectations
       const logData = {
-        username: 'current_user', // TODO: Get from auth context
+        username: user?.username || 'current_user',
         title: mealName.trim(),
         ingredients: ingredients.trim() || undefined,
         notes: notes.trim() || undefined,
@@ -177,7 +180,7 @@ export default function LogMealScreen({ navigation }) {
             onPress={() => navigation.goBack()}
             style={styles.closeButton}
           >
-            <Text style={styles.closeButtonText}>X</Text>
+            <Ionicons name="close" size={26} color="#0c1117" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Log a meal</Text>
           <View style={styles.placeholder} />
@@ -332,7 +335,7 @@ export default function LogMealScreen({ navigation }) {
       </ScrollView>
 
       {/* Bottom Navigation */}
-      <BottomNavigation navigation={navigation} activeTab="Add" />
+      <BottomNavigation navigation={navigation} activeTab="Post" />
     </KeyboardAvoidingView>
   );
 }
@@ -476,8 +479,8 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     backgroundColor: '#000',
-    paddingVertical: 16,
-    borderRadius: 12,
+    paddingVertical: 18,
+    borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',
     marginHorizontal: 20,

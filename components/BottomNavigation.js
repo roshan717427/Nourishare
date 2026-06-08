@@ -1,53 +1,63 @@
 import React from 'react';
 import { View, TouchableOpacity, StyleSheet, Text } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { colors } from '../constants/theme';
+
+const TABS = [
+  { id: 'Home', label: 'Home', icon: 'home-outline', activeIcon: 'home' },
+  { id: 'Explore', label: 'Explore', icon: 'search-outline', activeIcon: 'search' },
+  { id: 'AI', label: 'AI', icon: 'sparkles-outline', activeIcon: 'sparkles' },
+  { id: 'Post', label: 'Post', icon: 'add-circle-outline', activeIcon: 'add-circle' },
+  { id: 'Profile', label: 'Profile', icon: 'person-outline', activeIcon: 'person' },
+];
 
 export default function BottomNavigation({ navigation, activeTab = 'Home' }) {
-  const tabs = [
-    { id: 'Home', icon: '●', label: 'Home' },
-    { id: 'Search', icon: '○', label: 'Search' },
-    { id: 'Add', icon: '+', label: 'Add' },
-    { id: 'Suggestions', icon: '★', label: 'Suggestions' },
-    { id: 'Profile', icon: '○', label: 'Profile' },
-  ];
-
   const handleTabPress = (tabId) => {
-    if (tabId === 'Add') {
-      navigation.navigate('LogMeal');
-    } else if (tabId === 'Home') {
-      navigation.navigate('Home');
-    } else if (tabId === 'Profile') {
-      navigation.navigate('Profile');
+    if (tabId === activeTab) return;
+    switch (tabId) {
+      case 'Home':
+        navigation.navigate('Home');
+        break;
+      case 'AI':
+        navigation.navigate('AISuggestions');
+        break;
+      case 'Post':
+        navigation.navigate('LogMeal');
+        break;
+      case 'Profile':
+        navigation.navigate('Profile', { username: undefined, profile: undefined });
+        break;
+      case 'Explore':
+        navigation.navigate('Explore');
+        break;
+      default:
+        break;
     }
-    // TODO: Navigate to Search and Suggestions tabs when screens are created
   };
 
   return (
     <View style={styles.container}>
-      {tabs.map((tab) => (
-        <TouchableOpacity
-          key={tab.id}
-          style={styles.tab}
-          onPress={() => handleTabPress(tab.id)}
-          activeOpacity={0.7}
-        >
-          <Text
-            style={[
-              styles.tabIcon,
-              activeTab === tab.id && styles.tabIconActive,
-            ]}
+      {TABS.map((tab) => {
+        const isActive = activeTab === tab.id;
+        return (
+          <TouchableOpacity
+            key={tab.id}
+            style={styles.tab}
+            onPress={() => handleTabPress(tab.id)}
+            activeOpacity={0.7}
           >
-            {tab.icon}
-          </Text>
-          <Text
-            style={[
-              styles.tabLabel,
-              activeTab === tab.id && styles.tabLabelActive,
-            ]}
-          >
-            {tab.label}
-          </Text>
-        </TouchableOpacity>
-      ))}
+            <Ionicons
+              name={isActive ? tab.activeIcon : tab.icon}
+              size={26}
+              color={isActive ? colors.navActive : colors.navInactive}
+            />
+            <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
+              {tab.label}
+            </Text>
+            {isActive ? <View style={styles.activeDot} /> : null}
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
@@ -55,11 +65,11 @@ export default function BottomNavigation({ navigation, activeTab = 'Home' }) {
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    height: 70,
-    backgroundColor: '#fff',
+    height: 76,
+    backgroundColor: colors.card,
     borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
-    paddingBottom: 10,
+    borderTopColor: colors.border,
+    paddingBottom: 12,
     paddingTop: 8,
   },
   tab: {
@@ -67,20 +77,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tabIcon: {
-    fontSize: 24,
-    marginBottom: 4,
-  },
-  tabIconActive: {
-    opacity: 1,
-  },
   tabLabel: {
-    fontSize: 12,
-    color: '#999',
+    fontSize: 11,
+    color: colors.navInactive,
+    marginTop: 4,
   },
   tabLabelActive: {
-    color: '#000',
-    fontWeight: '600',
+    color: colors.navActive,
+    fontWeight: '700',
+  },
+  activeDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: colors.navActive,
+    marginTop: 3,
   },
 });
-

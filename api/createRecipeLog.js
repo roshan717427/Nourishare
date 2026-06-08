@@ -74,6 +74,26 @@ module.exports = async (req, res) => {
     });
     
     const docRef = await db.collection('logs').add(logData);
+
+    // Keep a denormalized recipe counter on the user doc so the profile's
+    // "Recipes Cooked" metric updates immediately. getUserProfile recomputes
+    // the authoritative count from the `logs` collection, so this counter is a
+    // best-effort fast path and a drift here is self-healing on next profile load.
+    try {
+      await db
+        .collection('users')
+        .doc(username)
+        .set(
+          {
+            cookingStats: { total_recipes: FieldValue.increment(1) },
+          },
+          { merge: true }
+        );
+    } catch (counterErr) {
+      // Non-fatal: the log was still created and the count is recomputed on read.
+      console.error('Failed to increment user recipe counter:', counterErr.message);
+    }
+
     res.status(201).json({ message: 'Recipe log created', logId: docRef.id });
   } catch (error) {
     console.error('Error creating recipe log:', error);
