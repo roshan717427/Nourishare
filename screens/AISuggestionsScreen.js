@@ -100,11 +100,18 @@ function mapApiSuggestions(items, imageOffset = 0) {
 
   return items.map((s, index) => ({
     ...s,
-    id: s.recipe_id || `s-${imageOffset + index}`,
-    name: s.recipe_name || 'Recipe',
-    subtitle: formatSubtitle(s),
-    image: FALLBACK_IMAGES[(imageOffset + index) % FALLBACK_IMAGES.length],
-    steps: undefined,
+    id: s.id || s.recipe_id || `s-${imageOffset + index}`,
+    name: s.name || s.recipe_name || 'Recipe',
+    subtitle: s.subtitle || formatSubtitle(s),
+    image:
+      s.image ||
+      s.photoUrl ||
+      s.photo_url ||
+      FALLBACK_IMAGES[(imageOffset + index) % FALLBACK_IMAGES.length],
+    ingredients: s.ingredients,
+    steps: s.steps || undefined,
+    difficulty_level: s.difficulty_level || s.difficulty,
+    cooking_time: s.cooking_time || s.time,
   }));
 }
 
@@ -222,18 +229,15 @@ export default function AISuggestionsScreen({ navigation }) {
     }
   };
 
-  const showPreferenceEmpty = !loading && (!hasLogs || preferenceSuggestions.length === 0);
+  const showPreferenceEmpty = !loading && !hasLogs;
+  const showPreferenceLearning =
+    !loading && hasLogs && preferenceSuggestions.length === 0;
   const showFriendEmpty = !loading && (!hasFollowing || friendSuggestions.length === 0);
 
-  const preferenceEmptyCopy = !hasLogs
-    ? {
-        title: 'Nothing to suggest yet',
-        hint: 'Log a few meals and we\'ll learn what you like.',
-      }
-    : {
-        title: 'Still learning your tastes',
-        hint: 'Keep logging meals, and we\'ll sharpen these picks as we go.',
-      };
+  const preferenceEmptyCopy = {
+    title: 'Nothing to suggest yet',
+    hint: 'Log your first meal and we will start picking recipes for you.',
+  };
 
   const friendEmptyCopy = !hasFollowing
     ? {
@@ -298,6 +302,14 @@ export default function AISuggestionsScreen({ navigation }) {
             icon="restaurant-outline"
             title={preferenceEmptyCopy.title}
             hint={preferenceEmptyCopy.hint}
+            accentColor={colors.primary}
+            chipColors={[colors.chipCoral, colors.chipAmber]}
+          />
+        ) : showPreferenceLearning ? (
+          <SectionEmptyState
+            icon="restaurant-outline"
+            title="Still learning your tastes"
+            hint="Keep logging meals, and we will sharpen these picks as we go."
             accentColor={colors.primary}
             chipColors={[colors.chipCoral, colors.chipAmber]}
           />
