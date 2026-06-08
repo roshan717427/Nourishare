@@ -198,16 +198,12 @@ async function fetchUserRecipes(db, username) {
   return snapshot.docs.map((doc) => mapLogToRecipe(doc.data()));
 }
 
-function mergeWithUserEdits(analyzed, existingPersonality, editedByUser) {
+function mergeWithUserEdits(analyzed, existingPersonality, userData = {}) {
+  const editedByUser = userData.personality_edited_by_user;
   if (!editedByUser || !existingPersonality) return analyzed;
 
   const merged = { ...analyzed };
-  const preserveFields = [
-    'primary_trait',
-    'secondary_traits',
-    'top_cuisines',
-    'favorite_ingredients',
-  ];
+  const preserveFields = ['primary_trait', 'secondary_traits'];
   for (const field of preserveFields) {
     const existing = existingPersonality[field];
     if (existing !== undefined && existing !== null) {
@@ -216,6 +212,15 @@ function mergeWithUserEdits(analyzed, existingPersonality, editedByUser) {
       }
     }
   }
+
+  // Cuisines and ingredients are only preserved when explicitly set via Edit Profile.
+  if (userData.top_cuisines_user_set) {
+    merged.top_cuisines = existingPersonality.top_cuisines || [];
+  }
+  if (userData.favorite_ingredients_user_set) {
+    merged.favorite_ingredients = existingPersonality.favorite_ingredients || [];
+  }
+
   return merged;
 }
 
@@ -227,11 +232,7 @@ async function refreshUserPersonality(db, username) {
   const userData = userDoc.data() || {};
   const recipes = await fetchUserRecipes(db, username);
   const analyzed = analyzeRecipes(recipes);
-  const merged = mergeWithUserEdits(
-    analyzed,
-    userData.kitchen_personality,
-    userData.personality_edited_by_user
-  );
+  const merged = mergeWithUserEdits(analyzed, userData.kitchen_personality, userData);
 
   await userRef.set({ kitchen_personality: merged }, { merge: true });
   return merged;

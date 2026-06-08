@@ -90,12 +90,18 @@ module.exports = async (req, res) => {
       if (avgRating != null) mergedCookingStats.avg_rating = avgRating;
     }
 
+    // Drop stale auto-filled cuisines/ingredients unless the user saved them via Edit Profile.
+    const kitchenPersonality = { ...personality, cooking_stats: mergedCookingStats };
+    if (!data.top_cuisines_user_set) {
+      kitchenPersonality.top_cuisines = [];
+    }
+    if (!data.favorite_ingredients_user_set) {
+      kitchenPersonality.favorite_ingredients = [];
+    }
+
     const response = {
       ...data,
-      kitchen_personality: {
-        ...personality,
-        cooking_stats: mergedCookingStats,
-      },
+      kitchen_personality: kitchenPersonality,
       // Live counts (override stored values). ProfileScreen renders both.
       followers: followersCount,
       following: followingCount,

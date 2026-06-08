@@ -21,7 +21,6 @@ import * as ImagePicker from 'expo-image-picker';
 import BottomNavigation from '../components/BottomNavigation';
 import StatsCard from '../components/StatsCard';
 import BarChart from '../components/BarChart';
-import Tag from '../components/Tag';
 import { useAuth } from '../context/AuthContext';
 import { useNextUp } from '../context/NextUpContext';
 import PortfolioGalleryModal from '../components/PortfolioGalleryModal';
@@ -308,8 +307,8 @@ export default function ProfileScreen({ navigation, route }) {
     kitchen_personality: {
       primary_trait: 'Adventurous and Comforting',
       secondary_traits: ['Bold Flavors', 'Classic Dishes'],
-      top_cuisines: ['Italian', 'Mexican', 'Indian', 'Thai', 'Mediterranean'],
-      favorite_ingredients: ['Garlic', 'Tomatoes', 'Basil', 'Olive Oil', 'Chili Peppers'],
+      top_cuisines: [],
+      favorite_ingredients: [],
       cooking_stats: {
         total_recipes: 125,
         avg_rating: 4.7,
@@ -378,13 +377,16 @@ export default function ProfileScreen({ navigation, route }) {
 
   const openEditProfile = () => {
     const p = profile?.kitchen_personality || {};
-    const userEditedPrefs = profile?.personality_edited_by_user;
     setEditName(profile?.name || '');
     setEditPhotoUri(null);
     setEditPrimaryTrait(p.primary_trait || '');
     setEditSecondaryTraits((p.secondary_traits || []).join(', '));
-    setEditTopCuisines(userEditedPrefs ? (p.top_cuisines || []).join(', ') : '');
-    setEditFavoriteIngredients(userEditedPrefs ? (p.favorite_ingredients || []).join(', ') : '');
+    setEditTopCuisines(
+      profile?.top_cuisines_user_set ? (p.top_cuisines || []).join(', ') : ''
+    );
+    setEditFavoriteIngredients(
+      profile?.favorite_ingredients_user_set ? (p.favorite_ingredients || []).join(', ') : ''
+    );
     setEditProfileModalVisible(true);
   };
 
@@ -431,6 +433,8 @@ export default function ProfileScreen({ navigation, route }) {
         name: editName.trim(),
         kitchen_personality,
         personality_edited_by_user: true,
+        top_cuisines_user_set: true,
+        favorite_ingredients_user_set: true,
       };
       if (editPhotoUri) {
         payload.profilePhotoUrl = editPhotoUri;
@@ -456,6 +460,8 @@ export default function ProfileScreen({ navigation, route }) {
                 ...kitchen_personality,
               },
               personality_edited_by_user: true,
+              top_cuisines_user_set: true,
+              favorite_ingredients_user_set: true,
             }
           : prev
       );
@@ -543,15 +549,18 @@ export default function ProfileScreen({ navigation, route }) {
 
   const personality = profile?.kitchen_personality || {};
   const stats = personality?.cooking_stats || {};
-  const userEditedPrefs = profile?.personality_edited_by_user;
-  const topCuisines = userEditedPrefs ? personality?.top_cuisines || [] : [];
-  const favoriteIngredients = userEditedPrefs ? personality?.favorite_ingredients || [] : [];
+  const topCuisines = profile?.top_cuisines_user_set ? personality?.top_cuisines || [] : [];
+  const favoriteIngredients = profile?.favorite_ingredients_user_set
+    ? personality?.favorite_ingredients || []
+    : [];
   const followers = profile?.followers || 0;
   const followingCount = profile?.following || 0;
 
-  const personalityForCopy = userEditedPrefs
-    ? personality
-    : { ...personality, top_cuisines: [], favorite_ingredients: [] };
+  const personalityForCopy = {
+    ...personality,
+    top_cuisines: topCuisines,
+    favorite_ingredients: favoriteIngredients,
+  };
 
   const personalityDescription = buildPersonalityDescription(
     profile?.displayName || profile?.name,
@@ -754,9 +763,12 @@ export default function ProfileScreen({ navigation, route }) {
               <Text style={styles.sectionTitle}>Top Cuisines</Text>
             </View>
             {topCuisines.length > 0 ? (
-              <View style={styles.tagsContainer}>
+              <View style={styles.bulletList}>
                 {topCuisines.map((cuisine, index) => (
-                  <Tag key={index} text={cuisine} variant="coral" />
+                  <View key={index} style={styles.bulletRow}>
+                    <Text style={styles.bulletMarker}>•</Text>
+                    <Text style={styles.bulletText}>{cuisine}</Text>
+                  </View>
                 ))}
               </View>
             ) : isOwnProfile ? (
@@ -772,9 +784,12 @@ export default function ProfileScreen({ navigation, route }) {
               <Text style={styles.sectionTitle}>Favorite Ingredients</Text>
             </View>
             {favoriteIngredients.length > 0 ? (
-              <View style={styles.tagsContainer}>
+              <View style={styles.bulletList}>
                 {favoriteIngredients.map((ingredient, index) => (
-                  <Tag key={index} text={ingredient} variant="teal" />
+                  <View key={index} style={styles.bulletRow}>
+                    <Text style={styles.bulletMarker}>•</Text>
+                    <Text style={styles.bulletText}>{ingredient}</Text>
+                  </View>
                 ))}
               </View>
             ) : isOwnProfile ? (
@@ -938,7 +953,7 @@ export default function ProfileScreen({ navigation, route }) {
                 style={styles.modalInput}
                 value={editFavoriteIngredients}
                 onChangeText={setEditFavoriteIngredients}
-                placeholder="Garlic, Tomatoes, Basil"
+                placeholder="garlic, basil, olive oil"
                 placeholderTextColor={colors.textMuted}
               />
 
@@ -1192,11 +1207,25 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     lineHeight: 26,
   },
-  tagsContainer: {
+  bulletList: {
+    gap: 6,
+  },
+  bulletRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    alignItems: 'flex-start',
     gap: 8,
-    marginHorizontal: -2,
+  },
+  bulletMarker: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: colors.textSecondary,
+    width: 12,
+  },
+  bulletText: {
+    flex: 1,
+    fontSize: 15,
+    lineHeight: 22,
+    color: colors.textSecondary,
   },
   sectionEditHint: {
     fontSize: 13,
