@@ -199,93 +199,182 @@ class SmartSuggestionsEngine:
         
         return score
     
-    def get_suggestions(self, username, limit=10):
-        """Get smart suggestions for a user"""
+    def _infer_top_cuisines(self, user_recipes):
+        """Infer top cuisines from the user's cooking history."""
+        cuisine_counts = Counter()
+        for recipe_name in user_recipes:
+            cuisine = self._detect_cuisine(recipe_name)
+            if cuisine != 'general':
+                cuisine_counts[cuisine] += 1
+        return [cuisine for cuisine, _ in cuisine_counts.most_common(3)]
+
+    def _get_user_preferences(self, username, user_recipes):
+        """Load kitchen personality preferences, falling back to inferred cuisines."""
+        top_cuisines = []
         try:
-            # Get user's cooking history
-            user_recipes = self._get_user_recipes(username)
-            
-            # Get followed users
-            followed_users = self._get_followed_users(username)
-            
-            if not followed_users:
-                return {
-                    'suggestions': [],
-                    'message': 'Follow some friends to get recipe suggestions!',
-                    'total_friends': 0
-                }
-            
-            # Get friends' recipes
-            friends_recipes = self._get_friends_recipes(followed_users)
-            
-            if not friends_recipes:
-                return {
-                    'suggestions': [],
-                    'message': 'Your friends haven\'t cooked any recipes yet!',
-                    'total_friends': len(followed_users)
-                }
-            
-            # Get user preferences (from personality if available)
-            user_preferences = None
-            try:
-                user_ref = db.collection('users').document(username).get()
-                if user_ref.exists:
-                    user_data = user_ref.to_dict()
-                    personality = user_data.get('kitchen_personality', {})
-                    if personality:
-                        user_preferences = {
-                            'top_cuisines': personality.get('top_cuisines', [])
-                        }
-            except:
-                pass
-            
-            # Calculate scores for each recipe
-            scored_suggestions = []
-            seen_recipes = set()
-            
-            for recipe in friends_recipes:
-                recipe_name = recipe.get('recipe_name', '').lower().strip()
-                if not recipe_name or recipe_name in seen_recipes:
+            user_ref = db.collection('users').document(username).get()
+            if user_ref.exists:
+                personality = user_ref.to_dict().get('kitchen_personality', {})
+                top_cuisines = personality.get('top_cuisines', []) if personality else []
+        except Exception as e:
+            print(f"Error loading user preferences: {str(e)}")
+
+        if not top_cuisines:
+            top_cuisines = self._infer_top_cuisines(user_recipes)
+
+        return {'top_cuisines': top_cuisines}
+
+    def _format_suggestion(self, recipe, score, why_suggested):
+        """Normalize a recipe document into a suggestion payload."""
+        return {
+            'recipe_name': recipe.get('recipe_name', ''),
+            'recipe_id': recipe.get('id', ''),
+            'username': recipe.get('username', ''),
+            'rating': recipe.get('rating', 0),
+            'cooking_notes': recipe.get('cooking_notes', ''),
+            'difficulty_level': recipe.get('difficulty_level', 'medium'),
+            'cooking_time': recipe.get('cooking_time', ''),
+            'recooks_count': recipe.get('recooks_count', 0),
+            'likes_count': recipe.get('likes_count', 0),
+            'created_at': self._format_timestamp(recipe.get('created_at')),
+            'suggestion_score': round(score, 2),
+            'why_suggested': why_suggested,
+        }
+
+    def _calculate_preference_score(self, recipe, user_recipes, user_preferences):
+        """Score how well a recipe matches the user's own cooking history."""
+        score = self._calculate_suggestion_score(recipe, user_recipes, user_preferences)
+        if score <= 0:
+            return 0.0
+
+        recipe_name = recipe.get('recipe_name', '').lower().strip()
+        top_cuisines = user_preferences.get('top_cuisines', [])
+        if top_cuisines:
+            recipe_cuisine = self._detect_cuisine(recipe_name, recipe.get('ingredients', []))
+            if recipe_cuisine in top_cuisines:
+                score += 15
+
+        return score
+
+    def _get_preference_suggestions(self, username, user_recipes, limit=6):
+        """Suggest community recipes that match the user's tastes."""
+        if not user_recipes:
+            return []
+
+        user_preferences = self._get_user_preferences(username, user_recipes)
+        top_cuisines = user_preferences.get('top_cuisines', [])
+
+        scored_suggestions = []
+        seen_recipes = set()
+
+        try:
+            recipes_ref = db.collection('recipe_posts').limit(300).stream()
+            for recipe in recipes_ref:
+                recipe_data = recipe.to_dict()
+                recipe_name = recipe_data.get('recipe_name', '').lower().strip()
+                if not recipe_name or recipe_name in user_recipes:
                     continue
-                
+                if recipe_data.get('username', '') == username:
+                    continue
+                if recipe_name in seen_recipes:
+                    continue
+
                 seen_recipes.add(recipe_name)
-                score = self._calculate_suggestion_score(recipe, user_recipes, user_preferences)
-                
-                if score > 0:  # Only include recipes with positive scores
-                    # Format suggestion
-                    suggestion = {
-                        'recipe_name': recipe.get('recipe_name', ''),
-                        'recipe_id': recipe.get('id', ''),
-                        'username': recipe.get('username', ''),
-                        'rating': recipe.get('rating', 0),
-                        'cooking_notes': recipe.get('cooking_notes', ''),
-                        'difficulty_level': recipe.get('difficulty_level', 'medium'),
-                        'cooking_time': recipe.get('cooking_time', ''),
-                        'recooks_count': recipe.get('recooks_count', 0),
-                        'likes_count': recipe.get('likes_count', 0),
-                        'created_at': self._format_timestamp(recipe.get('created_at')),
-                        'suggestion_score': round(score, 2),
-                        'why_suggested': self._get_suggestion_reason(recipe, score)
-                    }
-                    scored_suggestions.append(suggestion)
-            
-            # Sort by score (highest first)
-            scored_suggestions.sort(key=lambda x: x['suggestion_score'], reverse=True)
-            
-            # Return top suggestions
+                score = self._calculate_preference_score(recipe_data, user_recipes, user_preferences)
+                if score <= 0:
+                    continue
+
+                if top_cuisines:
+                    recipe_cuisine = self._detect_cuisine(recipe_name, recipe_data.get('ingredients', []))
+                    if recipe_cuisine in top_cuisines:
+                        reason = f'matches your love of {recipe_cuisine} flavors'
+                    else:
+                        reason = 'popular with cooks who share your tastes'
+                else:
+                    reason = 'picked from what you have been cooking lately'
+
+                scored_suggestions.append(
+                    self._format_suggestion(recipe_data, score, reason)
+                )
+        except Exception as e:
+            print(f"Error getting preference suggestions: {str(e)}")
+
+        scored_suggestions.sort(key=lambda x: x['suggestion_score'], reverse=True)
+        return scored_suggestions[:limit]
+
+    def _get_friend_suggestions(self, username, user_recipes, followed_users, limit=6):
+        """Suggest recipes from people the user follows."""
+        if not followed_users:
+            return []
+
+        friends_recipes = self._get_friends_recipes(followed_users)
+        if not friends_recipes:
+            return []
+
+        user_preferences = self._get_user_preferences(username, user_recipes)
+        scored_suggestions = []
+        seen_recipes = set()
+
+        for recipe in friends_recipes:
+            recipe_name = recipe.get('recipe_name', '').lower().strip()
+            if not recipe_name or recipe_name in seen_recipes:
+                continue
+
+            seen_recipes.add(recipe_name)
+            score = self._calculate_suggestion_score(recipe, user_recipes, user_preferences)
+            if score <= 0:
+                continue
+
+            scored_suggestions.append(
+                self._format_suggestion(
+                    recipe,
+                    score,
+                    self._get_suggestion_reason(recipe, score),
+                )
+            )
+
+        scored_suggestions.sort(key=lambda x: x['suggestion_score'], reverse=True)
+        return scored_suggestions[:limit]
+
+    def get_suggestions(self, username, limit=10):
+        """Get smart suggestions for a user (preferences + friends)."""
+        try:
+            user_recipes = self._get_user_recipes(username)
+            has_logs = len(user_recipes) > 0
+            followed_users = self._get_followed_users(username)
+
+            preference_suggestions = []
+            if has_logs:
+                preference_suggestions = self._get_preference_suggestions(
+                    username, user_recipes, limit
+                )
+
+            friend_suggestions = []
+            if followed_users:
+                friend_suggestions = self._get_friend_suggestions(
+                    username, user_recipes, followed_users, limit
+                )
+
             return {
-                'suggestions': scored_suggestions[:limit],
-                'total_suggestions': len(scored_suggestions),
+                'preference_suggestions': preference_suggestions,
+                'friend_suggestions': friend_suggestions,
+                # Backward-compatible alias for older clients.
+                'suggestions': friend_suggestions,
+                'has_logs': has_logs,
+                'total_preference_suggestions': len(preference_suggestions),
+                'total_friend_suggestions': len(friend_suggestions),
                 'total_friends': len(followed_users),
-                'message': f'Found {len(scored_suggestions)} recipe suggestions based on what your friends are cooking!'
             }
-        
+
         except Exception as e:
             print(f"Error generating suggestions: {str(e)}")
             return {
+                'preference_suggestions': [],
+                'friend_suggestions': [],
                 'suggestions': [],
+                'has_logs': False,
                 'error': str(e),
-                'message': 'Error generating suggestions'
+                'message': 'Error generating suggestions',
             }
     
     def _format_timestamp(self, timestamp):

@@ -26,6 +26,10 @@ const AuthContext = createContext({
 // sign-up, so we map it back here. We also keep a short-lived override keyed by
 // uid so the in-app `user` always has the right username even before
 // `onAuthStateChanged` re-reads the freshly-set displayName.
+function normalizeUsername(value) {
+  return (value || '').toLowerCase();
+}
+
 function mapFirebaseUser(fbUser, usernameOverride) {
   if (!fbUser) return null;
   const username = usernameOverride || fbUser.displayName || fbUser.email;
@@ -59,6 +63,9 @@ export function AuthProvider({ children }) {
   // happen on top of this for the rest of the session. That action returns
   // following as objects ({ username, name, timestamp }), so we map down to the
   // bare usernames the rest of the social state works with.
+  // Merge server results with any in-flight optimistic follows so demo users
+  // (404 from follow API) are not wiped if the user taps Follow before hydration
+  // finishes.
   const username = user?.username;
   useEffect(() => {
     if (!username) {
@@ -74,11 +81,16 @@ export function AuthProvider({ children }) {
         if (!response.ok) return;
         const data = await response.json();
         if (!cancelled && data && Array.isArray(data.following)) {
-          setFollowing(
-            data.following
-              .map((item) => (typeof item === 'string' ? item : item?.username))
-              .filter(Boolean)
-          );
+          const fromServer = data.following
+            .map((item) => (typeof item === 'string' ? item : item?.username))
+            .filter(Boolean);
+          setFollowing((prev) => {
+            const serverKeys = new Set(fromServer.map(normalizeUsername));
+            const pendingLocal = prev.filter(
+              (u) => !serverKeys.has(normalizeUsername(u))
+            );
+            return [...fromServer, ...pendingLocal];
+          });
         }
       } catch (err) {
         // Offline / no backend: keep whatever local follow state exists
@@ -122,16 +134,21 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const follow = (username) => {
-    if (!username) return;
-    setFollowing((prev) => (prev.includes(username) ? prev : [...prev, username]));
+  const follow = (targetUsername) => {
+    if (!targetUsername) return;
+    const key = normalizeUsername(targetUsername);
+    setFollowing((prev) =>
+      prev.some((u) => normalizeUsername(u) === key) ? prev : [...prev, targetUsername]
+    );
   };
 
-  const unfollow = (username) => {
-    setFollowing((prev) => prev.filter((u) => u !== username));
+  const unfollow = (targetUsername) => {
+    const key = normalizeUsername(targetUsername);
+    setFollowing((prev) => prev.filter((u) => normalizeUsername(u) !== key));
   };
 
-  const isFollowing = (username) => following.includes(username);
+  const isFollowing = (targetUsername) =>
+    following.some((u) => normalizeUsername(u) === normalizeUsername(targetUsername));
 
   return (
     <AuthContext.Provider

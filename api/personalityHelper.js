@@ -58,7 +58,7 @@ function mapLogToRecipe(logData) {
 function getDefaultPersonality() {
   return {
     primary_trait: 'Kitchen Newcomer',
-    secondary_traits: ['Learning Chef', 'Curious Cook'],
+    secondary_traits: ['Eager Learner', 'Open-Minded Palate'],
     top_cuisines: [],
     favorite_ingredients: [],
     cooking_frequency: 'new_cook',
@@ -150,9 +150,9 @@ function analyzeRecipes(recipes) {
   else if (recipes.length > 20) primaryTrait = 'Experienced Cook';
 
   const secondaryTraits = [];
-  if (diversityScore > 0.5) secondaryTraits.push('Cuisine Explorer');
-  if (stylePreference === 'balanced') secondaryTraits.push('Balanced Cook');
-  if (topIngredients.length > 5) secondaryTraits.push('Ingredient Adventurer');
+  if (diversityScore > 0.5) secondaryTraits.push('Varied Cuisines');
+  if (stylePreference === 'balanced') secondaryTraits.push('Comfort & Adventure');
+  if (topIngredients.length > 5) secondaryTraits.push('Ingredient Discovery');
 
   const experimentalScore = Math.min(
     1,
@@ -173,8 +173,9 @@ function analyzeRecipes(recipes) {
   return {
     primary_trait: primaryTrait,
     secondary_traits: secondaryTraits.slice(0, 2),
-    top_cuisines: topCuisines,
-    favorite_ingredients: topIngredients,
+    // Cuisines and ingredients are user-curated via Edit Profile only.
+    top_cuisines: [],
+    favorite_ingredients: [],
     cooking_frequency: frequency,
     experimental_score: Math.round(experimentalScore * 100) / 100,
     comfort_score: Math.round(comfortScore * 100) / 100,

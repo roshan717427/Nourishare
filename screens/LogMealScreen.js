@@ -15,6 +15,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import BottomNavigation from '../components/BottomNavigation';
+import { colors } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
 import { API_URL } from '../config/api';
 
@@ -34,7 +35,7 @@ export default function LogMealScreen({ navigation }) {
     // Request permissions
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Sorry, we need camera roll permissions to add photos!');
+      Alert.alert('Permission needed', 'Allow photo library access to add a photo.');
       return;
     }
 
@@ -55,7 +56,7 @@ export default function LogMealScreen({ navigation }) {
     // Request permissions
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Sorry, we need camera permissions to take photos!');
+      Alert.alert('Permission needed', 'Allow camera access to snap a photo.');
       return;
     }
 
@@ -86,7 +87,7 @@ export default function LogMealScreen({ navigation }) {
   const handleSubmit = async () => {
     // Basic validation
     if (!mealName.trim()) {
-      Alert.alert('Missing Information', 'Please enter a meal name');
+      Alert.alert('Name your dish', 'Give your meal a name before logging it.');
       return;
     }
 
@@ -134,7 +135,7 @@ export default function LogMealScreen({ navigation }) {
       const result = await response.json();
 
       if (response.ok && result.message) {
-        Alert.alert('Success', 'Meal logged successfully!', [
+        Alert.alert('Logged!', 'Your meal is on your profile.', [
           {
             text: 'OK',
             onPress: () => {
@@ -174,13 +175,12 @@ export default function LogMealScreen({ navigation }) {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity
             onPress={() => navigation.goBack()}
             style={styles.closeButton}
           >
-            <Ionicons name="close" size={26} color="#0c1117" />
+            <Ionicons name="close" size={26} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Log a meal</Text>
           <View style={styles.placeholder} />
@@ -343,7 +343,7 @@ export default function LogMealScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
   },
   scrollView: {
     flex: 1,
@@ -359,7 +359,8 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'ios' ? 60 : 40,
     paddingBottom: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: colors.border,
+    backgroundColor: colors.card,
   },
   closeButton: {
     width: 32,
@@ -367,15 +368,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  closeButtonText: {
-    fontSize: 24,
-    fontWeight: '300',
-    color: '#000',
-  },
   headerTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#000',
+    color: colors.text,
   },
   placeholder: {
     width: 32,

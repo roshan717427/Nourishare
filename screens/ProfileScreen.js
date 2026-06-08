@@ -26,7 +26,8 @@ import { useAuth } from '../context/AuthContext';
 import { useNextUp } from '../context/NextUpContext';
 import PortfolioGalleryModal from '../components/PortfolioGalleryModal';
 import { API_URL } from '../config/api';
-import { colors, radii } from '../constants/theme';
+import { colors, radii, spacing } from '../constants/theme';
+import { buildPersonalityDescription } from '../utils/personalityCopy';
 
 const PORTFOLIO_FAVORITES_MAX = 2;
 
@@ -193,9 +194,10 @@ export default function ProfileScreen({ navigation, route }) {
   const [error, setError] = useState(null);
   const [galleryVisible, setGalleryVisible] = useState(false);
   const [favoriteIds, setFavoriteIds] = useState([]);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  const [personalityModalVisible, setPersonalityModalVisible] = useState(false);
-  const [savingPersonality, setSavingPersonality] = useState(false);
+  const [editProfileModalVisible, setEditProfileModalVisible] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editPhotoUri, setEditPhotoUri] = useState(null);
   const [editPrimaryTrait, setEditPrimaryTrait] = useState('');
   const [editSecondaryTraits, setEditSecondaryTraits] = useState('');
   const [editTopCuisines, setEditTopCuisines] = useState('');
@@ -374,61 +376,24 @@ export default function ProfileScreen({ navigation, route }) {
       .map((s) => s.trim())
       .filter(Boolean);
 
-  const openPersonalityEditor = () => {
+  const openEditProfile = () => {
     const p = profile?.kitchen_personality || {};
+    const userEditedPrefs = profile?.personality_edited_by_user;
+    setEditName(profile?.name || '');
+    setEditPhotoUri(null);
     setEditPrimaryTrait(p.primary_trait || '');
     setEditSecondaryTraits((p.secondary_traits || []).join(', '));
-    setEditTopCuisines((p.top_cuisines || []).join(', '));
-    setEditFavoriteIngredients((p.favorite_ingredients || []).join(', '));
-    setPersonalityModalVisible(true);
+    setEditTopCuisines(userEditedPrefs ? (p.top_cuisines || []).join(', ') : '');
+    setEditFavoriteIngredients(userEditedPrefs ? (p.favorite_ingredients || []).join(', ') : '');
+    setEditProfileModalVisible(true);
   };
 
-  const handleSavePersonality = async () => {
-    if (!user?.username) return;
-    setSavingPersonality(true);
-    try {
-      const kitchen_personality = {
-        primary_trait: editPrimaryTrait.trim(),
-        secondary_traits: parseCommaList(editSecondaryTraits),
-        top_cuisines: parseCommaList(editTopCuisines),
-        favorite_ingredients: parseCommaList(editFavoriteIngredients),
-      };
-      const response = await fetch(`${API_URL}/updateUserProfile`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: user.username,
-          kitchen_personality,
-          personality_edited_by_user: true,
-        }),
-      });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to save');
-      }
-      setProfile((prev) =>
-        prev
-          ? {
-              ...prev,
-              kitchen_personality: {
-                ...(prev.kitchen_personality || {}),
-                ...kitchen_personality,
-              },
-              personality_edited_by_user: true,
-            }
-          : prev
-      );
-      setPersonalityModalVisible(false);
-    } catch (err) {
-      Alert.alert('Could not save personality', err.message);
-    } finally {
-      setSavingPersonality(false);
-    }
+  const closeEditProfile = () => {
+    setEditProfileModalVisible(false);
+    setEditPhotoUri(null);
   };
 
-  const handleEditPhoto = async () => {
-    if (!isOwnProfile || !user?.username) return;
-
+  const handlePickPhoto = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permission needed', 'Allow photo library access to set your profile picture.');
@@ -448,26 +413,57 @@ export default function ProfileScreen({ navigation, route }) {
     const asset = result.assets[0];
     const mime = asset.mimeType || 'image/jpeg';
     const dataUri = asset.base64 ? `data:${mime};base64,${asset.base64}` : asset.uri;
+    setEditPhotoUri(dataUri);
+  };
 
-    setUploadingPhoto(true);
+  const handleSaveProfile = async () => {
+    if (!user?.username) return;
+    setSavingProfile(true);
     try {
+      const kitchen_personality = {
+        primary_trait: editPrimaryTrait.trim(),
+        secondary_traits: parseCommaList(editSecondaryTraits),
+        top_cuisines: parseCommaList(editTopCuisines),
+        favorite_ingredients: parseCommaList(editFavoriteIngredients),
+      };
+      const payload = {
+        username: user.username,
+        name: editName.trim(),
+        kitchen_personality,
+        personality_edited_by_user: true,
+      };
+      if (editPhotoUri) {
+        payload.profilePhotoUrl = editPhotoUri;
+      }
+
       const response = await fetch(`${API_URL}/updateUserProfile`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: user.username,
-          profilePhotoUrl: dataUri,
-        }),
+        body: JSON.stringify(payload),
       });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to update photo');
+        throw new Error(data.error || 'Failed to save');
       }
-      setProfile((prev) => (prev ? { ...prev, profilePhotoUrl: dataUri } : prev));
+      setProfile((prev) =>
+        prev
+          ? {
+              ...prev,
+              name: editName.trim(),
+              ...(editPhotoUri ? { profilePhotoUrl: editPhotoUri } : {}),
+              kitchen_personality: {
+                ...(prev.kitchen_personality || {}),
+                ...kitchen_personality,
+              },
+              personality_edited_by_user: true,
+            }
+          : prev
+      );
+      closeEditProfile();
     } catch (err) {
-      Alert.alert('Could not update photo', err.message);
+      Alert.alert('Could not save profile', err.message);
     } finally {
-      setUploadingPhoto(false);
+      setSavingProfile(false);
     }
   };
 
@@ -547,18 +543,21 @@ export default function ProfileScreen({ navigation, route }) {
 
   const personality = profile?.kitchen_personality || {};
   const stats = personality?.cooking_stats || {};
-  const topCuisines = personality?.top_cuisines || [];
-  const favoriteIngredients = personality?.favorite_ingredients || [];
+  const userEditedPrefs = profile?.personality_edited_by_user;
+  const topCuisines = userEditedPrefs ? personality?.top_cuisines || [] : [];
+  const favoriteIngredients = userEditedPrefs ? personality?.favorite_ingredients || [] : [];
   const followers = profile?.followers || 0;
   const followingCount = profile?.following || 0;
 
-  const personalityDescription = personality.primary_trait
-    ? `${profile?.name || 'This user'}'s kitchen personality is a blend of ${personality.primary_trait.toLowerCase()}. ${
-        personality.secondary_traits && personality.secondary_traits.length > 0
-          ? `They love experimenting with ${personality.secondary_traits[0]?.toLowerCase() || 'bold flavors'} while also cherishing ${personality.secondary_traits[1]?.toLowerCase() || 'classic, heartwarming dishes'}.`
-          : 'They enjoy experimenting with new flavors while also cherishing classic, heartwarming dishes.'
-      }`
-    : 'No personality data available yet.';
+  const personalityForCopy = userEditedPrefs
+    ? personality
+    : { ...personality, top_cuisines: [], favorite_ingredients: [] };
+
+  const personalityDescription = buildPersonalityDescription(
+    profile?.displayName || profile?.name,
+    personalityForCopy,
+    { isOwnProfile }
+  );
 
   return (
     <View style={styles.container}>
@@ -569,7 +568,16 @@ export default function ProfileScreen({ navigation, route }) {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <TouchableOpacity
+            onPress={() => {
+              if (navigation.canGoBack()) {
+                navigation.goBack();
+              } else {
+                navigation.navigate('Home');
+              }
+            }}
+            style={styles.backButton}
+          >
             <Ionicons name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Profile</Text>
@@ -582,17 +590,8 @@ export default function ProfileScreen({ navigation, route }) {
           end={{ x: 1, y: 1 }}
           style={styles.userBanner}
         >
-          <TouchableOpacity
-            style={styles.avatarContainer}
-            onPress={isOwnProfile ? handleEditPhoto : undefined}
-            disabled={!isOwnProfile || uploadingPhoto}
-            activeOpacity={isOwnProfile ? 0.8 : 1}
-          >
-            {uploadingPhoto ? (
-              <View style={styles.avatarPlaceholder}>
-                <ActivityIndicator color="#fff" size="large" />
-              </View>
-            ) : profile?.profilePhotoUrl ? (
+          <View style={styles.avatarContainer}>
+            {profile?.profilePhotoUrl ? (
               <Image source={{ uri: profile.profilePhotoUrl }} style={styles.avatar} />
             ) : (
               <View style={styles.avatarPlaceholder}>
@@ -601,19 +600,7 @@ export default function ProfileScreen({ navigation, route }) {
                 </Text>
               </View>
             )}
-            {isOwnProfile && !uploadingPhoto ? (
-              <View style={styles.avatarEditBadge}>
-                <Ionicons name="camera" size={16} color="#fff" />
-              </View>
-            ) : null}
-          </TouchableOpacity>
-          {isOwnProfile ? (
-            <TouchableOpacity onPress={handleEditPhoto} disabled={uploadingPhoto} activeOpacity={0.7}>
-              <Text style={styles.editPhotoText}>
-                {uploadingPhoto ? 'Uploading…' : 'Edit photo'}
-              </Text>
-            </TouchableOpacity>
-          ) : null}
+          </View>
           <Text style={styles.userName}>{profile?.name || 'User'}</Text>
           <Text style={styles.username}>@{profile?.username || 'username'}</Text>
           <Text style={styles.joinedDate}>Joined {profile?.joinedDate || '2024'}</Text>
@@ -630,6 +617,20 @@ export default function ProfileScreen({ navigation, route }) {
             </TouchableOpacity>
           )}
         </LinearGradient>
+
+        {isOwnProfile && (
+          <View style={styles.editProfileSection}>
+            <TouchableOpacity
+              style={styles.editProfileButton}
+              onPress={openEditProfile}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="create-outline" size={20} color={colors.primary} />
+              <Text style={styles.editProfileButtonText}>Edit Profile</Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+        )}
 
         {isOwnProfile && (
           <View style={styles.section}>
@@ -688,7 +689,7 @@ export default function ProfileScreen({ navigation, route }) {
               </Text>
               <Text style={styles.emptyDishesText}>
                 {isOwnProfile
-                  ? 'Tap Post to log your first meal — then favorite up to 2 for your portfolio!'
+                  ? 'Tap Post to log your first meal, then favorite up to 2 for your portfolio!'
                   : `${profile?.name || 'This user'} hasn't logged any meals yet.`}
               </Text>
             </View>
@@ -734,46 +735,59 @@ export default function ProfileScreen({ navigation, route }) {
           <View style={styles.sectionTitleRow}>
             <Ionicons name="flame" size={20} color={colors.secondary} />
             <Text style={styles.sectionTitle}>Kitchen Personality</Text>
-            {isOwnProfile ? (
-              <TouchableOpacity
-                style={styles.editPersonalityButton}
-                onPress={openPersonalityEditor}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="create-outline" size={16} color={colors.primary} />
-                <Text style={styles.editPersonalityText}>Edit</Text>
-              </TouchableOpacity>
-            ) : null}
           </View>
           <View style={styles.personalityCard}>
+            <View style={styles.personalityCardHeader}>
+              <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.secondary} />
+              <Text style={styles.personalityCardLabel}>
+                {isOwnProfile ? 'Your kitchen vibe' : 'In their kitchen'}
+              </Text>
+            </View>
             <Text style={styles.personalityDescription}>{personalityDescription}</Text>
           </View>
         </View>
 
-        {topCuisines.length > 0 && (
+        {(isOwnProfile || topCuisines.length > 0) && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Top Cuisines</Text>
-            <View style={styles.tagsContainer}>
-              {topCuisines.map((cuisine, index) => (
-                <Tag key={index} text={cuisine} variant="coral" />
-              ))}
+            <View style={styles.sectionTitleRow}>
+              <Ionicons name="earth-outline" size={20} color={colors.primary} />
+              <Text style={styles.sectionTitle}>Top Cuisines</Text>
             </View>
+            {topCuisines.length > 0 ? (
+              <View style={styles.tagsContainer}>
+                {topCuisines.map((cuisine, index) => (
+                  <Tag key={index} text={cuisine} variant="coral" />
+                ))}
+              </View>
+            ) : isOwnProfile ? (
+              <Text style={styles.sectionEditHint}>Edit profile to select.</Text>
+            ) : null}
           </View>
         )}
 
-        {favoriteIngredients.length > 0 && (
+        {(isOwnProfile || favoriteIngredients.length > 0) && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Favorite Ingredients</Text>
-            <View style={styles.tagsContainer}>
-              {favoriteIngredients.map((ingredient, index) => (
-                <Tag key={index} text={ingredient} variant="teal" />
-              ))}
+            <View style={styles.sectionTitleRow}>
+              <Ionicons name="leaf-outline" size={20} color={colors.accent} />
+              <Text style={styles.sectionTitle}>Favorite Ingredients</Text>
             </View>
+            {favoriteIngredients.length > 0 ? (
+              <View style={styles.tagsContainer}>
+                {favoriteIngredients.map((ingredient, index) => (
+                  <Tag key={index} text={ingredient} variant="teal" />
+                ))}
+              </View>
+            ) : isOwnProfile ? (
+              <Text style={styles.sectionEditHint}>Edit profile to select.</Text>
+            ) : null}
           </View>
         )}
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Cooking Stats</Text>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="stats-chart-outline" size={20} color={colors.chipAmberText} />
+            <Text style={styles.sectionTitle}>Cooking Stats</Text>
+          </View>
           <View style={styles.statsContainer}>
             <StatsCard label="Recipes Cooked" value={stats.total_recipes || 0} color={colors.primary} />
             <StatsCard
@@ -790,8 +804,11 @@ export default function ProfileScreen({ navigation, route }) {
 
         {profile?.cookingFrequency && profile.cookingFrequency.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Cooking Frequency</Text>
-            <Text style={styles.subtitle}>Recipes Cooked Per Month</Text>
+            <View style={styles.sectionTitleRow}>
+              <Ionicons name="calendar-outline" size={20} color={colors.accentDark} />
+              <Text style={styles.sectionTitle}>Cooking Frequency</Text>
+            </View>
+            <Text style={styles.subtitle}>Recipes cooked per month</Text>
             <BarChart data={profile.cookingFrequency} />
           </View>
         )}
@@ -824,10 +841,10 @@ export default function ProfileScreen({ navigation, route }) {
       />
 
       <Modal
-        visible={personalityModalVisible}
+        visible={editProfileModalVisible}
         animationType="slide"
         transparent
-        onRequestClose={() => setPersonalityModalVisible(false)}
+        onRequestClose={closeEditProfile}
       >
         <KeyboardAvoidingView
           style={styles.modalOverlay}
@@ -835,9 +852,9 @@ export default function ProfileScreen({ navigation, route }) {
         >
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Edit Kitchen Personality</Text>
+              <Text style={styles.modalTitle}>Edit Profile</Text>
               <TouchableOpacity
-                onPress={() => setPersonalityModalVisible(false)}
+                onPress={closeEditProfile}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 <Ionicons name="close" size={24} color={colors.textMuted} />
@@ -845,12 +862,56 @@ export default function ProfileScreen({ navigation, route }) {
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <Text style={[styles.modalLabel, styles.modalLabelFirst]}>Profile photo</Text>
+              <View style={styles.modalPhotoRow}>
+                {editPhotoUri || profile?.profilePhotoUrl ? (
+                  <Image
+                    source={{ uri: editPhotoUri || profile?.profilePhotoUrl }}
+                    style={styles.modalPhotoPreview}
+                  />
+                ) : (
+                  <View style={styles.modalPhotoPlaceholder}>
+                    <Text style={styles.modalPhotoPlaceholderText}>
+                      {editName?.charAt(0)?.toUpperCase() || profile?.name?.charAt(0)?.toUpperCase() || 'U'}
+                    </Text>
+                  </View>
+                )}
+                <TouchableOpacity
+                  style={styles.modalChangePhotoButton}
+                  onPress={handlePickPhoto}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="camera-outline" size={18} color={colors.primary} />
+                  <Text style={styles.modalChangePhotoText}>Change photo</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.modalLabel}>Display name</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={editName}
+                onChangeText={setEditName}
+                placeholder="Your name"
+                placeholderTextColor={colors.textMuted}
+                autoCapitalize="words"
+              />
+
+              <Text style={styles.modalLabel}>Username</Text>
+              <TextInput
+                style={[styles.modalInput, styles.modalInputReadOnly]}
+                value={`@${profile?.username || user?.username || ''}`}
+                editable={false}
+              />
+              <Text style={styles.modalFieldHint}>Username cannot be changed.</Text>
+
+              <Text style={styles.modalSectionHeading}>Kitchen personality</Text>
+
               <Text style={styles.modalLabel}>Primary trait</Text>
               <TextInput
                 style={styles.modalInput}
                 value={editPrimaryTrait}
                 onChangeText={setEditPrimaryTrait}
-                placeholder="e.g. Adventurous Chef"
+                placeholder="e.g. Adventurous and comforting"
                 placeholderTextColor={colors.textMuted}
               />
 
@@ -882,22 +943,32 @@ export default function ProfileScreen({ navigation, route }) {
               />
 
               <Text style={styles.modalHint}>
-                Auto-updates still refresh your cooking stats. Your custom traits and tags are preserved.
+                Your cooking stats still update automatically. Custom traits and tags stay as you set them.
               </Text>
             </ScrollView>
 
-            <TouchableOpacity
-              style={[styles.modalSaveButton, savingPersonality && styles.modalSaveButtonDisabled]}
-              onPress={handleSavePersonality}
-              disabled={savingPersonality}
-              activeOpacity={0.85}
-            >
-              {savingPersonality ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.modalSaveButtonText}>Save personality</Text>
-              )}
-            </TouchableOpacity>
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={closeEditProfile}
+                disabled={savingProfile}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.modalCancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalSaveButton, savingProfile && styles.modalSaveButtonDisabled]}
+                onPress={handleSaveProfile}
+                disabled={savingProfile}
+                activeOpacity={0.85}
+              >
+                {savingProfile ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.modalSaveButtonText}>Save</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -977,25 +1048,26 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     position: 'relative',
   },
-  avatarEditBadge: {
-    position: 'absolute',
-    bottom: 4,
-    right: 4,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#fff',
+  editProfileSection: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
   },
-  editPhotoText: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.9)',
-    fontWeight: '600',
-    marginBottom: 10,
-    textDecorationLine: 'underline',
+  editProfileButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.card,
+    borderRadius: radii.lg,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  editProfileButtonText: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
   },
   avatar: {
     width: 110,
@@ -1063,7 +1135,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
     gap: 8,
-    flexWrap: 'wrap',
   },
   privateBadge: {
     flexDirection: 'row',
@@ -1083,6 +1154,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   sectionTitle: {
+    flex: 1,
+    flexShrink: 1,
     fontSize: 18,
     fontWeight: 'bold',
     color: colors.text,
@@ -1093,21 +1166,43 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   personalityCard: {
-    backgroundColor: colors.card,
+    backgroundColor: colors.cardWarm,
     borderRadius: radii.lg,
-    padding: 16,
+    padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.secondary,
+  },
+  personalityCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+  },
+  personalityCardLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
   },
   personalityDescription: {
     fontSize: 16,
     color: colors.textSecondary,
-    lineHeight: 24,
+    lineHeight: 26,
   },
   tagsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginHorizontal: -4,
+    gap: 8,
+    marginHorizontal: -2,
+  },
+  sectionEditHint: {
+    fontSize: 13,
+    color: colors.textMuted,
+    marginTop: 8,
+    lineHeight: 18,
   },
   statsContainer: {
     flexDirection: 'row',
@@ -1188,6 +1283,8 @@ const styles = StyleSheet.create({
   },
   portfolioPreviewMeta: {
     flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
   },
   portfolioPreviewTitle: {
     fontSize: 16,
@@ -1199,6 +1296,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textMuted,
     marginBottom: 12,
+    lineHeight: 18,
   },
   portfolioOpenButton: {
     flexDirection: 'row',
@@ -1217,6 +1315,7 @@ const styles = StyleSheet.create({
   },
   portfolioHint: {
     marginLeft: 'auto',
+    flexShrink: 0,
     fontSize: 12,
     color: colors.textMuted,
     fontWeight: '600',
@@ -1248,23 +1347,6 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginBottom: 12,
     lineHeight: 18,
-  },
-  editPersonalityButton: {
-    marginLeft: 'auto',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: radii.pill,
-    backgroundColor: colors.backgroundAlt,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-  },
-  editPersonalityText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.primary,
   },
   dishDeleteButton: {
     position: 'absolute',
@@ -1310,10 +1392,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderTopLeftRadius: radii.lg,
     borderTopRightRadius: radii.lg,
-    paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingHorizontal: spacing.md + 4,
+    paddingTop: spacing.md + 4,
     paddingBottom: Platform.OS === 'ios' ? 36 : 24,
-    maxHeight: '85%',
+    maxHeight: '88%',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1333,6 +1415,70 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     marginTop: 12,
   },
+  modalLabelFirst: {
+    marginTop: 0,
+  },
+  modalPhotoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    marginBottom: 4,
+  },
+  modalPhotoPreview: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    borderWidth: 2,
+    borderColor: colors.border,
+  },
+  modalPhotoPlaceholder: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: colors.backgroundAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.border,
+  },
+  modalPhotoPlaceholderText: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  modalChangePhotoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: radii.pill,
+    backgroundColor: colors.backgroundAlt,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  modalChangePhotoText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  modalInputReadOnly: {
+    backgroundColor: colors.backgroundAlt,
+    color: colors.textMuted,
+  },
+  modalFieldHint: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  modalSectionHeading: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: 20,
+    marginBottom: 4,
+  },
   modalInput: {
     backgroundColor: colors.inputBg,
     borderRadius: radii.md,
@@ -1350,12 +1496,31 @@ const styles = StyleSheet.create({
     marginTop: 14,
     marginBottom: 8,
   },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+  },
+  modalCancelButton: {
+    flex: 1,
+    borderRadius: radii.pill,
+    paddingVertical: 14,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  modalCancelButtonText: {
+    color: colors.textSecondary,
+    fontSize: 16,
+    fontWeight: '700',
+  },
   modalSaveButton: {
+    flex: 1,
     backgroundColor: colors.primary,
     borderRadius: radii.pill,
     paddingVertical: 14,
     alignItems: 'center',
-    marginTop: 16,
   },
   modalSaveButtonDisabled: {
     opacity: 0.7,

@@ -33,6 +33,11 @@
  *                   resp  { ...userData, username }
  *   - searchUsers   GET   ?action=searchUsers&q=<prefix>
  *                   resp  { users: [{ username, name, profilePhotoUrl }] }  (<=20)
+ *   - recommendedFollows  GET  ?action=recommendedFollows&username=<u>
+ *                   resp  { hasProfile: bool, recommendations: [{ username, name,
+ *                   profilePhotoUrl, matchReason, matchScore }] }  (<=6)
+ *                   Scores other users by overlapping kitchen personality traits,
+ *                   cuisines, and favorite ingredients. Excludes self + already-followed.
  *   - checkEmail    GET   ?action=checkEmail&email=<e>
  *                   resp  { exists: bool, username? }
  *                   Checks the `users` collection by email (sign-up persists it).
@@ -75,8 +80,11 @@
  */
 const { initializeApp, cert, getApps } = require('firebase-admin/app');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+const { hasProfileData, rankRecommendations } = require('../utils/recommendFollows');
 
 const SEARCH_RESULT_LIMIT = 20;
+const RECOMMENDED_CANDIDATE_LIMIT = 50;
+const RECOMMENDED_RESULT_LIMIT = 6;
 const FEED_LIMIT = 50;
 // Collections that may hold a post. Restricts like/comment writes to known
 // collections so an arbitrary `collection` param can't target other data.
@@ -452,6 +460,43 @@ async function handleSearchUsers(req, res) {
   res.status(200).json({ users });
 }
 
+async function handleRecommendedFollows(req, res) {
+  if (req.method !== 'GET') return methodNotAllowed(res);
+
+  const { username } = req.query;
+  if (!username) {
+    return res.status(400).json({ error: 'Username is required' });
+  }
+
+  const userDoc = await db.collection('users').doc(username).get();
+  if (!userDoc.exists) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  const userProfile = { ...userDoc.data(), username: userDoc.id };
+  if (!hasProfileData(userProfile)) {
+    return res.status(200).json({ hasProfile: false, recommendations: [] });
+  }
+
+  const [followingSnap, usersSnap] = await Promise.all([
+    db.collection('following').doc(username).collection('user_following').get(),
+    db.collection('users').limit(RECOMMENDED_CANDIDATE_LIMIT).get(),
+  ]);
+
+  const exclude = [username, ...followingSnap.docs.map((doc) => doc.id)];
+  const candidates = [];
+  usersSnap.forEach((doc) => {
+    candidates.push({ ...doc.data(), username: doc.id });
+  });
+
+  const recommendations = rankRecommendations(userProfile, candidates, {
+    exclude,
+    limit: RECOMMENDED_RESULT_LIMIT,
+  });
+
+  res.status(200).json({ hasProfile: true, recommendations });
+}
+
 // Forgot Password support. Determines whether an email is registered by looking
 // it up in the `users` collection (sign-up persists `email` there). We do NOT
 // rely on Firebase's fetchSignInMethodsForEmail: with email-enumeration
@@ -768,6 +813,7 @@ const handlers = {
   feed: handleFeed,
   login: handleLogin,
   searchusers: handleSearchUsers,
+  recommendedfollows: handleRecommendedFollows,
   checkemail: handleCheckEmail,
   postdetail: handlePostDetail,
   comments: handleComments,

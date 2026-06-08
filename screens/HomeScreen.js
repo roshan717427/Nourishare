@@ -6,7 +6,6 @@ import {
   ScrollView,
   Image,
   TouchableOpacity,
-  Platform,
   ActivityIndicator,
   RefreshControl,
   Alert,
@@ -16,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import BottomNavigation from '../components/BottomNavigation';
+import MunchableHeader from '../components/MunchableHeader';
 import { useAuth } from '../context/AuthContext';
 import { API_URL } from '../config/api';
 import { colors, radii } from '../constants/theme';
@@ -25,7 +25,7 @@ const SAMPLE_FEED = [
     id: 'sample-1',
     postSource: 'recipe_posts',
     title: 'Chicken Tikka Masala',
-    description: 'Liam tried a new recipe for Chicken Tikka Masala. He rated it 4 stars.',
+    description: 'Liam made Chicken Tikka Masala and gave it 4 stars.',
     photoUrl: 'https://images.unsplash.com/photo-1565557623262-b51c2513a641?w=400&q=80',
     rating: 4,
     likes_count: 12,
@@ -37,7 +37,7 @@ const SAMPLE_FEED = [
     id: 'sample-2',
     postSource: 'recipe_posts',
     title: 'Spaghetti Carbonara',
-    description: 'Isabella tried a new recipe for Spaghetti Carbonara. She rated it 5 stars.',
+    description: 'Isabella whipped up Spaghetti Carbonara for a perfect 5 stars.',
     photoUrl: 'https://images.unsplash.com/photo-1612874742237-6526221588e3?w=400&q=80',
     rating: 5,
     likes_count: 25,
@@ -49,7 +49,7 @@ const SAMPLE_FEED = [
     id: 'sample-3',
     postSource: 'recipe_posts',
     title: 'Beef Tacos',
-    description: 'Owen tried a new recipe for Beef Tacos. He rated it 3 stars.',
+    description: 'Owen made Beef Tacos and rated them 3 stars.',
     photoUrl: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=400&q=80',
     rating: 3,
     likes_count: 18,
@@ -60,6 +60,33 @@ const SAMPLE_FEED = [
 ];
 
 const CARD_ACCENTS = [colors.primary, colors.accent, colors.secondary, colors.chipAmberText];
+
+function getSamplePostsForFollowing(followingList) {
+  if (!followingList?.length) return [];
+  const followedLower = new Set(
+    followingList.map((u) => (u || '').toLowerCase()).filter(Boolean)
+  );
+  return SAMPLE_FEED.filter((post) =>
+    followedLower.has((post.user?.username || '').toLowerCase())
+  );
+}
+
+function mergeFeedWithSamplePosts(apiPosts, followingList) {
+  const samplePosts = getSamplePostsForFollowing(followingList);
+  if (samplePosts.length === 0) return apiPosts;
+
+  const seen = new Set(apiPosts.map((p) => `${p.postSource}:${p.id}`));
+  const merged = [...apiPosts];
+  for (const post of samplePosts) {
+    const key = `${post.postSource}:${post.id}`;
+    if (!seen.has(key)) {
+      merged.push(post);
+      seen.add(key);
+    }
+  }
+  merged.sort((a, b) => (b.created_at_ms || 0) - (a.created_at_ms || 0));
+  return merged;
+}
 
 function timeAgo(ms) {
   if (!ms) return '';
@@ -182,7 +209,7 @@ export default function HomeScreen({ navigation }) {
 
   const loadFeed = useCallback(
     async (isRefresh = false) => {
-      if (!username || !hasFollowing) {
+      if (!username || following.length === 0) {
         setFeed([]);
         return;
       }
@@ -193,22 +220,21 @@ export default function HomeScreen({ navigation }) {
           `${API_URL}/social?action=feed&username=${encodeURIComponent(username)}`,
           { method: 'GET', headers: { 'Content-Type': 'application/json' } }
         );
+        let apiPosts = [];
         if (res.ok) {
           const data = await res.json();
-          const posts = Array.isArray(data.recipe_posts) ? data.recipe_posts : [];
-          setFeed(posts);
-        } else {
-          setFeed(SAMPLE_FEED);
+          apiPosts = Array.isArray(data.recipe_posts) ? data.recipe_posts : [];
         }
+        setFeed(mergeFeedWithSamplePosts(apiPosts, following));
       } catch (err) {
         console.log('Feed unavailable, using sample data:', err.message);
-        setFeed(SAMPLE_FEED);
+        setFeed(mergeFeedWithSamplePosts([], following));
       } finally {
         setLoading(false);
         setRefreshing(false);
       }
     },
-    [username, hasFollowing]
+    [username, following]
   );
 
   useFocusEffect(
@@ -307,24 +333,18 @@ export default function HomeScreen({ navigation }) {
     <View style={styles.container}>
       <StatusBar style="dark" />
 
-      <LinearGradient
-        colors={[colors.gradientStart, colors.gradientEnd]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={styles.header}
-      >
-        <View style={styles.headerSide} />
-        <Text style={styles.headerTitle}>Munchable</Text>
-        <TouchableOpacity
-          style={styles.headerSide}
-          onPress={() => navigation.navigate('LogMeal')}
-          activeOpacity={0.7}
-        >
-          <View style={styles.addButton}>
-            <Ionicons name="add" size={24} color={colors.primary} />
-          </View>
-        </TouchableOpacity>
-      </LinearGradient>
+      <MunchableHeader
+        rightAction={
+          <TouchableOpacity
+            onPress={() => navigation.navigate('LogMeal')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.addButton}>
+              <Ionicons name="add" size={24} color={colors.primary} />
+            </View>
+          </TouchableOpacity>
+        }
+      />
 
       {showEmpty ? (
         <EmptyFeed />
@@ -395,26 +415,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'ios' ? 60 : 40,
-    paddingBottom: 14,
-  },
-  headerSide: {
-    width: 40,
-    height: 28,
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#fff',
-    letterSpacing: 0.3,
   },
   addButton: {
     width: 36,

@@ -18,7 +18,7 @@ export const ONBOARDING_STEPS = [
     icon: 'home',
     title: 'Welcome to Munchable!',
     description:
-      'Your home feed shows what friends are cooking — rate dishes, leave comments, and get inspired.',
+      'Your home feed shows what friends are cooking. Rate dishes, leave comments, and get inspired.',
     tabLabel: 'Home',
   },
   {
@@ -49,7 +49,7 @@ export const ONBOARDING_STEPS = [
     icon: 'sparkles',
     title: 'AI recipe ideas',
     description:
-      'Get personalized suggestions from your tastes and pantry. Tap + on any recipe to add it to Next Up — your private cooking queue.',
+      'Get personalized suggestions from your tastes and pantry. Tap + on any recipe to add it to Next Up, your private cooking queue.',
     tabLabel: 'AI',
   },
   {
@@ -57,7 +57,7 @@ export const ONBOARDING_STEPS = [
     icon: 'list',
     title: 'Next Up',
     description:
-      'Your profile keeps a private list of recipes you want to try. Only you can see it — perfect for planning your next meal.',
+      'Your profile keeps a private list of recipes you want to try. Only you can see it, so it\'s perfect for planning your next meal.',
     tabLabel: 'Profile',
   },
   {
@@ -73,7 +73,7 @@ export const ONBOARDING_STEPS = [
     icon: 'person',
     title: 'Your kitchen profile',
     description:
-      'Track your stats, kitchen personality, and every dish you\'ve logged.',
+      'See your cooking stats, kitchen personality, and every dish you\'ve logged.',
     tabLabel: 'Profile',
   },
 ];
