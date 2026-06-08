@@ -408,6 +408,9 @@ class SmartSuggestionsEngine:
         if not favorite_ingredients:
             favorite_ingredients = log_profile.get('ingredient_tokens', [])[:5]
 
+        top_cuisines = [str(cuisine) for cuisine in top_cuisines if cuisine]
+        favorite_ingredients = [str(ingredient) for ingredient in favorite_ingredients if ingredient]
+
         return {
             'top_cuisines': top_cuisines,
             'favorite_ingredients': favorite_ingredients,
@@ -432,6 +435,8 @@ class SmartSuggestionsEngine:
         if difficulty:
             difficulty = str(difficulty).capitalize()
         cooking_time = recipe.get('cooking_time') or recipe.get('time') or ''
+        if cooking_time:
+            cooking_time = str(cooking_time)
         parts = [part for part in [difficulty, cooking_time] if part]
         return ', '.join(parts) if parts else 'Suggested for you'
 
@@ -583,8 +588,8 @@ class SmartSuggestionsEngine:
                 'id': f'log-variant-{log["id"]}',
                 'recipe_name': variant_name,
                 'ingredients': log.get('ingredients') or '',
-                'difficulty_level': log.get('difficulty') or log_profile.get('preferred_difficulty', 'medium'),
-                'cooking_time': log.get('time') or log_profile.get('typical_time', '30 min'),
+                'difficulty_level': str(log.get('difficulty') or log_profile.get('preferred_difficulty', 'medium')),
+                'cooking_time': str(log.get('time') or log_profile.get('typical_time', '30 min')),
                 'image': image,
                 'notes': log.get('notes') or '',
                 'rating': log_profile.get('avg_rating') or 0,
