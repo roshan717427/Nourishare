@@ -65,7 +65,7 @@ export const ONBOARDING_STEPS = [
     icon: 'heart',
     title: 'Culinary Portfolio',
     description:
-      'Heart up to 3 dishes to showcase on your profile. Friends see your picks and can open your full gallery.',
+      'Heart up to 2 dishes to showcase on your profile. Friends see your picks and can open your full gallery.',
     tabLabel: 'Profile',
   },
   {

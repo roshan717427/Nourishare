@@ -67,7 +67,17 @@ export default function RecipeDetailScreen({ navigation, route }) {
 
         <View style={styles.body}>
           <Text style={styles.title}>{name}</Text>
-          {author ? <Text style={styles.byline}>Cooked by {author}</Text> : null}
+          {author ? (
+            <Text style={styles.byline}>
+              Cooked by{' '}
+              <Text
+                style={styles.bylineLink}
+                onPress={() => navigation.navigate('Profile', { username: author })}
+              >
+                {author}
+              </Text>
+            </Text>
+          ) : null}
 
           {metaChips.length > 0 ? (
             <View style={styles.metaRow}>
@@ -192,6 +202,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.textSecondary,
     marginBottom: 12,
+  },
+  bylineLink: {
+    color: colors.primary,
+    fontWeight: '600',
   },
   metaRow: {
     flexDirection: 'row',

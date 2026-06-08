@@ -1,5 +1,6 @@
 const { initializeApp, cert, getApps } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
+const { refreshUserPersonality, isPersonalityStale } = require('./personalityHelper');
 
 let db;
 try {
@@ -68,10 +69,20 @@ module.exports = async (req, res) => {
     const followersCount = followersSnap.size;
     const followingCount = followingSnap.size;
 
+    // Re-analyze personality when log count drifted from stored stats.
+    let personality = data.kitchen_personality || {};
+    if (isPersonalityStale(personality, totalRecipes)) {
+      try {
+        const refreshed = await refreshUserPersonality(db, username);
+        if (refreshed) personality = refreshed;
+      } catch (refreshErr) {
+        console.error('Failed to refresh stale personality:', refreshErr.message);
+      }
+    }
+
     // Merge computed stats over the stored profile. Only override the cooking
     // stats when the user has real logs; otherwise keep whatever the stored
     // profile had (e.g. seeded demo data) so existing profiles aren't zeroed out.
-    const personality = data.kitchen_personality || {};
     const storedStats = personality.cooking_stats || {};
     const mergedCookingStats = { ...storedStats };
     if (totalRecipes > 0) {

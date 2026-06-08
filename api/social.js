@@ -61,7 +61,7 @@
  *   - portfolioFavorites  POST  ?action=portfolioFavorites
  *                   body  { username, dishId }
  *                   Toggles a logged dish in the user's public portfolio showcase
- *                   (max 3). Stored on users/{username}.portfolio_favorites.
+ *                   (max 2). Stored on users/{username}.portfolio_favorites.
  *                   resp  { portfolio_favorites: [dishId...] }
  *
  * Likes / comments data model (top-level collections keyed by post document id,
@@ -660,7 +660,7 @@ async function handleLike(req, res) {
 }
 
 const USER_LOGS_LIMIT = 50;
-const PORTFOLIO_FAVORITES_MAX = 3;
+const PORTFOLIO_FAVORITES_MAX = 2;
 
 async function handlePortfolioFavorites(req, res) {
   if (req.method !== 'POST') return methodNotAllowed(res);

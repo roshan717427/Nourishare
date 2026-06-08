@@ -1,5 +1,6 @@
 const { initializeApp, cert, getApps } = require('firebase-admin/app');
-const { getFirestore } = require('firebase-admin/firestore');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+const { refreshUserPersonality } = require('./personalityHelper');
 
 let db;
 try {
@@ -40,6 +41,42 @@ module.exports = async (req, res) => {
     }
 
     await logRef.delete();
+
+    // Remove from portfolio favorites if showcased.
+    try {
+      const userRef = db.collection('users').doc(username);
+      const userDoc = await userRef.get();
+      if (userDoc.exists) {
+        const favorites = userDoc.data().portfolio_favorites || [];
+        if (favorites.includes(logId)) {
+          await userRef.update({
+            portfolio_favorites: favorites.filter((id) => id !== logId),
+          });
+        }
+      }
+    } catch (favErr) {
+      console.error('Failed to update portfolio favorites after delete:', favErr.message);
+    }
+
+    // Best-effort counter decrement; getUserProfile recomputes from logs.
+    try {
+      await db
+        .collection('users')
+        .doc(username)
+        .set(
+          { cookingStats: { total_recipes: FieldValue.increment(-1) } },
+          { merge: true }
+        );
+    } catch (counterErr) {
+      console.error('Failed to decrement user recipe counter:', counterErr.message);
+    }
+
+    try {
+      await refreshUserPersonality(db, username);
+    } catch (personalityErr) {
+      console.error('Failed to refresh kitchen personality:', personalityErr.message);
+    }
+
     return res.status(200).json({ message: 'Recipe log deleted' });
   } catch (error) {
     console.error('Error deleting log:', error);

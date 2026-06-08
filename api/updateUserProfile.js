@@ -76,6 +76,23 @@ module.exports = async (req, res) => {
   
   try {
     const userRef = db.collection('users').doc(username);
+    const userDoc = await userRef.get();
+    if (!userDoc.exists) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    // Deep-merge kitchen_personality so partial edits don't wipe other fields.
+    if (updates.kitchen_personality) {
+      const existing = userDoc.data().kitchen_personality || {};
+      updates.kitchen_personality = { ...existing, ...updates.kitchen_personality };
+    }
+
+    // Manual personality edits set a flag so auto-refresh preserves user overrides.
+    if (updates.kitchen_personality && updates.personality_edited_by_user !== false) {
+      updates.personality_edited_by_user = true;
+    }
+
     await userRef.update(updates);
     res.status(200).json({ message: 'User profile updated' });
   } catch (error) {

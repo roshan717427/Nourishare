@@ -127,7 +127,9 @@ export default function PostDetailScreen({ navigation, route }) {
     }
   };
 
+  const authorUsername = post.user?.username || post.username || null;
   const authorName = post.user?.name || post.username || 'Someone';
+  const isOwnPost = !!username && authorUsername === username && collection === 'logs';
   const ratingText =
     post.rating != null && post.rating !== '' ? `${post.rating}/5` : null;
 
@@ -138,6 +140,38 @@ export default function PostDetailScreen({ navigation, route }) {
   ].filter(Boolean);
 
   const ingredients = toIngredientList(post.ingredients);
+
+  const handleDeletePost = () => {
+    if (!isOwnPost || !username || !postId) return;
+
+    Alert.alert(
+      'Delete dish?',
+      `Remove "${post.title || 'this dish'}" from your logged meals? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const res = await fetch(`${API_URL}/deleteRecipeLog`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, logId: postId }),
+              });
+              const data = await res.json().catch(() => ({}));
+              if (!res.ok) {
+                throw new Error(data.error || 'Failed to delete');
+              }
+              navigation.goBack();
+            } catch (err) {
+              Alert.alert('Could not delete dish', err.message);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   return (
     <KeyboardAvoidingView
@@ -153,7 +187,17 @@ export default function PostDetailScreen({ navigation, route }) {
         <Text style={styles.headerTitle} numberOfLines={1}>
           {post.title || 'Post'}
         </Text>
-        <View style={styles.backButton} />
+        {isOwnPost ? (
+          <TouchableOpacity
+            onPress={handleDeletePost}
+            style={styles.backButton}
+            accessibilityLabel="Delete dish"
+          >
+            <Ionicons name="trash-outline" size={22} color={colors.error} />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.backButton} />
+        )}
       </View>
 
       <ScrollView
@@ -171,7 +215,19 @@ export default function PostDetailScreen({ navigation, route }) {
 
         <View style={styles.body}>
           <Text style={styles.title}>{post.title}</Text>
-          <Text style={styles.byline}>by {authorName}</Text>
+          <Text style={styles.byline}>
+            by{' '}
+            {authorUsername ? (
+              <Text
+                style={styles.bylineLink}
+                onPress={() => navigation.navigate('Profile', { username: authorUsername })}
+              >
+                {authorName}
+              </Text>
+            ) : (
+              authorName
+            )}
+          </Text>
 
           {metaChips.length > 0 ? (
             <View style={styles.metaRow}>
@@ -336,6 +392,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.textSecondary,
     marginBottom: 10,
+  },
+  bylineLink: {
+    color: colors.primary,
+    fontWeight: '600',
   },
   metaRow: {
     flexDirection: 'row',

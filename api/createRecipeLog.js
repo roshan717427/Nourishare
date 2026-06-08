@@ -1,5 +1,6 @@
 const { initializeApp, cert, getApps } = require('firebase-admin/app');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+const { refreshUserPersonality } = require('./personalityHelper');
 
 let db;
 try {
@@ -92,6 +93,13 @@ module.exports = async (req, res) => {
     } catch (counterErr) {
       // Non-fatal: the log was still created and the count is recomputed on read.
       console.error('Failed to increment user recipe counter:', counterErr.message);
+    }
+
+    // Refresh kitchen personality from the user's full log history.
+    try {
+      await refreshUserPersonality(db, username);
+    } catch (personalityErr) {
+      console.error('Failed to refresh kitchen personality:', personalityErr.message);
     }
 
     res.status(201).json({ message: 'Recipe log created', logId: docRef.id });

@@ -9,11 +9,15 @@ import {
   ActivityIndicator,
   Platform,
   Alert,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
+import * as ImagePicker from 'expo-image-picker';
 import BottomNavigation from '../components/BottomNavigation';
 import StatsCard from '../components/StatsCard';
 import BarChart from '../components/BarChart';
@@ -24,7 +28,7 @@ import PortfolioGalleryModal from '../components/PortfolioGalleryModal';
 import { API_URL } from '../config/api';
 import { colors, radii } from '../constants/theme';
 
-const PORTFOLIO_FAVORITES_MAX = 3;
+const PORTFOLIO_FAVORITES_MAX = 2;
 
 function resolvePortfolioDishes(dishes, favoriteIds) {
   if (!Array.isArray(favoriteIds)) return [];
@@ -120,7 +124,7 @@ function NextUpCard({ recipe, onPress, onRemove }) {
   );
 }
 
-function DishCard({ dish, onPress, isFavorited, onToggleFavorite, showFavorite }) {
+function DishCard({ dish, onPress, isFavorited, onToggleFavorite, showFavorite, showDelete, onDelete }) {
   return (
     <TouchableOpacity style={styles.dishCard} onPress={onPress} activeOpacity={0.85}>
       {dish.photoUrl ? (
@@ -130,9 +134,26 @@ function DishCard({ dish, onPress, isFavorited, onToggleFavorite, showFavorite }
           <Ionicons name="restaurant-outline" size={24} color={colors.textMuted} />
         </View>
       )}
+      {showDelete ? (
+        <TouchableOpacity
+          style={styles.dishDeleteButton}
+          onPress={(e) => {
+            e.stopPropagation?.();
+            onDelete?.();
+          }}
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          accessibilityLabel="Delete logged dish"
+        >
+          <Ionicons name="trash-outline" size={15} color={colors.error} />
+        </TouchableOpacity>
+      ) : null}
       {showFavorite ? (
         <TouchableOpacity
-          style={[styles.dishFavoriteButton, isFavorited && styles.dishFavoriteButtonActive]}
+          style={[
+            styles.dishFavoriteButton,
+            isFavorited && styles.dishFavoriteButtonActive,
+            showDelete && styles.dishFavoriteButtonWithDelete,
+          ]}
           onPress={(e) => {
             e.stopPropagation?.();
             onToggleFavorite?.();
@@ -172,6 +193,13 @@ export default function ProfileScreen({ navigation, route }) {
   const [error, setError] = useState(null);
   const [galleryVisible, setGalleryVisible] = useState(false);
   const [favoriteIds, setFavoriteIds] = useState([]);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [personalityModalVisible, setPersonalityModalVisible] = useState(false);
+  const [savingPersonality, setSavingPersonality] = useState(false);
+  const [editPrimaryTrait, setEditPrimaryTrait] = useState('');
+  const [editSecondaryTraits, setEditSecondaryTraits] = useState('');
+  const [editTopCuisines, setEditTopCuisines] = useState('');
+  const [editFavoriteIngredients, setEditFavoriteIngredients] = useState('');
 
   const username = route?.params?.username || user?.username || 'current_user';
   const passedProfile = route?.params?.profile;
@@ -340,6 +368,153 @@ export default function ProfileScreen({ navigation, route }) {
     await signOut();
   };
 
+  const parseCommaList = (text) =>
+    text
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+  const openPersonalityEditor = () => {
+    const p = profile?.kitchen_personality || {};
+    setEditPrimaryTrait(p.primary_trait || '');
+    setEditSecondaryTraits((p.secondary_traits || []).join(', '));
+    setEditTopCuisines((p.top_cuisines || []).join(', '));
+    setEditFavoriteIngredients((p.favorite_ingredients || []).join(', '));
+    setPersonalityModalVisible(true);
+  };
+
+  const handleSavePersonality = async () => {
+    if (!user?.username) return;
+    setSavingPersonality(true);
+    try {
+      const kitchen_personality = {
+        primary_trait: editPrimaryTrait.trim(),
+        secondary_traits: parseCommaList(editSecondaryTraits),
+        top_cuisines: parseCommaList(editTopCuisines),
+        favorite_ingredients: parseCommaList(editFavoriteIngredients),
+      };
+      const response = await fetch(`${API_URL}/updateUserProfile`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: user.username,
+          kitchen_personality,
+          personality_edited_by_user: true,
+        }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to save');
+      }
+      setProfile((prev) =>
+        prev
+          ? {
+              ...prev,
+              kitchen_personality: {
+                ...(prev.kitchen_personality || {}),
+                ...kitchen_personality,
+              },
+              personality_edited_by_user: true,
+            }
+          : prev
+      );
+      setPersonalityModalVisible(false);
+    } catch (err) {
+      Alert.alert('Could not save personality', err.message);
+    } finally {
+      setSavingPersonality(false);
+    }
+  };
+
+  const handleEditPhoto = async () => {
+    if (!isOwnProfile || !user?.username) return;
+
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Allow photo library access to set your profile picture.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.5,
+      base64: true,
+    });
+
+    if (result.canceled || !result.assets[0]) return;
+
+    const asset = result.assets[0];
+    const mime = asset.mimeType || 'image/jpeg';
+    const dataUri = asset.base64 ? `data:${mime};base64,${asset.base64}` : asset.uri;
+
+    setUploadingPhoto(true);
+    try {
+      const response = await fetch(`${API_URL}/updateUserProfile`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: user.username,
+          profilePhotoUrl: dataUri,
+        }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to update photo');
+      }
+      setProfile((prev) => (prev ? { ...prev, profilePhotoUrl: dataUri } : prev));
+    } catch (err) {
+      Alert.alert('Could not update photo', err.message);
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  const handleDeleteDish = (dish) => {
+    if (!isOwnProfile || !user?.username) return;
+
+    Alert.alert(
+      'Delete dish?',
+      `Remove "${dish.title}" from your logged meals? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const response = await fetch(`${API_URL}/deleteRecipeLog`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: user.username, logId: dish.id }),
+              });
+              const data = await response.json().catch(() => ({}));
+              if (!response.ok) {
+                throw new Error(data.error || 'Failed to delete');
+              }
+              setDishes((prev) => prev.filter((d) => d.id !== dish.id));
+              setFavoriteIds((prev) => prev.filter((id) => id !== dish.id));
+              setProfile((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      portfolio_favorites: (prev.portfolio_favorites || []).filter(
+                        (id) => id !== dish.id
+                      ),
+                    }
+                  : prev
+              );
+              fetchProfile();
+            } catch (err) {
+              Alert.alert('Could not delete dish', err.message);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -407,8 +582,17 @@ export default function ProfileScreen({ navigation, route }) {
           end={{ x: 1, y: 1 }}
           style={styles.userBanner}
         >
-          <View style={styles.avatarContainer}>
-            {profile?.profilePhotoUrl ? (
+          <TouchableOpacity
+            style={styles.avatarContainer}
+            onPress={isOwnProfile ? handleEditPhoto : undefined}
+            disabled={!isOwnProfile || uploadingPhoto}
+            activeOpacity={isOwnProfile ? 0.8 : 1}
+          >
+            {uploadingPhoto ? (
+              <View style={styles.avatarPlaceholder}>
+                <ActivityIndicator color="#fff" size="large" />
+              </View>
+            ) : profile?.profilePhotoUrl ? (
               <Image source={{ uri: profile.profilePhotoUrl }} style={styles.avatar} />
             ) : (
               <View style={styles.avatarPlaceholder}>
@@ -417,7 +601,19 @@ export default function ProfileScreen({ navigation, route }) {
                 </Text>
               </View>
             )}
-          </View>
+            {isOwnProfile && !uploadingPhoto ? (
+              <View style={styles.avatarEditBadge}>
+                <Ionicons name="camera" size={16} color="#fff" />
+              </View>
+            ) : null}
+          </TouchableOpacity>
+          {isOwnProfile ? (
+            <TouchableOpacity onPress={handleEditPhoto} disabled={uploadingPhoto} activeOpacity={0.7}>
+              <Text style={styles.editPhotoText}>
+                {uploadingPhoto ? 'Uploading…' : 'Edit photo'}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
           <Text style={styles.userName}>{profile?.name || 'User'}</Text>
           <Text style={styles.username}>@{profile?.username || 'username'}</Text>
           <Text style={styles.joinedDate}>Joined {profile?.joinedDate || '2024'}</Text>
@@ -479,7 +675,7 @@ export default function ProfileScreen({ navigation, route }) {
             <Ionicons name="images" size={20} color={colors.primary} />
             <Text style={styles.sectionTitle}>Culinary Portfolio</Text>
             {isOwnProfile ? (
-              <Text style={styles.portfolioHint}>Favorite up to 3</Text>
+              <Text style={styles.portfolioHint}>Favorite up to 2</Text>
             ) : null}
           </View>
           {dishesLoading ? (
@@ -492,7 +688,7 @@ export default function ProfileScreen({ navigation, route }) {
               </Text>
               <Text style={styles.emptyDishesText}>
                 {isOwnProfile
-                  ? 'Tap Post to log your first meal — then favorite up to 3 for your portfolio!'
+                  ? 'Tap Post to log your first meal — then favorite up to 2 for your portfolio!'
                   : `${profile?.name || 'This user'} hasn't logged any meals yet.`}
               </Text>
             </View>
@@ -521,8 +717,10 @@ export default function ProfileScreen({ navigation, route }) {
                         dish={dish}
                         onPress={() => openDish(dish)}
                         showFavorite
+                        showDelete
                         isFavorited={favoriteIds.includes(dish.id)}
                         onToggleFavorite={() => togglePortfolioFavorite(dish.id)}
+                        onDelete={() => handleDeleteDish(dish)}
                       />
                     ))}
                   </ScrollView>
@@ -536,6 +734,16 @@ export default function ProfileScreen({ navigation, route }) {
           <View style={styles.sectionTitleRow}>
             <Ionicons name="flame" size={20} color={colors.secondary} />
             <Text style={styles.sectionTitle}>Kitchen Personality</Text>
+            {isOwnProfile ? (
+              <TouchableOpacity
+                style={styles.editPersonalityButton}
+                onPress={openPersonalityEditor}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="create-outline" size={16} color={colors.primary} />
+                <Text style={styles.editPersonalityText}>Edit</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
           <View style={styles.personalityCard}>
             <Text style={styles.personalityDescription}>{personalityDescription}</Text>
@@ -614,6 +822,85 @@ export default function ProfileScreen({ navigation, route }) {
           openDish(dish);
         }}
       />
+
+      <Modal
+        visible={personalityModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setPersonalityModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Edit Kitchen Personality</Text>
+              <TouchableOpacity
+                onPress={() => setPersonalityModalVisible(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="close" size={24} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <Text style={styles.modalLabel}>Primary trait</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={editPrimaryTrait}
+                onChangeText={setEditPrimaryTrait}
+                placeholder="e.g. Adventurous Chef"
+                placeholderTextColor={colors.textMuted}
+              />
+
+              <Text style={styles.modalLabel}>Secondary traits (comma-separated)</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={editSecondaryTraits}
+                onChangeText={setEditSecondaryTraits}
+                placeholder="Bold Flavors, Classic Dishes"
+                placeholderTextColor={colors.textMuted}
+              />
+
+              <Text style={styles.modalLabel}>Top cuisines (comma-separated)</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={editTopCuisines}
+                onChangeText={setEditTopCuisines}
+                placeholder="Italian, Mexican, Thai"
+                placeholderTextColor={colors.textMuted}
+              />
+
+              <Text style={styles.modalLabel}>Favorite ingredients (comma-separated)</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={editFavoriteIngredients}
+                onChangeText={setEditFavoriteIngredients}
+                placeholder="Garlic, Tomatoes, Basil"
+                placeholderTextColor={colors.textMuted}
+              />
+
+              <Text style={styles.modalHint}>
+                Auto-updates still refresh your cooking stats. Your custom traits and tags are preserved.
+              </Text>
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[styles.modalSaveButton, savingPersonality && styles.modalSaveButtonDisabled]}
+              onPress={handleSavePersonality}
+              disabled={savingPersonality}
+              activeOpacity={0.85}
+            >
+              {savingPersonality ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.modalSaveButtonText}>Save personality</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -687,7 +974,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   avatarContainer: {
-    marginBottom: 14,
+    marginBottom: 8,
+    position: 'relative',
+  },
+  avatarEditBadge: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  editPhotoText: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.9)',
+    fontWeight: '600',
+    marginBottom: 10,
+    textDecorationLine: 'underline',
   },
   avatar: {
     width: 110,
@@ -941,6 +1249,37 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     lineHeight: 18,
   },
+  editPersonalityButton: {
+    marginLeft: 'auto',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radii.pill,
+    backgroundColor: colors.backgroundAlt,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  editPersonalityText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  dishDeleteButton: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    zIndex: 2,
+  },
   dishFavoriteButton: {
     position: 'absolute',
     top: 8,
@@ -958,6 +1297,73 @@ const styles = StyleSheet.create({
   dishFavoriteButtonActive: {
     backgroundColor: colors.like,
     borderColor: colors.like,
+  },
+  dishFavoriteButtonWithDelete: {
+    top: 44,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: radii.lg,
+    borderTopRightRadius: radii.lg,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
+    maxHeight: '85%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  modalLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginBottom: 6,
+    marginTop: 12,
+  },
+  modalInput: {
+    backgroundColor: colors.inputBg,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: colors.text,
+  },
+  modalHint: {
+    fontSize: 12,
+    color: colors.textMuted,
+    lineHeight: 18,
+    marginTop: 14,
+    marginBottom: 8,
+  },
+  modalSaveButton: {
+    backgroundColor: colors.primary,
+    borderRadius: radii.pill,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  modalSaveButtonDisabled: {
+    opacity: 0.7,
+  },
+  modalSaveButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
   },
   dishCard: {
     width: 140,
