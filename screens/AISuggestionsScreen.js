@@ -24,8 +24,11 @@ const CARD_WIDTH = 200;
 const IMAGE_HEIGHT = 150;
 
 // Stock images when the API omits a photo — matched by recipe title, not card index.
+const DEFAULT_FALLBACK_IMAGE =
+  'https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=500&q=80';
+
 const FALLBACK_IMAGES = [
-  'https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=500&q=80',
+  DEFAULT_FALLBACK_IMAGE,
   'https://images.unsplash.com/photo-1505253716362-afaea1d3d1af?w=500&q=80',
   'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=500&q=80',
   'https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=500&q=80',
@@ -63,7 +66,34 @@ function titleFallbackImage(recipeName) {
     const hash = [...title].reduce((sum, char) => sum + char.charCodeAt(0), 0);
     return FALLBACK_IMAGES[hash % FALLBACK_IMAGES.length];
   }
-  return FALLBACK_IMAGES[0];
+  return DEFAULT_FALLBACK_IMAGE;
+}
+
+function isValidHttpsUrl(url) {
+  if (typeof url !== 'string') return false;
+  const cleaned = url.trim();
+  return cleaned.length > 12 && cleaned.toLowerCase().startsWith('https://');
+}
+
+function normalizeHttpsUrl(url) {
+  if (typeof url !== 'string') return '';
+  let cleaned = url.trim();
+  if (cleaned.toLowerCase().startsWith('http://')) {
+    cleaned = `https://${cleaned.slice(7)}`;
+  }
+  return cleaned;
+}
+
+function resolveSuggestionImage(suggestion, recipeName) {
+  const fields = ['image', 'photoUrl', 'photo_url', 'dish_photo_url'];
+  for (const field of fields) {
+    const candidate = normalizeHttpsUrl(suggestion?.[field]);
+    if (isValidHttpsUrl(candidate)) {
+      return candidate;
+    }
+  }
+  const titled = titleFallbackImage(recipeName);
+  return isValidHttpsUrl(titled) ? titled : DEFAULT_FALLBACK_IMAGE;
 }
 
 function formatSuggestionReason(raw) {
@@ -142,6 +172,20 @@ function RecipeCard({ recipe, onPress, onAddPress, isInNextUp, accentColor, reas
   const difficulty = recipe.difficulty_level
     ? recipe.difficulty_level.charAt(0).toUpperCase() + recipe.difficulty_level.slice(1)
     : null;
+  const fallbackUri = resolveSuggestionImage(recipe, recipe.name);
+  const [imageUri, setImageUri] = useState(recipe.image || fallbackUri);
+
+  useEffect(() => {
+    setImageUri(recipe.image || fallbackUri);
+  }, [recipe.image, recipe.name, fallbackUri]);
+
+  const handleImageError = () => {
+    setImageUri((current) => {
+      if (current !== fallbackUri) return fallbackUri;
+      if (current !== DEFAULT_FALLBACK_IMAGE) return DEFAULT_FALLBACK_IMAGE;
+      return current;
+    });
+  };
 
   return (
     <TouchableOpacity
@@ -150,7 +194,11 @@ function RecipeCard({ recipe, onPress, onAddPress, isInNextUp, accentColor, reas
       activeOpacity={0.88}
     >
       <View style={styles.recipeImageWrap}>
-        <Image source={{ uri: recipe.image }} style={styles.recipeImage} />
+        <Image
+          source={{ uri: imageUri }}
+          style={styles.recipeImage}
+          onError={handleImageError}
+        />
         <LinearGradient
           colors={['transparent', 'rgba(0,0,0,0.55)']}
           style={styles.recipeImageGradient}
@@ -277,8 +325,7 @@ function mapApiSuggestions(items) {
 
   return items.map((s, index) => {
     const name = s.name || s.recipe_name || 'Recipe';
-    const rawImage = typeof s.image === 'string' ? s.image.trim() : '';
-    const image = rawImage || titleFallbackImage(name) || FALLBACK_IMAGES[0];
+    const image = resolveSuggestionImage(s, name);
     return {
       ...s,
       id: s.id || s.recipe_id || `s-${index}`,

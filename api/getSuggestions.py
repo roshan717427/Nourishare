@@ -597,6 +597,24 @@ class SmartSuggestionsEngine:
             'typical_time': log_profile.get('typical_time', '30 min'),
         }
 
+    def _is_valid_https_url(self, url):
+        """True when url is a non-empty HTTPS string suitable for clients."""
+        if not isinstance(url, str):
+            return False
+        cleaned = url.strip()
+        if not cleaned.lower().startswith('https://'):
+            return False
+        return len(cleaned) > 12
+
+    def _normalize_https_url(self, url):
+        """Strip and upgrade http:// to https:// when present."""
+        if not isinstance(url, str):
+            return ''
+        cleaned = url.strip()
+        if cleaned.lower().startswith('http://'):
+            cleaned = 'https://' + cleaned[7:]
+        return cleaned
+
     def _title_fallback_image(self, recipe_name):
         """Pick a stock photo that matches the recipe title keywords."""
         title_lower = self._normalize_title(recipe_name)
@@ -618,13 +636,29 @@ class SmartSuggestionsEngine:
             or ''
         )
         for field in ('image', 'photoUrl', 'photo_url', 'dish_photo_url'):
-            url = recipe.get(field)
-            if isinstance(url, str):
-                url = url.strip()
-            if url and url not in blocked:
+            url = self._normalize_https_url(recipe.get(field))
+            if self._is_valid_https_url(url) and url not in blocked:
                 return url
         image = self._title_fallback_image(recipe_name)
-        return image if image else DEFAULT_FALLBACK_IMAGE
+        return image if self._is_valid_https_url(image) else DEFAULT_FALLBACK_IMAGE
+
+    def _ensure_suggestion_images(self, suggestions):
+        """Guarantee every suggestion payload has a valid HTTPS image URL."""
+        finalized = []
+        for suggestion in suggestions or []:
+            name = (
+                suggestion.get('recipe_name')
+                or suggestion.get('name')
+                or 'Recipe'
+            )
+            image = self._normalize_https_url(suggestion.get('image'))
+            if not self._is_valid_https_url(image):
+                image = self._title_fallback_image(name)
+            if not self._is_valid_https_url(image):
+                image = DEFAULT_FALLBACK_IMAGE
+            suggestion['image'] = image
+            finalized.append(suggestion)
+        return finalized
 
     def _format_subtitle(self, recipe):
         difficulty = recipe.get('difficulty_level') or recipe.get('difficulty') or ''
@@ -1338,6 +1372,11 @@ class SmartSuggestionsEngine:
                 friend_suggestions = self._get_friend_suggestions(
                     username, tried_profile, log_profile, followed_users, limit
                 )
+
+            preference_suggestions = self._ensure_suggestion_images(
+                preference_suggestions
+            )
+            friend_suggestions = self._ensure_suggestion_images(friend_suggestions)
 
             return {
                 'preference_suggestions': preference_suggestions,
