@@ -47,8 +47,41 @@ module.exports = async (req, res) => {
     return;
   }
   
-  if (!title) {
+  if (!title || !String(title).trim()) {
     res.status(400).json({ error: 'Title (name of the dish) is required' });
+    return;
+  }
+
+  const isNonEmptyString = (value) =>
+    typeof value === 'string' && value.trim().length > 0;
+
+  if (!isNonEmptyString(ingredients)) {
+    res.status(400).json({ error: 'Ingredients are required' });
+    return;
+  }
+
+  if (!isNonEmptyString(recipeInstructions)) {
+    res.status(400).json({ error: 'Recipe instructions are required' });
+    return;
+  }
+
+  if (rating == null || rating === '') {
+    res.status(400).json({ error: 'Rating is required' });
+    return;
+  }
+
+  if (!isNonEmptyString(difficulty)) {
+    res.status(400).json({ error: 'Difficulty is required' });
+    return;
+  }
+
+  if (!isNonEmptyString(time)) {
+    res.status(400).json({ error: 'Time is required' });
+    return;
+  }
+
+  if (!isNonEmptyString(source)) {
+    res.status(400).json({ error: 'Source is required (use N/A if none)' });
     return;
   }
 

@@ -24,7 +24,6 @@ export default function LogMealScreen({ navigation }) {
   const [mealName, setMealName] = useState('');
   const [photo, setPhoto] = useState(null);
   const [ingredients, setIngredients] = useState('');
-  const [notes, setNotes] = useState('');
   const [rating, setRating] = useState(null);
   const [difficulty, setDifficulty] = useState(null);
   const [time, setTime] = useState('');
@@ -87,9 +86,20 @@ export default function LogMealScreen({ navigation }) {
   };
 
   const handleSubmit = async () => {
-    // Basic validation
-    if (!mealName.trim()) {
-      Alert.alert('Name your dish', 'Give your meal a name before logging it.');
+    const missing = [];
+    if (!mealName.trim()) missing.push('Meal name');
+    if (!ingredients.trim()) missing.push('Ingredients');
+    if (!recipeInstructions.trim()) missing.push('Recipe');
+    if (!rating) missing.push('Rating');
+    if (!difficulty) missing.push('Difficulty');
+    if (!time.trim()) missing.push('Time');
+    if (!source.trim()) missing.push('Source');
+
+    if (missing.length > 0) {
+      Alert.alert(
+        'Missing information',
+        `Please fill in: ${missing.join(', ')}. Photo is optional.`
+      );
       return;
     }
 
@@ -108,15 +118,14 @@ export default function LogMealScreen({ navigation }) {
       const logData = {
         username: user?.username || 'current_user',
         title: mealName.trim(),
-        ingredients: ingredients.trim() || undefined,
-        notes: notes.trim() || undefined,
-        rating: rating || undefined,
-        difficulty: difficulty?.toLowerCase() || undefined,
-        time: time.trim() || undefined,
-        source: source.trim() || undefined,
-        photoUrl: photo || undefined, // API expects photoUrl
+        ingredients: ingredients.trim(),
+        rating,
+        difficulty: difficulty.toLowerCase(),
+        time: time.trim(),
+        source: source.trim(),
+        photoUrl: photo || undefined,
         recipeLink: recipeLink.trim() || undefined,
-        recipeInstructions: recipeInstructions.trim() || undefined,
+        recipeInstructions: recipeInstructions.trim(),
       };
 
       // Remove undefined values
@@ -146,7 +155,6 @@ export default function LogMealScreen({ navigation }) {
               setMealName('');
               setPhoto(null);
               setIngredients('');
-              setNotes('');
               setRating(null);
               setDifficulty(null);
               setTime('');
@@ -205,7 +213,7 @@ export default function LogMealScreen({ navigation }) {
 
         {/* Add Photo */}
         <View style={styles.section}>
-          <Text style={styles.label}>Add a photo</Text>
+          <Text style={styles.label}>Add a photo (optional)</Text>
           <TouchableOpacity
             style={styles.photoContainer}
             onPress={showImageOptions}
@@ -231,21 +239,6 @@ export default function LogMealScreen({ navigation }) {
             onChangeText={setIngredients}
             placeholderTextColor="#999"
             multiline
-          />
-        </View>
-
-        {/* Notes */}
-        <View style={styles.section}>
-          <Text style={styles.label}>Notes</Text>
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            placeholder="Add notes"
-            value={notes}
-            onChangeText={setNotes}
-            placeholderTextColor="#999"
-            multiline
-            numberOfLines={4}
-            textAlignVertical="top"
           />
         </View>
 
@@ -320,7 +313,7 @@ export default function LogMealScreen({ navigation }) {
           <Text style={styles.label}>Source</Text>
           <TextInput
             style={styles.input}
-            placeholder="Add source"
+            placeholder="Recipe source or N/A"
             value={source}
             onChangeText={setSource}
             placeholderTextColor="#999"
@@ -330,26 +323,28 @@ export default function LogMealScreen({ navigation }) {
         {/* Recipe */}
         <View style={styles.section}>
           <Text style={styles.label}>Recipe</Text>
-          <Text style={styles.fieldHint}>Add a link or write basic instructions so you can re-cook later.</Text>
-          <TextInput
-            style={[styles.input, styles.recipeLinkInput]}
-            placeholder="Recipe link (URL)"
-            value={recipeLink}
-            onChangeText={setRecipeLink}
-            placeholderTextColor="#999"
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
-          />
+          <Text style={styles.fieldHint}>
+            Write basic steps so you can re-cook later. Add a link below if you have one.
+          </Text>
           <TextInput
             style={[styles.input, styles.textArea, styles.recipeInstructionsInput]}
-            placeholder="Basic instructions (optional)"
+            placeholder="Write basic steps for your recipe (e.g. 1. Prep ingredients 2. Cook...)"
             value={recipeInstructions}
             onChangeText={setRecipeInstructions}
             placeholderTextColor="#999"
             multiline
             numberOfLines={5}
             textAlignVertical="top"
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Recipe link (optional)"
+            value={recipeLink}
+            onChangeText={setRecipeLink}
+            placeholderTextColor="#999"
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
           />
         </View>
 
@@ -437,11 +432,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     lineHeight: 20,
   },
-  recipeLinkInput: {
-    marginBottom: 12,
-  },
   recipeInstructionsInput: {
     height: 120,
+    marginBottom: 12,
   },
   photoContainer: {
     width: '100%',
