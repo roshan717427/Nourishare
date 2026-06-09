@@ -86,14 +86,20 @@ function formatSuggestionReason(raw) {
     }
     return `it is ${why}`;
   }
-  if (/^(matches|shares|picked|fits|based on)/i.test(why)) {
+  if (/^(matches|shares|picked|fits|based on|similar to|uses similar)/i.test(why)) {
     if (/^picked /i.test(why)) {
       return `it was ${why}`;
     }
     if (/^based on /i.test(why)) {
       return `it is ${why}`;
     }
+    if (/^(similar to|uses similar)/i.test(why)) {
+      return `it ${why}`;
+    }
     return `it ${why}`;
+  }
+  if (/^in the same /i.test(why)) {
+    return `it is ${why}`;
   }
   if (/^features /i.test(why)) {
     return `it ${why}`;
@@ -296,7 +302,7 @@ function buildGreeting(displayName, hasLogs, hasFollowing) {
   if (!hasFollowing) {
     return `Hey ${displayName}! Here are picks based on what you've been cooking. Follow friends to unlock more inspiration.`;
   }
-  return `Hey ${displayName}! Here are recipes picked from your tastes and what your friends have been cooking lately.`;
+  return `Hey ${displayName}! Here are recipes based on your tastes and meals your friends have been cooking lately.`;
 }
 
 export default function AISuggestionsScreen({ navigation }) {
@@ -444,8 +450,8 @@ export default function AISuggestionsScreen({ navigation }) {
         hint: 'Follow friends to see what they\'re cooking.',
       }
     : {
-        title: 'Friends are quiet for now',
-        hint: 'When they post recipes, inspiration will show up here.',
+        title: 'No friend-inspired picks yet',
+        hint: 'When friends log meals, similar recipe ideas will show up here.',
       };
 
   return (

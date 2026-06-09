@@ -897,50 +897,420 @@ class SmartSuggestionsEngine:
 
         return suggestions[:limit]
 
+    def _format_friend_name(self, username):
+        """Readable friend label for suggestion copy."""
+        if not username:
+            return 'your friend'
+        cleaned = str(username).strip()
+        if not cleaned:
+            return 'your friend'
+        if ' ' in cleaned:
+            return cleaned.split()[0]
+        return cleaned[0].upper() + cleaned[1:]
+
+    def _friend_recency_score(self, created_at):
+        """Recency weight for friend inspiration meals (0-20)."""
+        if not created_at:
+            return 5.0
+        try:
+            if hasattr(created_at, 'timestamp'):
+                recipe_date = datetime.fromtimestamp(created_at.timestamp())
+            elif hasattr(created_at, 'seconds'):
+                recipe_date = datetime.fromtimestamp(created_at.seconds)
+            else:
+                created_str = str(created_at)
+                if 'T' in created_str:
+                    recipe_date = datetime.fromisoformat(created_str.replace('Z', '+00:00'))
+                else:
+                    return 5.0
+            if recipe_date.tzinfo:
+                recipe_date = recipe_date.replace(tzinfo=None)
+            days_ago = (datetime.now() - recipe_date).days
+            if days_ago <= 7:
+                return 20.0
+            if days_ago <= 30:
+                return 15.0
+            if days_ago <= 90:
+                return 10.0
+        except Exception:
+            pass
+        return 5.0
+
+    def _build_friend_inspiration_entries(self, friends_recipes):
+        """Turn friend logs/posts into inspiration signals (not direct suggestions)."""
+        entries = []
+        seen = set()
+
+        for recipe in friends_recipes:
+            title = (recipe.get('recipe_name') or recipe.get('title') or '').strip()
+            if not title:
+                continue
+
+            friend_user = (recipe.get('username') or '').strip()
+            normalized = self._normalize_title(title)
+            dedupe_key = (friend_user, normalized)
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+
+            ingredients = self._normalize_ingredients(recipe.get('ingredients'))
+            cuisines = self._detect_cuisines(title.lower(), ingredients)
+            photo = None
+            for field in ('image', 'photoUrl', 'photo_url'):
+                url = recipe.get(field)
+                if url:
+                    photo = url
+                    break
+
+            entries.append({
+                'friend_username': friend_user,
+                'friend_name': self._format_friend_name(friend_user),
+                'title': title,
+                'normalized_title': normalized,
+                'recipe_id': str(recipe.get('id') or recipe.get('recipe_id') or ''),
+                'ingredients': ingredients,
+                'cuisines': cuisines,
+                'cuisine': cuisines[0] if cuisines else 'general',
+                'difficulty': str(
+                    recipe.get('difficulty_level') or recipe.get('difficulty') or 'medium'
+                ).lower(),
+                'cooking_time': recipe.get('cooking_time') or recipe.get('time') or '',
+                'photo': photo,
+                'rating': recipe.get('rating', 0) or 0,
+                'recency_score': self._friend_recency_score(
+                    recipe.get('created_at') or recipe.get('createdAt')
+                ),
+            })
+
+        entries.sort(
+            key=lambda entry: (entry['recency_score'], entry['rating']),
+            reverse=True,
+        )
+        return entries
+
+    def _is_friend_exact_match(self, name, ingredients, recipe_id, inspiration_entry):
+        """True when a candidate is the same dish a friend logged or posted."""
+        if self._normalize_title(name) == inspiration_entry.get('normalized_title'):
+            return True
+        if self._titles_similar(name, inspiration_entry.get('title', '')):
+            return True
+        candidate_id = str(recipe_id or '').strip()
+        friend_id = inspiration_entry.get('recipe_id', '')
+        if candidate_id and friend_id and candidate_id == friend_id:
+            return True
+        return False
+
+    def _is_any_friend_exact_match(self, name, ingredients, recipe_id, inspiration_entries):
+        for entry in inspiration_entries:
+            if self._is_friend_exact_match(name, ingredients, recipe_id, entry):
+                return True
+        return False
+
+    def _variant_similarity_score(self, variant, inspiration_entry):
+        """Score 0-100 for how closely a variant echoes a friend's meal."""
+        score = 0.0
+        variant_name = (
+            variant.get('recipe_name') or variant.get('name') or variant.get('title') or ''
+        )
+        variant_tokens = self._normalize_ingredients(variant.get('ingredients'))
+        inspiration_tokens = inspiration_entry.get('ingredients', [])
+
+        variant_cuisines = self._detect_cuisines(variant_name.lower(), variant_tokens)
+        inspiration_cuisines = inspiration_entry.get('cuisines', ['general'])
+        if any(cuisine in variant_cuisines for cuisine in inspiration_cuisines):
+            score += 35
+        elif inspiration_entry.get('cuisine', 'general') in variant_cuisines:
+            score += 25
+
+        if variant_tokens and inspiration_tokens:
+            overlap_ratio = self._ingredient_overlap_ratio(variant_tokens, inspiration_tokens)
+            shared = len(set(variant_tokens) & set(inspiration_tokens))
+            score += min(40.0, overlap_ratio * 40 + shared * 5)
+
+        variant_difficulty = str(
+            variant.get('difficulty_level') or variant.get('difficulty') or ''
+        ).lower()
+        if variant_difficulty and variant_difficulty == inspiration_entry.get('difficulty'):
+            score += 10
+
+        variant_time = str(
+            variant.get('cooking_time') or variant.get('time') or ''
+        ).lower()
+        inspiration_time = str(inspiration_entry.get('cooking_time') or '').lower()
+        if variant_time and inspiration_time and variant_time == inspiration_time:
+            score += 5
+
+        score += inspiration_entry.get('recency_score', 0) * 0.25
+        return score
+
+    def _friend_variant_reason(self, inspiration_entry, variant_dict):
+        """Explain similarity to a friend's meal without implying they cooked this dish."""
+        friend_name = inspiration_entry.get('friend_name') or 'your friend'
+        is_recent = inspiration_entry.get('recency_score', 0) >= 15
+        recency_phrase = (
+            f'a meal {friend_name} cooked recently'
+            if is_recent
+            else f'what {friend_name} made'
+        )
+
+        variant_name = (
+            variant_dict.get('recipe_name')
+            or variant_dict.get('name')
+            or variant_dict.get('title')
+            or ''
+        )
+        variant_tokens = self._normalize_ingredients(variant_dict.get('ingredients'))
+        inspiration_tokens = inspiration_entry.get('ingredients', [])
+        variant_cuisines = self._detect_cuisines(variant_name.lower(), variant_tokens)
+        inspiration_cuisine = inspiration_entry.get('cuisine', 'general')
+        cuisine_label = self._display_cuisine(inspiration_cuisine)
+
+        clauses = []
+        if (
+            cuisine_label
+            and inspiration_cuisine != 'general'
+            and inspiration_cuisine in variant_cuisines
+        ):
+            clauses.append(
+                f'it is in the same {cuisine_label} style as {recency_phrase}'
+            )
+
+        if variant_tokens and inspiration_tokens:
+            shared = set(variant_tokens) & set(inspiration_tokens)
+            overlap_ratio = self._ingredient_overlap_ratio(variant_tokens, inspiration_tokens)
+            if len(shared) >= 2:
+                clauses.append(
+                    f'it shares ingredients with a dish {friend_name} cooked'
+                )
+            elif overlap_ratio >= 0.25:
+                clauses.append(
+                    f'it uses similar ingredients to {recency_phrase}'
+                )
+
+        if not clauses:
+            return f'it is similar to {recency_phrase}'
+        return self._join_reason_clauses(clauses[:2])
+
+    def _template_variants_for_inspiration(
+        self, inspiration_entry, tried_profile, seen_names, inspiration_entries
+    ):
+        """Curated variant ideas aligned with a friend's meal."""
+        variants = []
+        cuisine = inspiration_entry.get('cuisine', 'general')
+        template_lists = []
+        if cuisine in CUISINE_TEMPLATES:
+            template_lists.append(CUISINE_TEMPLATES[cuisine])
+        template_lists.append(CUISINE_TEMPLATES['general'])
+
+        slug_base = re.sub(
+            r'[^\w-]',
+            '',
+            inspiration_entry.get('friend_username', 'friend').lower(),
+        )
+
+        for templates in template_lists:
+            for template in templates:
+                name = template['name']
+                normalized = self._normalize_title(name)
+                if normalized in seen_names:
+                    continue
+                if self._is_any_friend_exact_match(
+                    name, template.get('ingredients'), '', inspiration_entries
+                ):
+                    continue
+                if self._is_already_tried(
+                    name, template.get('ingredients'), '', tried_profile
+                ):
+                    continue
+
+                variant = {
+                    'id': f'friend-variant-{slug_base}-{normalized.replace(" ", "-")}',
+                    'recipe_name': name,
+                    'ingredients': template['ingredients'],
+                    'cooking_time': template.get('cooking_time', ''),
+                    'difficulty_level': template.get('difficulty_level', 'medium'),
+                    'image': template.get('image'),
+                    'username': inspiration_entry.get('friend_username', ''),
+                }
+                score = self._variant_similarity_score(variant, inspiration_entry)
+                if score >= 20:
+                    variants.append((variant, score))
+
+        for token in inspiration_entry.get('ingredients', [])[:6]:
+            for key, idea in INGREDIENT_IDEAS.items():
+                if key not in token:
+                    continue
+                name = idea['name']
+                normalized = self._normalize_title(name)
+                if normalized in seen_names:
+                    continue
+                if self._is_any_friend_exact_match(
+                    name, idea.get('ingredients'), '', inspiration_entries
+                ):
+                    continue
+                if self._is_already_tried(
+                    name, idea.get('ingredients'), '', tried_profile
+                ):
+                    continue
+                variant = {
+                    'id': f'friend-variant-{slug_base}-ingredient-{key}',
+                    'recipe_name': name,
+                    'ingredients': idea['ingredients'],
+                    'cooking_time': idea.get('cooking_time', ''),
+                    'difficulty_level': idea.get('difficulty_level', 'medium'),
+                    'image': idea.get('image'),
+                    'username': inspiration_entry.get('friend_username', ''),
+                }
+                score = self._variant_similarity_score(variant, inspiration_entry)
+                if score >= 20:
+                    variants.append((variant, score))
+                break
+
+        variants.sort(key=lambda item: item[1], reverse=True)
+        return variants
+
+    def _load_community_variants_for_friends(
+        self, username, inspiration_entries, tried_profile
+    ):
+        """Community recipes that echo friend meals without repeating exact dishes."""
+        candidates = []
+        try:
+            recipes_ref = db.collection('recipe_posts').limit(300).stream()
+            for recipe in recipes_ref:
+                recipe_data = recipe.to_dict() or {}
+                recipe_data['id'] = recipe.id
+                recipe_name = (recipe_data.get('recipe_name') or '').strip()
+                if not recipe_name:
+                    continue
+                if recipe_data.get('username', '') == username:
+                    continue
+                if self._is_any_friend_exact_match(
+                    recipe_name,
+                    recipe_data.get('ingredients'),
+                    recipe_data.get('id'),
+                    inspiration_entries,
+                ):
+                    continue
+                if self._is_already_tried(
+                    recipe_name,
+                    recipe_data.get('ingredients'),
+                    recipe_data.get('id'),
+                    tried_profile,
+                ):
+                    continue
+                candidates.append(recipe_data)
+        except Exception as e:
+            print(f"Error loading community variants for friends: {str(e)}")
+        return candidates
+
+    def _pick_variant_for_inspiration(
+        self,
+        inspiration_entry,
+        inspiration_entries,
+        community_candidates,
+        tried_profile,
+        seen_names,
+    ):
+        """Best similar alternative for one friend meal inspiration signal."""
+        best_variant = None
+        best_score = 0.0
+
+        for recipe_data in community_candidates:
+            recipe_name = (recipe_data.get('recipe_name') or '').strip()
+            normalized = self._normalize_title(recipe_name)
+            if normalized in seen_names:
+                continue
+            if self._is_friend_exact_match(
+                recipe_name,
+                recipe_data.get('ingredients'),
+                recipe_data.get('id'),
+                inspiration_entry,
+            ):
+                continue
+            similarity = self._variant_similarity_score(recipe_data, inspiration_entry)
+            if similarity > best_score:
+                best_score = similarity
+                best_variant = recipe_data
+
+        if best_score < 35:
+            for variant_dict, similarity in self._template_variants_for_inspiration(
+                inspiration_entry, tried_profile, seen_names, inspiration_entries
+            ):
+                if similarity > best_score:
+                    best_score = similarity
+                    best_variant = variant_dict
+
+        if not best_variant or best_score < 25:
+            return None, 0.0, ''
+
+        reason = self._friend_variant_reason(inspiration_entry, best_variant)
+        return best_variant, best_score, reason
+
     def _get_friend_suggestions(self, username, tried_profile, log_profile, followed_users, limit=6):
-        """Suggest recipes from people the user follows."""
+        """Suggest variant recipes inspired by friends' meals — not their exact dishes."""
         if not followed_users:
             return []
 
         friends_recipes = self._get_friends_recipes(followed_users)
-        if not friends_recipes:
+        inspiration_entries = self._build_friend_inspiration_entries(friends_recipes)
+        if not inspiration_entries:
             return []
 
-        user_preferences = self._get_user_preferences(username, log_profile)
-        cooked_titles = tried_profile.get('cooked_titles', set())
-        blocked_urls = tried_profile.get('log_photos', set())
-        scored_suggestions = []
-        seen_recipes = set()
+        friend_photos = {entry['photo'] for entry in inspiration_entries if entry.get('photo')}
+        blocked_urls = tried_profile.get('log_photos', set()) | friend_photos
+        community_candidates = self._load_community_variants_for_friends(
+            username, inspiration_entries, tried_profile
+        )
 
-        for recipe in friends_recipes:
-            recipe_name = (recipe.get('recipe_name') or '').strip()
-            normalized_name = self._normalize_title(recipe_name)
-            if not normalized_name or normalized_name in seen_recipes:
-                continue
-            if self._is_already_tried(
-                recipe_name,
-                recipe.get('ingredients'),
-                recipe.get('id') or recipe.get('recipe_id'),
+        suggestions = []
+        seen_names = set()
+
+        for inspiration_entry in inspiration_entries:
+            if len(suggestions) >= limit:
+                break
+
+            variant, score, reason = self._pick_variant_for_inspiration(
+                inspiration_entry,
+                inspiration_entries,
+                community_candidates,
                 tried_profile,
-            ):
+                seen_names,
+            )
+            if not variant:
                 continue
 
-            seen_recipes.add(normalized_name)
-            score = self._calculate_suggestion_score(recipe, cooked_titles, user_preferences)
-            if score <= 0:
-                score = 15.0
+            normalized = self._normalize_title(
+                variant.get('recipe_name') or variant.get('name') or ''
+            )
+            if not normalized or normalized in seen_names:
+                continue
+            seen_names.add(normalized)
 
-            scored_suggestions.append(
-                self._format_suggestion(
-                    recipe,
-                    score,
-                    self._get_suggestion_reason(recipe, score),
-                    blocked_urls,
-                )
+            suggestions.append(
+                self._format_suggestion(variant, score, reason, blocked_urls)
             )
 
-        scored_suggestions.sort(key=lambda x: x['suggestion_score'], reverse=True)
-        return scored_suggestions[:limit]
+        if len(suggestions) < max(3, min(limit, 3)):
+            for inspiration_entry in inspiration_entries:
+                if len(suggestions) >= limit:
+                    break
+                for variant_dict, similarity in self._template_variants_for_inspiration(
+                    inspiration_entry, tried_profile, seen_names, inspiration_entries
+                ):
+                    normalized = self._normalize_title(variant_dict.get('recipe_name', ''))
+                    if not normalized or normalized in seen_names:
+                        continue
+                    seen_names.add(normalized)
+                    reason = self._friend_variant_reason(inspiration_entry, variant_dict)
+                    suggestions.append(
+                        self._format_suggestion(
+                            variant_dict, similarity, reason, blocked_urls
+                        )
+                    )
+                    break
+
+        suggestions.sort(key=lambda item: item['suggestion_score'], reverse=True)
+        return suggestions[:limit]
 
     def get_suggestions(self, username, limit=10):
         """Get smart suggestions for a user (preferences + friends)."""
