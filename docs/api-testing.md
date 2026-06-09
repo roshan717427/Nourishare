@@ -163,13 +163,17 @@ curl -X GET "https://munchable-v4.vercel.app/api/social?action=feed&username=ros
 
 ## 5. Smart Suggestions
 
-> Requires users to follow each other (section 4) for non-empty results.
+> Requires users to follow each other (section 4) for the friends section to
+> appear. Friend picks come from meals friends have logged or posted.
 
 ```bash
 curl -X POST https://munchable-v4.vercel.app/api/getSuggestions \
   -H "Content-Type: application/json" \
   -d '{"username": "roshan", "limit": 5}'
 ```
+
+Response includes `has_friends` (true when the user follows at least one person)
+and `friend_suggestions` (recipes drawn from friends' logs and posts).
 
 ---
 
@@ -179,7 +183,7 @@ curl -X POST https://munchable-v4.vercel.app/api/getSuggestions \
 2. **Create recipe logs** (2.1)
 3. **Analyze personalities** (3) — requires recipe logs to exist
 4. **Follow users + feed** (4) — enables social recipes
-5. **Get suggestions** (5) — returns empty if no friends (expected)
+5. **Get suggestions** (5) — friends section appears once you follow someone
 6. **Update/Delete operations** (1.4, 1.5, 2.3, 2.4) — optional cleanup
 
 ## Endpoint Summary

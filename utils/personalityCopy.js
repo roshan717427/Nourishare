@@ -10,7 +10,7 @@ const TRAIT_COPY = {
   },
   'Global Explorer': {
     adjective: 'worldly',
-    verbPhrase: 'loves pulling from cuisines all over',
+    verbPhrase: 'loves exploring cuisines from around the world',
   },
   'Adventurous Chef': {
     adjective: 'adventurous',
@@ -26,7 +26,7 @@ const TRAIT_COPY = {
   },
   'Kitchen Newcomer': {
     adjective: 'budding',
-    verbPhrase: 'is still finding a groove in the kitchen',
+    verbPhrase: 'is still getting comfortable in the kitchen',
   },
 };
 
@@ -36,8 +36,8 @@ const SECONDARY_HINT = {
     own: 'often reach for ingredients most people skip',
   },
   'Ingredient Discovery': {
-    third: 'likes spotting something new at the market',
-    own: 'like spotting something new at the market',
+    third: 'likes discovering something new at the market',
+    own: 'like discovering something new at the market',
   },
   'Curious Cook': {
     third: 'keeps an open mind about what lands on the plate',
@@ -113,13 +113,13 @@ function resolveTraitCopy(primary) {
   if (lowered.includes(' and ')) {
     return {
       adjective: lowered,
-      verbPhrase: 'brings that mix to the stove',
+      verbPhrase: 'likes bringing that mix to the stove',
     };
   }
 
   return {
     adjective: lowered,
-    verbPhrase: 'has a distinct approach in the kitchen',
+    verbPhrase: 'has a distinct style in the kitchen',
   };
 }
 
@@ -128,54 +128,50 @@ function hasMeaningfulPrimary(primary) {
   return Boolean(trimmed) && trimmed !== 'Kitchen Newcomer';
 }
 
-function formatCuisineClause(cuisines, isOwnProfile) {
+function formatCuisineClause(cuisines) {
   const list = (cuisines || []).filter(Boolean).slice(0, 2).map(formatCuisineName);
   if (!list.length) return '';
 
-  const enjoy = isOwnProfile ? 'enjoy' : 'enjoys';
   if (list.length === 1) {
-    return ` and ${enjoy} cooking dishes from the ${list[0]} cuisine`;
+    return ` and enjoys ${list[0]} cooking`;
   }
-  return ` and ${enjoy} cooking dishes from the ${list[0]} and ${list[1]} cuisines`;
+  return ` and enjoys ${list[0]} and ${list[1]} cooking`;
 }
 
-function formatIngredientClause(ingredients, isOwnProfile) {
+function formatIngredientClause(ingredients) {
   const list = (ingredients || []).filter(Boolean).slice(0, 2);
   if (!list.length) return '';
 
   const names = list.map((item) => String(item).trim().toLowerCase()).filter(Boolean);
   if (!names.length) return '';
 
-  const reach = isOwnProfile ? 'reach' : 'reaches';
   if (names.length === 1) {
-    return ` and often ${reach} for ${names[0]}`;
+    return ` and often reaches for ${names[0]}`;
   }
-  return ` and often ${reach} for ${names[0]} and ${names[1]}`;
+  return ` and often reaches for ${names[0]} and ${names[1]}`;
 }
 
-function formatStandaloneCuisinePhrase(cuisines, isOwnProfile) {
+function formatStandaloneCuisinePhrase(cuisines) {
   const list = (cuisines || []).filter(Boolean).slice(0, 2).map(formatCuisineName);
   if (!list.length) return '';
 
-  const enjoy = isOwnProfile ? 'enjoy' : 'enjoys';
   if (list.length === 1) {
-    return `${enjoy} cooking dishes from the ${list[0]} cuisine`;
+    return `enjoys ${list[0]} cooking`;
   }
-  return `${enjoy} cooking dishes from the ${list[0]} and ${list[1]} cuisines`;
+  return `enjoys ${list[0]} and ${list[1]} cooking`;
 }
 
-function formatStandaloneIngredientPhrase(ingredients, isOwnProfile) {
+function formatStandaloneIngredientPhrase(ingredients) {
   const list = (ingredients || []).filter(Boolean).slice(0, 2);
   if (!list.length) return '';
 
   const names = list.map((item) => String(item).trim().toLowerCase()).filter(Boolean);
   if (!names.length) return '';
 
-  const reach = isOwnProfile ? 'reach' : 'reaches';
   if (names.length === 1) {
-    return `often ${reach} for ${names[0]}`;
+    return `often reaches for ${names[0]}`;
   }
-  return `often ${reach} for ${names[0]} and ${names[1]}`;
+  return `often reaches for ${names[0]} and ${names[1]}`;
 }
 
 function pickSecondaryHint(traits, isOwnProfile) {
@@ -188,17 +184,17 @@ function pickSecondaryHint(traits, isOwnProfile) {
 
 function buildNewcomerSentence(isOwnProfile, firstName) {
   if (isOwnProfile) {
-    return "You're a budding cook who's still finding a groove in the kitchen.";
+    return "You're a budding cook who's still getting comfortable in the kitchen.";
   }
   const who = firstName || 'This cook';
-  return `${who} is a budding cook who's still finding a groove in the kitchen.`;
+  return `${who} is a budding cook who's still getting comfortable in the kitchen.`;
 }
 
 function buildFollowUpSentence(hint, isOwnProfile, firstName) {
   if (isOwnProfile) {
     return `You ${hint}.`;
   }
-  const who = firstName || 'They';
+  const who = firstName || 'This cook';
   return `${who} ${hint}.`;
 }
 
@@ -209,11 +205,8 @@ function hasPersonalitySelections(personality = {}) {
 }
 
 function buildSelectionOnlySentence(personality, isOwnProfile, firstName) {
-  const cuisinePhrase = formatStandaloneCuisinePhrase(personality.top_cuisines, isOwnProfile);
-  const ingredientPhrase = formatStandaloneIngredientPhrase(
-    personality.favorite_ingredients,
-    isOwnProfile
-  );
+  const cuisinePhrase = formatStandaloneCuisinePhrase(personality.top_cuisines);
+  const ingredientPhrase = formatStandaloneIngredientPhrase(personality.favorite_ingredients);
 
   const parts = [cuisinePhrase, ingredientPhrase].filter(Boolean);
   if (!parts.length) {
@@ -234,27 +227,43 @@ function buildSelectionOnlySentence(personality, isOwnProfile, firstName) {
  * @returns {string}
  */
 export function buildPersonalityDescription(name, personality = {}, options = {}) {
+  const { lead, followUp } = buildPersonalityDescriptionParts(name, personality, options);
+  return followUp ? `${lead} ${followUp}` : lead;
+}
+
+/**
+ * @param {string} name
+ * @param {object} personality
+ * @param {{ isOwnProfile?: boolean, displayName?: string }} [options]
+ * @returns {{ lead: string, followUp: string }}
+ */
+export function buildPersonalityDescriptionParts(name, personality = {}, options = {}) {
   const { isOwnProfile = false, displayName } = options;
   const firstName = extractFirstName(name || displayName);
 
   if (!hasPersonalitySelections(personality)) {
-    return buildNewcomerSentence(isOwnProfile, firstName);
+    const sentence = buildNewcomerSentence(isOwnProfile, firstName);
+    return { lead: sentence, followUp: '' };
   }
 
   const primary = personality.primary_trait;
   if (!hasMeaningfulPrimary(primary)) {
-    return buildSelectionOnlySentence(personality, isOwnProfile, firstName);
+    return { lead: buildSelectionOnlySentence(personality, isOwnProfile, firstName), followUp: '' };
   }
 
   const trait = resolveTraitCopy(primary);
   if (!trait) {
-    return buildSelectionOnlySentence(personality, isOwnProfile, firstName);
+    return { lead: buildSelectionOnlySentence(personality, isOwnProfile, firstName), followUp: '' };
   }
 
+  return buildTraitDescriptionParts(personality, trait, isOwnProfile, firstName);
+}
+
+function buildTraitDescriptionParts(personality, trait, isOwnProfile, firstName) {
   const verb = trait.verbPhrase;
   const article = articleBefore(trait.adjective);
-  const cuisineClause = formatCuisineClause(personality.top_cuisines, isOwnProfile);
-  const ingredientClause = formatIngredientClause(personality.favorite_ingredients, isOwnProfile);
+  const cuisineClause = formatCuisineClause(personality.top_cuisines);
+  const ingredientClause = formatIngredientClause(personality.favorite_ingredients);
   const detailClauses = `${cuisineClause}${ingredientClause}`;
 
   let main;
@@ -265,16 +274,15 @@ export function buildPersonalityDescription(name, personality = {}, options = {}
     main = `${who} is ${article} ${trait.adjective} cook who ${verb}${detailClauses}.`;
   }
 
-  if (detailClauses) {
-    return main;
-  }
-
   const secondaryHint = pickSecondaryHint(personality.secondary_traits, isOwnProfile);
-  if (secondaryHint) {
-    return `${main} ${buildFollowUpSentence(secondaryHint, isOwnProfile, firstName)}`;
+  if (secondaryHint && !detailClauses) {
+    return {
+      lead: main,
+      followUp: buildFollowUpSentence(secondaryHint, isOwnProfile, firstName),
+    };
   }
 
-  return main;
+  return { lead: main, followUp: '' };
 }
 
 export default buildPersonalityDescription;

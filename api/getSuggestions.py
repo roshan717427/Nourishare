@@ -404,25 +404,56 @@ class SmartSuggestionsEngine:
         return followed_users
     
     def _get_friends_recipes(self, followed_users):
-        """Get recipes from friends (followed users)"""
+        """Get meals from friends (followed users), including logs and recipe posts."""
         friends_recipes = []
-        
+
         try:
             if not followed_users:
                 return friends_recipes
-            
-            # Firestore 'in' query limit is 10, so we need to batch if more than 10
-            for i in range(0, len(followed_users), 10):
-                batch = followed_users[i:i+10]
-                recipes_ref = db.collection('recipe_posts').where('username', 'in', batch).stream()
-                
-                for recipe in recipes_ref:
-                    recipe_data = recipe.to_dict()
-                    friends_recipes.append(recipe_data)
-        
+
+            collections = ['recipe_posts', 'logs']
+            for collection_name in collections:
+                for i in range(0, len(followed_users), 10):
+                    batch = followed_users[i:i + 10]
+                    recipes_ref = (
+                        db.collection(collection_name)
+                        .where('username', 'in', batch)
+                        .stream()
+                    )
+
+                    for recipe in recipes_ref:
+                        recipe_data = recipe.to_dict() or {}
+                        recipe_data['id'] = recipe.id
+                        if collection_name == 'logs':
+                            recipe_data['recipe_name'] = (
+                                recipe_data.get('recipe_name')
+                                or recipe_data.get('title')
+                                or ''
+                            )
+                            recipe_data['cooking_time'] = (
+                                recipe_data.get('cooking_time')
+                                or recipe_data.get('time')
+                                or ''
+                            )
+                            recipe_data['difficulty_level'] = (
+                                recipe_data.get('difficulty_level')
+                                or recipe_data.get('difficulty')
+                                or 'medium'
+                            )
+                            recipe_data['image'] = (
+                                recipe_data.get('image')
+                                or recipe_data.get('photoUrl')
+                                or recipe_data.get('photo_url')
+                            )
+                            recipe_data['created_at'] = (
+                                recipe_data.get('created_at')
+                                or recipe_data.get('createdAt')
+                            )
+                        friends_recipes.append(recipe_data)
+
         except Exception as e:
             print(f"Error getting friends recipes: {str(e)}")
-        
+
         return friends_recipes
     
     def _detect_cuisines(self, recipe_name, ingredients=None):
@@ -897,7 +928,7 @@ class SmartSuggestionsEngine:
             seen_recipes.add(normalized_name)
             score = self._calculate_suggestion_score(recipe, cooked_titles, user_preferences)
             if score <= 0:
-                continue
+                score = 15.0
 
             scored_suggestions.append(
                 self._format_suggestion(
@@ -919,6 +950,7 @@ class SmartSuggestionsEngine:
             log_profile = self._build_log_profile(logs) if logs else {}
             tried_profile = self._build_tried_profile(username, logs)
             followed_users = self._get_followed_users(username)
+            has_friends = len(followed_users) >= 1
 
             preference_suggestions = []
             if has_logs:
@@ -938,6 +970,7 @@ class SmartSuggestionsEngine:
                 # Backward-compatible alias for older clients.
                 'suggestions': friend_suggestions,
                 'has_logs': has_logs,
+                'has_friends': has_friends,
                 'logs_count': len(logs),
                 'total_preference_suggestions': len(preference_suggestions),
                 'total_friend_suggestions': len(friend_suggestions),
@@ -951,6 +984,7 @@ class SmartSuggestionsEngine:
                 'friend_suggestions': [],
                 'suggestions': [],
                 'has_logs': False,
+                'has_friends': False,
                 'error': str(e),
                 'message': 'Error generating suggestions',
             }

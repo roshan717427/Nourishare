@@ -308,6 +308,7 @@ export default function AISuggestionsScreen({ navigation }) {
 
   const [loading, setLoading] = useState(true);
   const [hasLogs, setHasLogs] = useState(false);
+  const [hasFriends, setHasFriends] = useState(false);
   const [preferenceSuggestions, setPreferenceSuggestions] = useState([]);
   const [friendSuggestions, setFriendSuggestions] = useState([]);
 
@@ -368,6 +369,7 @@ export default function AISuggestionsScreen({ navigation }) {
 
           if (!response.ok) {
             setHasLogs(logsCount > 0);
+            setHasFriends(hasFollowing);
             setPreferenceSuggestions([]);
             setFriendSuggestions([]);
             return;
@@ -375,15 +377,17 @@ export default function AISuggestionsScreen({ navigation }) {
 
           const data = await response.json();
           const userHasLogs = data.has_logs ?? logsCount > 0;
+          const userHasFriends =
+            (data.has_friends ?? (data.total_friends ?? 0) >= 1) || hasFollowing;
           setHasLogs(userHasLogs);
+          setHasFriends(userHasFriends);
 
           const preferenceItems = userHasLogs
             ? data.preference_suggestions || []
             : [];
-          const friendItems =
-            hasFollowing && (data.friend_suggestions?.length
-              ? data.friend_suggestions
-              : data.suggestions || []);
+          const friendItems = userHasFriends
+            ? data.friend_suggestions || data.suggestions || []
+            : [];
 
           setPreferenceSuggestions(mapApiSuggestions(preferenceItems));
           setFriendSuggestions(mapApiSuggestions(friendItems));
@@ -391,6 +395,7 @@ export default function AISuggestionsScreen({ navigation }) {
           console.log('Suggestions API unavailable:', err.message);
           if (isMounted) {
             setHasLogs(logsCount > 0);
+            setHasFriends(hasFollowing);
             setPreferenceSuggestions([]);
             setFriendSuggestions([]);
           }
@@ -426,14 +431,14 @@ export default function AISuggestionsScreen({ navigation }) {
   const showPreferenceEmpty = !loading && !hasLogs;
   const showPreferenceLearning =
     !loading && hasLogs && preferenceSuggestions.length === 0;
-  const showFriendEmpty = !loading && (!hasFollowing || friendSuggestions.length === 0);
+  const showFriendEmpty = !loading && (!hasFriends || friendSuggestions.length === 0);
 
   const preferenceEmptyCopy = {
     title: 'Nothing to suggest yet',
     hint: 'Log your first meal and we will start picking recipes for you.',
   };
 
-  const friendEmptyCopy = !hasFollowing
+  const friendEmptyCopy = !hasFriends
     ? {
         title: 'No friend picks yet',
         hint: 'Follow friends to see what they\'re cooking.',
@@ -495,7 +500,7 @@ export default function AISuggestionsScreen({ navigation }) {
                 <Ionicons name="bulb-outline" size={18} color={colors.primary} />
               </View>
               <Text style={styles.greeting}>
-                {loading ? 'Finding recipes tailored to your tastes...' : buildGreeting(displayName, hasLogs, hasFollowing)}
+                {loading ? 'Finding recipes tailored to your tastes...' : buildGreeting(displayName, hasLogs, hasFriends)}
               </Text>
             </View>
           </LinearGradient>

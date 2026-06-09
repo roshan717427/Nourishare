@@ -26,7 +26,7 @@ import { useNextUp } from '../context/NextUpContext';
 import PortfolioGalleryModal from '../components/PortfolioGalleryModal';
 import { API_URL } from '../config/api';
 import { colors, radii, spacing } from '../constants/theme';
-import { buildPersonalityDescription } from '../utils/personalityCopy';
+import { buildPersonalityDescriptionParts } from '../utils/personalityCopy';
 
 const PORTFOLIO_FAVORITES_MAX = 2;
 const TOP_CUISINES_MAX = 3;
@@ -617,11 +617,12 @@ export default function ProfileScreen({ navigation, route }) {
     favorite_ingredients: favoriteIngredients,
   };
 
-  const personalityDescription = buildPersonalityDescription(
+  const personalityDescriptionParts = buildPersonalityDescriptionParts(
     profile?.displayName || profile?.name,
     personalityForCopy,
     { isOwnProfile }
   );
+  const primaryTrait = personality?.primary_trait?.trim();
 
   return (
     <View style={styles.container}>
@@ -807,7 +808,15 @@ export default function ProfileScreen({ navigation, route }) {
                 {isOwnProfile ? 'Your kitchen vibe' : 'In their kitchen'}
               </Text>
             </View>
-            <Text style={styles.personalityDescription}>{personalityDescription}</Text>
+            {primaryTrait && primaryTrait !== 'Kitchen Newcomer' ? (
+              <View style={styles.personalityTraitBadge}>
+                <Text style={styles.personalityTraitBadgeText}>{primaryTrait}</Text>
+              </View>
+            ) : null}
+            <Text style={styles.personalityDescription}>{personalityDescriptionParts.lead}</Text>
+            {personalityDescriptionParts.followUp ? (
+              <Text style={styles.personalityFollowUp}>{personalityDescriptionParts.followUp}</Text>
+            ) : null}
           </View>
         </View>
 
@@ -1242,29 +1251,49 @@ const styles = StyleSheet.create({
   personalityCard: {
     backgroundColor: colors.cardWarm,
     borderRadius: radii.lg,
-    padding: spacing.md,
+    padding: spacing.md + 2,
     borderWidth: 1,
     borderColor: colors.border,
     borderLeftWidth: 4,
     borderLeftColor: colors.secondary,
+    gap: 10,
   },
   personalityCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 10,
   },
   personalityCardLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
   },
+  personalityTraitBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.chipAmber,
+    borderRadius: radii.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+  },
+  personalityTraitBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.chipAmberText,
+    letterSpacing: 0.2,
+  },
   personalityDescription: {
     fontSize: 16,
-    color: colors.textSecondary,
+    color: colors.text,
     lineHeight: 26,
+    fontWeight: '500',
+  },
+  personalityFollowUp: {
+    fontSize: 15,
+    color: colors.textSecondary,
+    lineHeight: 24,
+    paddingTop: 2,
   },
   bulletList: {
     gap: 6,
