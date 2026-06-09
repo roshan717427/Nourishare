@@ -14,4 +14,14 @@ export function formatList(items) {
   return `${list.slice(0, -1).join(', ')}, and ${list[list.length - 1]}`;
 }
 
-module.exports = { formatList };
+/**
+ * Format ingredients for personality copy (lowercase, Oxford comma).
+ */
+export function formatIngredientList(items) {
+  const list = (items || [])
+    .map((item) => String(item || '').trim().toLowerCase())
+    .filter(Boolean);
+  return formatList(list);
+}
+
+module.exports = { formatList, formatIngredientList };

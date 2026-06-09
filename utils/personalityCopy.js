@@ -3,7 +3,7 @@
  * Second person on own profile; third person with first name for others.
  */
 
-import { formatList } from './formatList';
+import { formatIngredientList, formatList } from './formatList';
 import { toTitleCase } from './titleCase';
 
 const TRAIT_COPY = {
@@ -129,44 +129,38 @@ function hasMeaningfulPrimary(primary) {
   return Boolean(trimmed) && trimmed !== 'Kitchen Newcomer';
 }
 
-function formatCuisineClause(cuisines) {
-  const formatted = formatList(
+function formatCuisineNames(cuisines) {
+  return formatList(
     (cuisines || []).filter(Boolean).slice(0, 3).map(formatCuisineName)
   );
-  if (!formatted) return '';
-  return ` and enjoys ${formatted} cooking`;
 }
 
-function formatIngredientClause(ingredients) {
-  const formatted = formatList(
-    (ingredients || [])
-      .filter(Boolean)
-      .slice(0, 3)
-      .map((item) => toTitleCase(item))
-      .filter(Boolean)
-  );
-  if (!formatted) return '';
-  return ` and often reaches for ${formatted}`;
+function formatIngredientNames(ingredients) {
+  return formatIngredientList((ingredients || []).filter(Boolean).slice(0, 3));
 }
 
-function formatStandaloneCuisinePhrase(cuisines) {
-  const formatted = formatList(
-    (cuisines || []).filter(Boolean).slice(0, 3).map(formatCuisineName)
-  );
+function buildCuisinePhrase(cuisines) {
+  const formatted = formatCuisineNames(cuisines);
   if (!formatted) return '';
   return `enjoys ${formatted} cooking`;
 }
 
-function formatStandaloneIngredientPhrase(ingredients) {
-  const formatted = formatList(
-    (ingredients || [])
-      .filter(Boolean)
-      .slice(0, 3)
-      .map((item) => toTitleCase(item))
-      .filter(Boolean)
-  );
+function buildIngredientPhrase(ingredients) {
+  const formatted = formatIngredientNames(ingredients);
   if (!formatted) return '';
   return `often reaches for ${formatted}`;
+}
+
+function joinDetailPhrases(phrases) {
+  if (!phrases.length) return '';
+  if (phrases.length === 1) return ` and ${phrases[0]}`;
+  return `, ${phrases.slice(0, -1).join(', ')}, and ${phrases[phrases.length - 1]}`;
+}
+
+function buildDetailClauses(cuisines, ingredients) {
+  return joinDetailPhrases(
+    [buildCuisinePhrase(cuisines), buildIngredientPhrase(ingredients)].filter(Boolean)
+  );
 }
 
 function pickSecondaryHint(traits, isOwnProfile) {
@@ -200,10 +194,10 @@ function hasPersonalitySelections(personality = {}) {
 }
 
 function buildSelectionOnlySentence(personality, isOwnProfile, firstName) {
-  const cuisinePhrase = formatStandaloneCuisinePhrase(personality.top_cuisines);
-  const ingredientPhrase = formatStandaloneIngredientPhrase(personality.favorite_ingredients);
-
-  const parts = [cuisinePhrase, ingredientPhrase].filter(Boolean);
+  const parts = [
+    buildCuisinePhrase(personality.top_cuisines),
+    buildIngredientPhrase(personality.favorite_ingredients),
+  ].filter(Boolean);
   if (!parts.length) {
     return buildNewcomerSentence(isOwnProfile, firstName);
   }
@@ -254,9 +248,10 @@ export function buildPersonalityDescriptionParts(name, personality = {}, options
 function buildTraitDescriptionParts(personality, trait, isOwnProfile, firstName) {
   const verb = trait.verbPhrase;
   const article = articleBefore(trait.adjective);
-  const cuisineClause = formatCuisineClause(personality.top_cuisines);
-  const ingredientClause = formatIngredientClause(personality.favorite_ingredients);
-  const detailClauses = `${cuisineClause}${ingredientClause}`;
+  const detailClauses = buildDetailClauses(
+    personality.top_cuisines,
+    personality.favorite_ingredients
+  );
 
   let main;
   if (isOwnProfile) {
