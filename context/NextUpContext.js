@@ -82,6 +82,8 @@ export function NextUpProvider({ children }) {
         ingredients: recipe.ingredients || null,
         cooking_notes: recipe.cooking_notes || null,
         steps: recipe.steps || null,
+        recipe_link: recipe.recipe_link || recipe.recipeLink || null,
+        recipe_instructions: recipe.recipe_instructions || recipe.recipeInstructions || null,
         addedAt: Date.now(),
       };
       setItems((prev) => {

@@ -134,7 +134,12 @@ export function toStepList(value) {
 }
 
 export function getRecipeSteps(recipe) {
-  const explicit = toStepList(recipe.steps || recipe.instructions);
+  const explicit = toStepList(
+    recipe.steps ||
+      recipe.instructions ||
+      recipe.recipe_instructions ||
+      recipe.recipeInstructions
+  );
   if (explicit.length > 0) return explicit;
   return toStepList(recipe.cooking_notes || recipe.notes || recipe.description);
 }

@@ -19,6 +19,7 @@ import { useNextUp } from '../context/NextUpContext';
 import { API_URL } from '../config/api';
 import { colors, radii, shadows } from '../constants/theme';
 import { toIngredientList } from '../utils/recipeParsing';
+import RecipeSection, { hasRecipeContent } from '../components/RecipeSection';
 
 function postToNextUpRecipe(post, collection, postId) {
   const difficulty = post.difficulty
@@ -38,6 +39,8 @@ function postToNextUpRecipe(post, collection, postId) {
     ingredients: post.ingredients || null,
     cooking_notes: post.description || null,
     steps: post.steps || null,
+    recipe_link: post.recipeLink || null,
+    recipe_instructions: post.recipeInstructions || null,
   };
 }
 
@@ -318,6 +321,8 @@ export default function PostDetailScreen({ navigation, route }) {
               ))}
             </View>
           ) : null}
+
+          {hasRecipeContent(post) ? <RecipeSection recipe={post} /> : null}
 
           <View style={styles.actionsRow}>
             <TouchableOpacity style={styles.likeButton} onPress={toggleLike} activeOpacity={0.7}>

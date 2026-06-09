@@ -290,6 +290,7 @@ function normalizePost(doc, collectionName) {
     time: data.time || data.cooking_time || null,
     ingredients: data.ingredients || null,
     recipeLink: data.recipeLink || data.recipe_link || null,
+    recipeInstructions: data.recipeInstructions || data.recipe_instructions || null,
     // Original recipe "source" (e.g. a website/cookbook), distinct from
     // postSource which is the Firestore collection.
     source: data.source || null,

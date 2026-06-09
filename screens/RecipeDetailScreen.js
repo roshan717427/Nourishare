@@ -12,6 +12,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radii } from '../constants/theme';
 import { toIngredientList, getRecipeSteps } from '../utils/recipeParsing';
+import RecipeSection, { hasRecipeContent } from '../components/RecipeSection';
 
 /** Normalize API reason text for "Suggested because {reason}." */
 function formatSuggestionReason(raw) {
@@ -135,6 +136,10 @@ export default function RecipeDetailScreen({ navigation, route }) {
               <Ionicons name="sparkles" size={16} color={colors.primary} />
               <Text style={styles.whyText}>Suggested because {why}.</Text>
             </View>
+          ) : null}
+
+          {hasRecipeContent(recipe) ? (
+            <RecipeSection recipe={recipe} style={styles.recipeSection} />
           ) : null}
 
           <Text style={styles.sectionTitle}>Ingredients</Text>
@@ -281,6 +286,10 @@ const styles = StyleSheet.create({
     color: colors.chipCoralText,
     lineHeight: 20,
     marginLeft: 8,
+  },
+  recipeSection: {
+    marginTop: 16,
+    marginBottom: 0,
   },
   sectionTitle: {
     fontSize: 19,

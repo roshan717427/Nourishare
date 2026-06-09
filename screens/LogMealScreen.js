@@ -29,6 +29,8 @@ export default function LogMealScreen({ navigation }) {
   const [difficulty, setDifficulty] = useState(null);
   const [time, setTime] = useState('');
   const [source, setSource] = useState('');
+  const [recipeLink, setRecipeLink] = useState('');
+  const [recipeInstructions, setRecipeInstructions] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const pickImage = async () => {
@@ -113,7 +115,8 @@ export default function LogMealScreen({ navigation }) {
         time: time.trim() || undefined,
         source: source.trim() || undefined,
         photoUrl: photo || undefined, // API expects photoUrl
-        recipeLink: undefined, // Not in form, but API accepts it
+        recipeLink: recipeLink.trim() || undefined,
+        recipeInstructions: recipeInstructions.trim() || undefined,
       };
 
       // Remove undefined values
@@ -148,6 +151,8 @@ export default function LogMealScreen({ navigation }) {
               setDifficulty(null);
               setTime('');
               setSource('');
+              setRecipeLink('');
+              setRecipeInstructions('');
               // Navigate back
               navigation.goBack();
             },
@@ -322,6 +327,32 @@ export default function LogMealScreen({ navigation }) {
           />
         </View>
 
+        {/* Recipe */}
+        <View style={styles.section}>
+          <Text style={styles.label}>Recipe</Text>
+          <Text style={styles.fieldHint}>Add a link or write basic instructions so you can re-cook later.</Text>
+          <TextInput
+            style={[styles.input, styles.recipeLinkInput]}
+            placeholder="Recipe link (URL)"
+            value={recipeLink}
+            onChangeText={setRecipeLink}
+            placeholderTextColor="#999"
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+          />
+          <TextInput
+            style={[styles.input, styles.textArea, styles.recipeInstructionsInput]}
+            placeholder="Basic instructions (optional)"
+            value={recipeInstructions}
+            onChangeText={setRecipeInstructions}
+            placeholderTextColor="#999"
+            multiline
+            numberOfLines={5}
+            textAlignVertical="top"
+          />
+        </View>
+
         {/* Submit Button */}
         <TouchableOpacity
           style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
@@ -399,6 +430,18 @@ const styles = StyleSheet.create({
   textArea: {
     height: 100,
     paddingTop: 12,
+  },
+  fieldHint: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 12,
+    lineHeight: 20,
+  },
+  recipeLinkInput: {
+    marginBottom: 12,
+  },
+  recipeInstructionsInput: {
+    height: 120,
   },
   photoContainer: {
     width: '100%',
