@@ -310,7 +310,7 @@ export default function LogMealScreen({ navigation }) {
         <View style={styles.section}>
           <Text style={styles.label}>Recipe</Text>
           <Text style={styles.fieldHint}>
-            Write basic steps so you can re-cook later if you wish. Or, include a link to the recipe source.
+            Write steps so you can re-cook easily if you wish. Or, include a link to the recipe source.
           </Text>
           <TextInput
             style={[styles.input, styles.textArea, styles.recipeInstructionsInput]}
