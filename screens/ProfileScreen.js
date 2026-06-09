@@ -690,9 +690,9 @@ export default function ProfileScreen({ navigation, route }) {
               onPress={openEditProfile}
               activeOpacity={0.85}
             >
-              <Ionicons name="create-outline" size={20} color={colors.primary} />
+              <Ionicons name="create-outline" size={17} color={colors.primary} />
               <Text style={styles.editProfileButtonText}>Edit Profile</Text>
-              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
         )}
@@ -1133,23 +1133,23 @@ const styles = StyleSheet.create({
   },
   editProfileSection: {
     paddingHorizontal: 20,
-    paddingTop: 16,
+    paddingTop: 14,
   },
   editProfileButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     backgroundColor: colors.card,
-    borderRadius: radii.lg,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    borderRadius: radii.md,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     borderWidth: 1,
     borderColor: colors.border,
   },
   editProfileButtonText: {
     flex: 1,
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '600',
     color: colors.text,
   },
   avatar: {

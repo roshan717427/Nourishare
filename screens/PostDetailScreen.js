@@ -293,7 +293,7 @@ export default function PostDetailScreen({ navigation, route }) {
             >
               <Ionicons
                 name={inNextUp ? 'checkmark-circle' : 'flame-outline'}
-                size={22}
+                size={18}
                 color={inNextUp ? colors.primary : '#fff'}
               />
               <View style={styles.recookButtonTextWrap}>
@@ -489,11 +489,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.primary,
-    borderRadius: radii.lg,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    marginBottom: 16,
-    gap: 12,
+    borderRadius: radii.md,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginBottom: 14,
+    gap: 8,
   },
   recookButtonActive: {
     backgroundColor: colors.chipCoral,
@@ -504,8 +504,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   recookButtonLabel: {
-    fontSize: 17,
-    fontWeight: '800',
+    fontSize: 15,
+    fontWeight: '700',
     color: '#fff',
     letterSpacing: -0.2,
   },
@@ -513,9 +513,9 @@ const styles = StyleSheet.create({
     color: colors.primary,
   },
   recookButtonHint: {
-    fontSize: 13,
+    fontSize: 12,
     color: 'rgba(255,255,255,0.88)',
-    marginTop: 2,
+    marginTop: 1,
     fontWeight: '500',
   },
   detailBlock: {
