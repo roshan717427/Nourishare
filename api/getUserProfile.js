@@ -132,6 +132,11 @@ module.exports = async (req, res) => {
     const kitchenPersonality = { ...personality, cooking_stats: mergedCookingStats };
     if (!data.top_cuisines_user_set) {
       kitchenPersonality.top_cuisines = [];
+    } else if (Array.isArray(kitchenPersonality.top_cuisines)) {
+      kitchenPersonality.top_cuisines = kitchenPersonality.top_cuisines
+        .map((item) => String(item || '').trim())
+        .filter(Boolean)
+        .slice(0, 3);
     }
     if (!data.favorite_ingredients_user_set) {
       kitchenPersonality.favorite_ingredients = [];

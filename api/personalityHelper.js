@@ -215,7 +215,10 @@ function mergeWithUserEdits(analyzed, existingPersonality, userData = {}) {
 
   // Cuisines and ingredients are only preserved when explicitly set via Edit Profile.
   if (userData.top_cuisines_user_set) {
-    merged.top_cuisines = existingPersonality.top_cuisines || [];
+    merged.top_cuisines = (existingPersonality.top_cuisines || [])
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+      .slice(0, 3);
   }
   if (userData.favorite_ingredients_user_set) {
     merged.favorite_ingredients = existingPersonality.favorite_ingredients || [];

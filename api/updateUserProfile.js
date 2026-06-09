@@ -86,6 +86,13 @@ module.exports = async (req, res) => {
     if (updates.kitchen_personality) {
       const existing = userDoc.data().kitchen_personality || {};
       updates.kitchen_personality = { ...existing, ...updates.kitchen_personality };
+
+      if (Array.isArray(updates.kitchen_personality.top_cuisines)) {
+        updates.kitchen_personality.top_cuisines = updates.kitchen_personality.top_cuisines
+          .map((item) => String(item || '').trim())
+          .filter(Boolean)
+          .slice(0, 3);
+      }
     }
 
     // Manual personality edits set a flag so auto-refresh preserves user overrides.

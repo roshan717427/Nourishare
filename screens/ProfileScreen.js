@@ -29,8 +29,24 @@ import { colors, radii, spacing } from '../constants/theme';
 import { buildPersonalityDescription } from '../utils/personalityCopy';
 
 const PORTFOLIO_FAVORITES_MAX = 2;
+const TOP_CUISINES_MAX = 3;
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const COOKING_FREQUENCY_MONTHS = 7;
+
+function parseCommaList(text) {
+  return String(text || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function parseTopCuisines(text) {
+  const all = parseCommaList(text);
+  return {
+    items: all.slice(0, TOP_CUISINES_MAX),
+    truncated: all.length > TOP_CUISINES_MAX,
+  };
+}
 
 function computeCookingFrequencyFromLogs(logs, numMonths = COOKING_FREQUENCY_MONTHS) {
   const counts = {};
@@ -406,12 +422,6 @@ export default function ProfileScreen({ navigation, route }) {
     await signOut();
   };
 
-  const parseCommaList = (text) =>
-    text
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-
   const openEditProfile = () => {
     const p = profile?.kitchen_personality || {};
     setEditName(profile?.name || '');
@@ -459,10 +469,11 @@ export default function ProfileScreen({ navigation, route }) {
     if (!user?.username) return;
     setSavingProfile(true);
     try {
+      const { items: topCuisines, truncated: topCuisinesTruncated } = parseTopCuisines(editTopCuisines);
       const kitchen_personality = {
         primary_trait: editPrimaryTrait.trim(),
         secondary_traits: parseCommaList(editSecondaryTraits),
-        top_cuisines: parseCommaList(editTopCuisines),
+        top_cuisines: topCuisines,
         favorite_ingredients: parseCommaList(editFavoriteIngredients),
       };
       const payload = {
@@ -503,6 +514,12 @@ export default function ProfileScreen({ navigation, route }) {
           : prev
       );
       closeEditProfile();
+      if (topCuisinesTruncated) {
+        Alert.alert(
+          'Top cuisines limited to 3',
+          'Only your first 3 entries were saved, in the order you listed them.'
+        );
+      }
     } catch (err) {
       Alert.alert('Could not save profile', err.message);
     } finally {
@@ -803,7 +820,7 @@ export default function ProfileScreen({ navigation, route }) {
               <View style={styles.bulletList}>
                 {topCuisines.map((cuisine, index) => (
                   <View key={index} style={styles.bulletRow}>
-                    <Text style={styles.bulletMarker}>•</Text>
+                    <Text style={styles.rankMarker}>{index + 1}.</Text>
                     <Text style={styles.bulletText}>{cuisine}</Text>
                   </View>
                 ))}
@@ -976,14 +993,17 @@ export default function ProfileScreen({ navigation, route }) {
                 placeholderTextColor={colors.textMuted}
               />
 
-              <Text style={styles.modalLabel}>Top cuisines (comma-separated)</Text>
+              <Text style={styles.modalLabel}>Top 3 cuisines (comma-separated, ranked)</Text>
               <TextInput
                 style={styles.modalInput}
                 value={editTopCuisines}
                 onChangeText={setEditTopCuisines}
-                placeholder="Italian, Mexican, Thai"
+                placeholder="Italian, Thai, Mexican"
                 placeholderTextColor={colors.textMuted}
               />
+              <Text style={styles.modalFieldHint}>
+                List up to 3 in rank order: 1st cuisine, 2nd cuisine, 3rd cuisine.
+              </Text>
 
               <Text style={styles.modalLabel}>Favorite ingredients (comma-separated)</Text>
               <TextInput
@@ -1257,6 +1277,13 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: colors.textSecondary,
     width: 12,
+  },
+  rankMarker: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: colors.textSecondary,
+    width: 18,
+    fontWeight: '600',
   },
   bulletText: {
     flex: 1,
