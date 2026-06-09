@@ -3,7 +3,6 @@ const { getFirestore } = require('firebase-admin/firestore');
 const { refreshUserPersonality, isPersonalityStale } = require('./personalityHelper');
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const COOKING_FREQUENCY_MONTHS = 7;
 
 function toMillis(value) {
   if (!value) return 0;
@@ -14,8 +13,8 @@ function toMillis(value) {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
-/** Count logs per calendar month for the last N months (rolling window). */
-function computeCookingFrequency(logsSnap, numMonths = COOKING_FREQUENCY_MONTHS) {
+/** Count logs per calendar month Jan–Dec for the given year. */
+function computeCookingFrequency(logsSnap, year = new Date().getFullYear()) {
   const counts = {};
 
   logsSnap.forEach((logDoc) => {
@@ -23,18 +22,16 @@ function computeCookingFrequency(logsSnap, numMonths = COOKING_FREQUENCY_MONTHS)
     const ms = toMillis(logData.createdAt || logData.created_at);
     if (!ms) return;
     const d = new Date(ms);
-    const key = `${d.getFullYear()}-${d.getMonth()}`;
-    counts[key] = (counts[key] || 0) + 1;
+    if (d.getFullYear() !== year) return;
+    const month = d.getMonth();
+    counts[month] = (counts[month] || 0) + 1;
   });
 
   const result = [];
-  const now = new Date();
-  for (let i = numMonths - 1; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const key = `${d.getFullYear()}-${d.getMonth()}`;
+  for (let month = 0; month < 12; month++) {
     result.push({
-      month: MONTH_LABELS[d.getMonth()],
-      value: counts[key] || 0,
+      month: MONTH_LABELS[month],
+      value: counts[month] || 0,
     });
   }
   return result;
@@ -149,6 +146,7 @@ module.exports = async (req, res) => {
       followers: followersCount,
       following: followingCount,
       // Always derive from logs so bars reflect real activity (zeros when no logs).
+      cookingFrequencyYear: new Date().getFullYear(),
       cookingFrequency: computeCookingFrequency(logsSnap),
     };
 

@@ -31,7 +31,27 @@ import { buildPersonalityDescription } from '../utils/personalityCopy';
 const PORTFOLIO_FAVORITES_MAX = 2;
 const TOP_CUISINES_MAX = 3;
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const COOKING_FREQUENCY_MONTHS = 7;
+
+function computeCookingFrequencyFromLogs(logs, year = new Date().getFullYear()) {
+  const counts = {};
+  for (const log of logs) {
+    const ms = log.created_at_ms || 0;
+    if (!ms) continue;
+    const d = new Date(ms);
+    if (d.getFullYear() !== year) continue;
+    const month = d.getMonth();
+    counts[month] = (counts[month] || 0) + 1;
+  }
+
+  const result = [];
+  for (let month = 0; month < 12; month++) {
+    result.push({
+      month: MONTH_LABELS[month],
+      value: counts[month] || 0,
+    });
+  }
+  return result;
+}
 
 function parseCommaList(text) {
   return String(text || '')
@@ -46,29 +66,6 @@ function parseTopCuisines(text) {
     items: all.slice(0, TOP_CUISINES_MAX),
     truncated: all.length > TOP_CUISINES_MAX,
   };
-}
-
-function computeCookingFrequencyFromLogs(logs, numMonths = COOKING_FREQUENCY_MONTHS) {
-  const counts = {};
-  for (const log of logs) {
-    const ms = log.created_at_ms || 0;
-    if (!ms) continue;
-    const d = new Date(ms);
-    const key = `${d.getFullYear()}-${d.getMonth()}`;
-    counts[key] = (counts[key] || 0) + 1;
-  }
-
-  const result = [];
-  const now = new Date();
-  for (let i = numMonths - 1; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const key = `${d.getFullYear()}-${d.getMonth()}`;
-    result.push({
-      month: MONTH_LABELS[d.getMonth()],
-      value: counts[key] || 0,
-    });
-  }
-  return result;
 }
 
 function resolvePortfolioDishes(dishes, favoriteIds) {
@@ -364,6 +361,11 @@ export default function ProfileScreen({ navigation, route }) {
       { month: 'May', value: 10 },
       { month: 'Jun', value: 17 },
       { month: 'Jul', value: 9 },
+      { month: 'Aug', value: 14 },
+      { month: 'Sep', value: 11 },
+      { month: 'Oct', value: 16 },
+      { month: 'Nov', value: 7 },
+      { month: 'Dec', value: 13 },
     ],
   });
 
@@ -384,17 +386,16 @@ export default function ProfileScreen({ navigation, route }) {
     [dishes, favoriteIds]
   );
 
-  const cookingFrequencyData = useMemo(() => {
-    if (profile?.cookingFrequency?.length) return profile.cookingFrequency;
-    if (isOwnProfile || dishes.length > 0) {
-      return computeCookingFrequencyFromLogs(dishes);
-    }
-    return null;
-  }, [profile?.cookingFrequency, dishes, isOwnProfile]);
+  const cookingFrequencyYear =
+    profile?.cookingFrequencyYear || new Date().getFullYear();
 
-  const showCookingFrequency =
-    cookingFrequencyData?.length > 0 &&
-    (isOwnProfile || cookingFrequencyData.some((item) => item.value > 0));
+  const cookingFrequencyData = useMemo(() => {
+    if (!isOwnProfile) return null;
+    if (profile?.cookingFrequency?.length) return profile.cookingFrequency;
+    return computeCookingFrequencyFromLogs(dishes, cookingFrequencyYear);
+  }, [profile?.cookingFrequency, dishes, isOwnProfile, cookingFrequencyYear]);
+
+  const showCookingFrequency = isOwnProfile && !!cookingFrequencyData;
 
   const togglePortfolioFavorite = async (dishId) => {
     if (!isOwnProfile || !user?.username) return;
@@ -875,9 +876,10 @@ export default function ProfileScreen({ navigation, route }) {
           <View style={styles.section}>
             <View style={styles.sectionTitleRow}>
               <Ionicons name="calendar-outline" size={20} color={colors.accentDark} />
-              <Text style={styles.sectionTitle}>Cooking Frequency</Text>
+              <Text style={styles.sectionTitle}>
+                Cooking Frequency in {cookingFrequencyYear}
+              </Text>
             </View>
-            <Text style={styles.subtitle}>Recipes Cooked Per Month</Text>
             <BarChart data={cookingFrequencyData} />
           </View>
         )}
