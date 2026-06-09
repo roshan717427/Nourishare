@@ -13,6 +13,46 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, radii } from '../constants/theme';
 import { toIngredientList, getRecipeSteps } from '../utils/recipeParsing';
 
+/** Normalize API reason text for "Suggested because {reason}." */
+function formatSuggestionReason(raw) {
+  if (!raw) return null;
+  const why = `${raw}`.trim();
+  if (!why) return null;
+
+  // New API copy already starts with "it …" or "your friend …".
+  if (/^(it |your friend )/i.test(why)) {
+    return why;
+  }
+
+  // Legacy verb-first fragments from older API responses.
+  if (/^a great /i.test(why)) {
+    return `it is ${why}`;
+  }
+  if (/^(highly rated|well-?rated|popular recipe|liked by|cooked by|recently cooked)/i.test(why)) {
+    if (/^cooked by your friend$/i.test(why)) {
+      return 'your friend cooked it';
+    }
+    if (/^recently cooked$/i.test(why)) {
+      return 'your friend cooked it recently';
+    }
+    return `it is ${why}`;
+  }
+  if (/^(matches|shares|picked|fits|based on)/i.test(why)) {
+    if (/^picked /i.test(why)) {
+      return `it was ${why}`;
+    }
+    if (/^based on /i.test(why)) {
+      return `it is ${why}`;
+    }
+    return `it ${why}`;
+  }
+  if (/^features /i.test(why)) {
+    return `it ${why}`;
+  }
+
+  return why;
+}
+
 export default function RecipeDetailScreen({ navigation, route }) {
   const recipe = route?.params?.recipe || {};
 
@@ -22,7 +62,7 @@ export default function RecipeDetailScreen({ navigation, route }) {
   const time = recipe.cooking_time || recipe.time || null;
   const rating = recipe.rating != null && recipe.rating !== '' ? recipe.rating : null;
   const author = recipe.username || null;
-  const why = recipe.why_suggested || null;
+  const why = formatSuggestionReason(recipe.why_suggested);
 
   const ingredients = toIngredientList(recipe.ingredients);
   const steps = getRecipeSteps(recipe);
@@ -93,7 +133,7 @@ export default function RecipeDetailScreen({ navigation, route }) {
           {why ? (
             <View style={styles.whyBox}>
               <Ionicons name="sparkles" size={16} color={colors.primary} />
-              <Text style={styles.whyText}>Suggested because it's {why}.</Text>
+              <Text style={styles.whyText}>Suggested because {why}.</Text>
             </View>
           ) : null}
 

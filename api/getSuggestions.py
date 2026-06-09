@@ -600,6 +600,31 @@ class SmartSuggestionsEngine:
             parts.append(str(cooking_time))
         return ', '.join(parts) if parts else 'Suggested for you'
 
+    def _display_cuisine(self, cuisine):
+        """Human-readable cuisine label for suggestion copy."""
+        if not cuisine or cuisine == 'general':
+            return ''
+        return str(cuisine).replace('_', ' ').capitalize()
+
+    def _join_reason_clauses(self, clauses):
+        """Join reason clauses for 'Suggested because …' without repeating 'it is'."""
+        if not clauses:
+            return ''
+        if len(clauses) == 1:
+            return clauses[0]
+        head = clauses[0]
+        tail = []
+        for clause in clauses[1:]:
+            lowered = clause
+            for prefix in ('it is ', 'it was ', 'it '):
+                if lowered.startswith(prefix):
+                    lowered = lowered[len(prefix):]
+                    break
+            tail.append(lowered)
+        if len(tail) == 1:
+            return f'{head}, and {tail[0]}'
+        return f'{head}, {", ".join(tail[:-1])}, and {tail[-1]}'
+
     def _format_suggestion(self, recipe, score, why_suggested, blocked_urls=None):
         """Normalize a recipe document into a suggestion payload."""
         recipe_name = recipe.get('recipe_name') or recipe.get('title') or recipe.get('name') or 'Recipe'
@@ -705,12 +730,13 @@ class SmartSuggestionsEngine:
                 recipe_cuisine = self._detect_cuisine(
                     recipe_name.lower(), recipe_data.get('ingredients', [])
                 )
-                if recipe_cuisine in top_cuisines:
-                    reason = f'matches your love of {recipe_cuisine} flavors'
+                cuisine_label = self._display_cuisine(recipe_cuisine)
+                if recipe_cuisine in top_cuisines and cuisine_label:
+                    reason = f'it matches your love of {cuisine_label} flavors'
                 elif log_profile.get('ingredient_tokens'):
-                    reason = 'shares ingredients with meals you have logged'
+                    reason = 'it shares ingredients with meals you have logged'
                 else:
-                    reason = 'picked from what you have been cooking lately'
+                    reason = 'it was picked from what you have been cooking lately'
 
                 scored_suggestions.append({
                     'score': score,
@@ -760,7 +786,11 @@ class SmartSuggestionsEngine:
                     'id': f'ingredient-{key}',
                     **idea,
                 }
-                if add_suggestion(idea_recipe, 65, f'features {token}, an ingredient you cook with often'):
+                if add_suggestion(
+                    idea_recipe,
+                    65,
+                    f'it features {token}, an ingredient you cook with often',
+                ):
                     break
 
         # Cuisine templates aligned with detected log cuisines.
@@ -779,10 +809,13 @@ class SmartSuggestionsEngine:
                     'difficulty_level': template['difficulty_level'],
                     'image': template.get('image'),
                 }
+                cuisine_label = self._display_cuisine(cuisine)
                 add_suggestion(
                     template_recipe,
                     60,
-                    f'fits your recent {cuisine} cooking' if cuisine != 'general' else 'based on your recent meals',
+                    f'it fits your recent {cuisine_label} cooking'
+                    if cuisine_label
+                    else 'it is based on your recent meals',
                 )
 
         # General fallback so first-log users always see picks.
@@ -793,7 +826,11 @@ class SmartSuggestionsEngine:
                 'id': f'fallback-{template["name"].lower().replace(" ", "-")}',
                 **template,
             }
-            add_suggestion(template_recipe, 50, 'a great next meal based on what you have been cooking')
+            add_suggestion(
+                template_recipe,
+                50,
+                'it is a great next meal based on what you have been cooking',
+            )
 
         return generated[:needed]
 
@@ -933,23 +970,24 @@ class SmartSuggestionsEngine:
             return str(timestamp)
     
     def _get_suggestion_reason(self, recipe, score):
-        """Generate a human-readable reason for why this recipe was suggested"""
-        reasons = []
-        
+        """Generate a human-readable reason for why this recipe was suggested."""
+        clauses = []
+        is_recent = False
+
         rating = recipe.get('rating', 0)
         if rating >= 4.5:
-            reasons.append('highly rated by your friend')
+            clauses.append('it is highly rated by your friend')
         elif rating >= 4.0:
-            reasons.append('well-rated by your friend')
-        
+            clauses.append('it is well rated by your friend')
+
         recooks = recipe.get('recooks_count', 0)
         if recooks >= 3:
-            reasons.append('popular recipe (many re-cooks)')
-        
+            clauses.append('it is a popular recipe with many re-cooks')
+
         likes = recipe.get('likes_count', 0)
         if likes >= 5:
-            reasons.append('liked by many users')
-        
+            clauses.append('it is liked by many users')
+
         created_at = recipe.get('created_at')
         if created_at:
             try:
@@ -963,19 +1001,23 @@ class SmartSuggestionsEngine:
                         recipe_date = datetime.fromisoformat(created_str.replace('Z', '+00:00'))
                     else:
                         recipe_date = None
-                
+
                 if recipe_date:
                     if recipe_date.tzinfo:
                         recipe_date = recipe_date.replace(tzinfo=None)
                     days_ago = (datetime.now() - recipe_date).days
                     if days_ago <= 7:
-                        reasons.append('recently cooked')
-            except:
+                        is_recent = True
+            except Exception:
                 pass
-        
-        if reasons:
-            return ', '.join(reasons)
-        return 'cooked by your friend'
+
+        if is_recent and not clauses:
+            return 'your friend cooked it recently'
+        if is_recent:
+            return self._join_reason_clauses(clauses + ['your friend cooked it recently'])
+        if clauses:
+            return self._join_reason_clauses(clauses)
+        return 'your friend cooked it'
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
