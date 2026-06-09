@@ -26,7 +26,7 @@ import { useNextUp } from '../context/NextUpContext';
 import PortfolioGalleryModal from '../components/PortfolioGalleryModal';
 import { API_URL } from '../config/api';
 import { colors, radii, spacing } from '../constants/theme';
-import { buildPersonalityDescriptionParts } from '../utils/personalityCopy';
+import { buildPersonalityDescriptionParts, getTraitCompoundLabel } from '../utils/personalityCopy';
 import { capitalizeList } from '../utils/titleCase';
 
 const PORTFOLIO_FAVORITES_MAX = 2;
@@ -630,6 +630,7 @@ export default function ProfileScreen({ navigation, route }) {
     { isOwnProfile }
   );
   const primaryTrait = personality?.primary_trait?.trim();
+  const primaryTraitLabel = getTraitCompoundLabel(primaryTrait);
 
   return (
     <View style={styles.container}>
@@ -817,7 +818,7 @@ export default function ProfileScreen({ navigation, route }) {
             </View>
             {primaryTrait && primaryTrait !== 'Kitchen Newcomer' ? (
               <View style={styles.personalityTraitBadge}>
-                <Text style={styles.personalityTraitBadgeText}>{primaryTrait}</Text>
+                <Text style={styles.personalityTraitBadgeText}>{primaryTraitLabel}</Text>
               </View>
             ) : null}
             <Text style={styles.personalityDescription}>{personalityDescriptionParts.lead}</Text>
@@ -998,7 +999,7 @@ export default function ProfileScreen({ navigation, route }) {
                 style={styles.modalInput}
                 value={editPrimaryTrait}
                 onChangeText={setEditPrimaryTrait}
-                placeholder="e.g. Adventurous and comforting"
+                placeholder="e.g. bold and comforting"
                 placeholderTextColor={colors.textMuted}
               />
 

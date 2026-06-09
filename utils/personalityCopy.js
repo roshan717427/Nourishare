@@ -8,28 +8,52 @@ import { toTitleCase } from './titleCase';
 
 const TRAIT_COPY = {
   'Kitchen Enthusiast': {
-    adjective: 'curious',
+    compoundLabel: 'curious recipe explorer',
     verbPhrase: 'loves trying new recipes',
   },
   'Global Explorer': {
-    adjective: 'worldly',
+    compoundLabel: 'globe-trotting experimentalist',
     verbPhrase: 'loves exploring cuisines from around the world',
   },
   'Adventurous Chef': {
-    adjective: 'adventurous',
+    compoundLabel: 'bold-flavored experimentalist',
     verbPhrase: 'loves to experiment',
   },
   'Quality Focused': {
-    adjective: 'meticulous',
+    compoundLabel: 'detail-minded perfectionist',
     verbPhrase: 'takes pride in getting the details right',
   },
   'Experienced Cook': {
-    adjective: 'seasoned',
+    compoundLabel: 'seasoned home chef',
     verbPhrase: 'cooks with real confidence',
   },
   'Kitchen Newcomer': {
-    adjective: 'budding',
-    verbPhrase: 'is still getting comfortable in the kitchen',
+    compoundLabel: 'kitchen newcomer',
+    verbPhrase: 'is still finding your footing',
+  },
+  'Adventurous and Comforting': {
+    compoundLabel: 'comfort-minded experimentalist',
+    verbPhrase: 'likes mixing bold experiments with cozy favorites',
+  },
+  'Fresh and Wholesome': {
+    compoundLabel: 'fresh-forward wholesome cook',
+    verbPhrase: 'leans toward bright, nourishing plates',
+  },
+  'Bold and Spicy': {
+    compoundLabel: 'bold-spiced flavor seeker',
+    verbPhrase: 'chases heat and big flavor',
+  },
+  'Classic and Refined': {
+    compoundLabel: 'classic-minded refined cook',
+    verbPhrase: 'favors timeless techniques and polished results',
+  },
+  'Hearty and Casual': {
+    compoundLabel: 'comfort-driven home cook',
+    verbPhrase: 'leans toward familiar, satisfying dishes',
+  },
+  'Vibrant and Aromatic': {
+    compoundLabel: 'aromatic flavor enthusiast',
+    verbPhrase: 'builds dishes around fragrant herbs and spices',
   },
 };
 
@@ -96,32 +120,91 @@ function formatCuisineName(cuisine) {
   return toTitleCase(cuisine);
 }
 
+function resolveCompoundLabelFromKeywords(lowered) {
+  if (lowered.includes('sweet')) return 'sweet-toothed experimentalist';
+  if (lowered.includes('adventur') && (lowered.includes('comfort') || lowered.includes('cozy'))) {
+    return 'comfort-minded experimentalist';
+  }
+  if (lowered.includes('adventur')) return 'bold-flavored experimentalist';
+  if (lowered.includes('comfort') || lowered.includes('cozy') || lowered.includes('hearty')) {
+    return 'comfort-driven home cook';
+  }
+  if (lowered.includes('global') || (lowered.includes('explor') && lowered.includes('cuisine'))) {
+    return 'globe-trotting experimentalist';
+  }
+  if (lowered.includes('bold') || lowered.includes('spicy')) return 'bold-spiced flavor seeker';
+  if (lowered.includes('fresh') || lowered.includes('wholesome')) return 'fresh-forward wholesome cook';
+  if (lowered.includes('classic') || lowered.includes('refined')) return 'classic-minded refined cook';
+  if (lowered.includes('vibrant') || lowered.includes('aromatic')) return 'aromatic flavor enthusiast';
+  if (lowered.includes('quality') || lowered.includes('meticulous') || lowered.includes('focused')) {
+    return 'detail-minded perfectionist';
+  }
+  if (lowered.includes('experienced') || lowered.includes('seasoned')) return 'seasoned home chef';
+  if (lowered.includes('newcomer') || lowered.includes('learning') || lowered.includes('beginner')) {
+    return 'kitchen newcomer';
+  }
+  if (lowered.includes('enthusiast') || lowered.includes('curious')) return 'curious recipe explorer';
+  return '';
+}
+
 function resolveTraitCopy(primary) {
   if (TRAIT_COPY[primary]) return TRAIT_COPY[primary];
 
   const lowered = String(primary || '').trim().toLowerCase();
   if (!lowered) return null;
 
-  if (lowered.includes('adventur')) {
-    return TRAIT_COPY['Adventurous Chef'];
-  }
-  if (lowered.includes('comfort') || lowered.includes('cozy')) {
+  const compoundLabel = resolveCompoundLabelFromKeywords(lowered);
+  if (compoundLabel) {
+    if (compoundLabel === 'comfort-driven home cook') {
+      return {
+        compoundLabel,
+        verbPhrase: 'leans toward familiar, satisfying dishes',
+      };
+    }
+    if (compoundLabel === 'bold-flavored experimentalist') {
+      return TRAIT_COPY['Adventurous Chef'];
+    }
+    if (compoundLabel === 'globe-trotting experimentalist') {
+      return TRAIT_COPY['Global Explorer'];
+    }
+    if (compoundLabel === 'kitchen newcomer') {
+      return TRAIT_COPY['Kitchen Newcomer'];
+    }
+    if (compoundLabel === 'sweet-toothed experimentalist') {
+      return {
+        compoundLabel,
+        verbPhrase: 'loves desserts and playful sweet-savory twists',
+      };
+    }
     return {
-      adjective: lowered.includes(' and ') ? lowered : 'comfort-driven',
-      verbPhrase: 'leans toward familiar, satisfying dishes',
+      compoundLabel,
+      verbPhrase: 'has a distinct style in the kitchen',
     };
   }
+
   if (lowered.includes(' and ')) {
     return {
-      adjective: lowered,
+      compoundLabel: 'flavor-forward home cook',
       verbPhrase: 'likes bringing that mix to the stove',
     };
   }
 
   return {
-    adjective: lowered,
+    compoundLabel: 'flavor-forward home cook',
     verbPhrase: 'has a distinct style in the kitchen',
   };
+}
+
+/**
+ * Vivid hyphenated compound label for profile badges and copy.
+ * @param {string} primary
+ * @returns {string}
+ */
+export function getTraitCompoundLabel(primary) {
+  const trait = resolveTraitCopy(primary);
+  if (trait?.compoundLabel) return trait.compoundLabel;
+  const trimmed = String(primary || '').trim();
+  return trimmed || 'kitchen newcomer';
 }
 
 function hasMeaningfulPrimary(primary) {
@@ -173,10 +256,10 @@ function pickSecondaryHint(traits, isOwnProfile) {
 
 function buildNewcomerSentence(isOwnProfile, firstName) {
   if (isOwnProfile) {
-    return "You're a budding cook who's still getting comfortable in the kitchen.";
+    return "You're a kitchen newcomer still finding your footing.";
   }
   const who = firstName || 'This cook';
-  return `${who} is a budding cook who's still getting comfortable in the kitchen.`;
+  return `${who} is a kitchen newcomer still finding their footing.`;
 }
 
 function buildFollowUpSentence(hint, isOwnProfile, firstName) {
@@ -202,8 +285,10 @@ function buildSelectionOnlySentence(personality, isOwnProfile, firstName) {
     return buildNewcomerSentence(isOwnProfile, firstName);
   }
 
+  const compoundLabel = 'flavor-forward home cook';
+  const article = articleBefore(compoundLabel);
   const who = isOwnProfile ? "You're" : `${firstName || 'This cook'} is`;
-  return `${who} a cook who ${formatList(parts)}.`;
+  return `${who} ${article} ${compoundLabel} who ${formatList(parts)}.`;
 }
 
 /**
@@ -247,7 +332,7 @@ export function buildPersonalityDescriptionParts(name, personality = {}, options
 
 function buildTraitDescriptionParts(personality, trait, isOwnProfile, firstName) {
   const verb = trait.verbPhrase;
-  const article = articleBefore(trait.adjective);
+  const article = articleBefore(trait.compoundLabel);
   const detailClauses = buildDetailClauses(
     personality.top_cuisines,
     personality.favorite_ingredients
@@ -255,10 +340,10 @@ function buildTraitDescriptionParts(personality, trait, isOwnProfile, firstName)
 
   let main;
   if (isOwnProfile) {
-    main = `You're ${article} ${trait.adjective} cook who ${verb}${detailClauses}.`;
+    main = `You're ${article} ${trait.compoundLabel} who ${verb}${detailClauses}.`;
   } else {
     const who = firstName || 'This cook';
-    main = `${who} is ${article} ${trait.adjective} cook who ${verb}${detailClauses}.`;
+    main = `${who} is ${article} ${trait.compoundLabel} who ${verb}${detailClauses}.`;
   }
 
   const secondaryHint = pickSecondaryHint(personality.secondary_traits, isOwnProfile);
