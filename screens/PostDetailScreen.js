@@ -15,17 +15,41 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
+import { useNextUp } from '../context/NextUpContext';
 import { API_URL } from '../config/api';
-import { colors, radii } from '../constants/theme';
+import { colors, radii, shadows } from '../constants/theme';
 import { toIngredientList } from '../utils/recipeParsing';
+
+function postToNextUpRecipe(post, collection, postId) {
+  const difficulty = post.difficulty
+    ? `${post.difficulty}`.charAt(0).toUpperCase() + `${post.difficulty}`.slice(1)
+    : null;
+  const time = post.time || null;
+  const subtitle = [difficulty, time].filter(Boolean).join(' · ') || 'From your feed';
+
+  return {
+    id: `${collection}:${postId}`,
+    name: post.title || 'Recipe',
+    subtitle,
+    image: post.photoUrl || null,
+    difficulty_level: post.difficulty || null,
+    cooking_time: post.time || null,
+    rating: post.rating ?? null,
+    ingredients: post.ingredients || null,
+    cooking_notes: post.description || null,
+    steps: post.steps || null,
+  };
+}
 
 export default function PostDetailScreen({ navigation, route }) {
   const { user } = useAuth();
+  const { addToNextUp, isInNextUp } = useNextUp();
   const username = user?.username;
 
   const initialPost = route?.params?.post || {};
   const postId = route?.params?.postId || initialPost.id;
   const collection = route?.params?.collection || initialPost.postSource || 'logs';
+  const fromFeed = !!route?.params?.fromFeed;
 
   const [post, setPost] = useState(initialPost);
   const [comments, setComments] = useState([]);
@@ -141,6 +165,21 @@ export default function PostDetailScreen({ navigation, route }) {
 
   const ingredients = toIngredientList(post.ingredients);
 
+  const nextUpRecipe = postToNextUpRecipe(post, collection, postId);
+  const inNextUp = fromFeed && username ? isInNextUp(nextUpRecipe.id) : false;
+  const showRecook = fromFeed && !!username;
+
+  const handleRecook = () => {
+    if (isInNextUp(nextUpRecipe.id)) {
+      Alert.alert('Already in Next Up', `"${nextUpRecipe.name}" is already on your list.`);
+      return;
+    }
+    const added = addToNextUp(nextUpRecipe);
+    if (added) {
+      Alert.alert('Saved to Next Up', `"${nextUpRecipe.name}" is on your private cooking queue.`);
+    }
+  };
+
   const handleDeletePost = () => {
     if (!isOwnPost || !username || !postId) return;
 
@@ -242,6 +281,30 @@ export default function PostDetailScreen({ navigation, route }) {
 
           {post.description ? (
             <Text style={styles.description}>{post.description}</Text>
+          ) : null}
+
+          {showRecook ? (
+            <TouchableOpacity
+              style={[styles.recookButton, inNextUp && styles.recookButtonActive, shadows.cardSoft]}
+              onPress={handleRecook}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel={inNextUp ? 'Already in Next Up' : 'Re-cook, add to Next Up'}
+            >
+              <Ionicons
+                name={inNextUp ? 'checkmark-circle' : 'flame-outline'}
+                size={22}
+                color={inNextUp ? colors.primary : '#fff'}
+              />
+              <View style={styles.recookButtonTextWrap}>
+                <Text style={[styles.recookButtonLabel, inNextUp && styles.recookButtonLabelActive]}>
+                  {inNextUp ? 'In Next Up' : 'Re-cook'}
+                </Text>
+                {!inNextUp ? (
+                  <Text style={styles.recookButtonHint}>Add to your private cooking queue</Text>
+                ) : null}
+              </View>
+            </TouchableOpacity>
           ) : null}
 
           {ingredients.length > 0 ? (
@@ -421,6 +484,39 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     lineHeight: 23,
     marginBottom: 12,
+  },
+  recookButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: radii.lg,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: 16,
+    gap: 12,
+  },
+  recookButtonActive: {
+    backgroundColor: colors.chipCoral,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  recookButtonTextWrap: {
+    flex: 1,
+  },
+  recookButtonLabel: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: -0.2,
+  },
+  recookButtonLabelActive: {
+    color: colors.primary,
+  },
+  recookButtonHint: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.88)',
+    marginTop: 2,
+    fontWeight: '500',
   },
   detailBlock: {
     marginTop: 4,

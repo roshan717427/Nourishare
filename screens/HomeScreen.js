@@ -248,6 +248,7 @@ export default function HomeScreen({ navigation }) {
       postId: item.id,
       collection: item.postSource || 'logs',
       post: item,
+      fromFeed: true,
     });
   };
 
