@@ -69,13 +69,13 @@ CUISINE_TEMPLATES = {
     ],
     'general': [
         {'name': 'One-Pan Roasted Veggie Bowl', 'ingredients': 'seasonal vegetables, olive oil, garlic, rice, herbs', 'cooking_time': '30 min', 'difficulty_level': 'easy', 'image': 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=500&q=80'},
-        {'name': 'Quick Herb Chicken Skillet', 'ingredients': 'chicken, onion, garlic, herbs, lemon', 'cooking_time': '25 min', 'difficulty_level': 'easy', 'image': 'https://images.unsplash.com/photo-1598103442097-257256dee282?w=500&q=80'},
+        {'name': 'Quick Herb Chicken Skillet', 'ingredients': 'chicken, onion, garlic, herbs, lemon', 'cooking_time': '25 min', 'difficulty_level': 'easy', 'image': 'https://images.unsplash.com/photo-1768238907887-023b7ac9f450?w=500&q=80'},
     ],
 }
 
 INGREDIENT_IDEAS = {
-    'chicken': {'name': 'Lemon Herb Roast Chicken', 'ingredients': 'chicken, lemon, garlic, rosemary, olive oil', 'cooking_time': '45 min', 'difficulty_level': 'medium', 'image': 'https://images.unsplash.com/photo-1598103442097-257256dee282?w=500&q=80'},
-    'pasta': {'name': 'Weeknight Tomato Pasta', 'ingredients': 'pasta, tomatoes, garlic, basil, olive oil', 'cooking_time': '20 min', 'difficulty_level': 'easy', 'image': 'https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=500&q=80'},
+    'chicken': {'name': 'Lemon Herb Roast Chicken', 'ingredients': 'chicken, lemon, garlic, rosemary, olive oil', 'cooking_time': '45 min', 'difficulty_level': 'medium', 'image': 'https://images.unsplash.com/photo-1768238907887-023b7ac9f450?w=500&q=80'},
+    'pasta': {'name': 'Weeknight Tomato Pasta', 'ingredients': 'pasta, tomatoes, garlic, basil, olive oil', 'cooking_time': '20 min', 'difficulty_level': 'easy', 'image': 'https://images.unsplash.com/photo-1695742434600-e0f59629d2bb?w=500&q=80'},
     'rice': {'name': 'Fried Rice with Vegetables', 'ingredients': 'rice, eggs, soy sauce, peas, carrots, scallions', 'cooking_time': '20 min', 'difficulty_level': 'easy', 'image': 'https://images.unsplash.com/photo-1603133872877-684f208b89d7?w=500&q=80'},
     'tofu': {'name': 'Crispy Tofu Stir-Fry', 'ingredients': 'tofu, soy sauce, ginger, broccoli, sesame oil', 'cooking_time': '25 min', 'difficulty_level': 'medium', 'image': 'https://images.unsplash.com/photo-1512058564366-18510be2db19?w=500&q=80'},
     'salmon': {'name': 'Honey Garlic Glazed Salmon', 'ingredients': 'salmon, honey, garlic, soy sauce, rice', 'cooking_time': '20 min', 'difficulty_level': 'medium', 'image': 'https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=500&q=80'},

@@ -13,6 +13,7 @@ FALLBACK_IMAGES = [
 ]
 
 TITLE_IMAGE_KEYWORDS = [
+    (('tomato pasta', 'weeknight pasta', 'pasta bolognese', 'meat pasta'), 'https://images.unsplash.com/photo-1695742434600-e0f59629d2bb?w=500&q=80'),
     (('coconut curry soup', 'coconut curry', 'tom yum'), 'https://images.unsplash.com/photo-1547592166-23ac45744acd?w=500&q=80'),
     (('mac and cheese', 'macaroni'), 'https://images.unsplash.com/photo-1543339496-18e0d6816ba7?w=500&q=80'),
     (('pad thai', 'lo mein', 'fried rice'), 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=500&q=80'),
@@ -22,7 +23,7 @@ TITLE_IMAGE_KEYWORDS = [
     (('roasted veggie', 'veggie bowl', 'grain bowl'), 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=500&q=80'),
     (('greek salad', 'salad bowl'), 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=500&q=80'),
     (('chicken taco', 'chicken tacos', 'weeknight chicken'), 'https://images.unsplash.com/photo-1551504734-5ee1c4a1479b?w=500&q=80'),
-    (('herb chicken', 'chicken skillet', 'roast chicken'), 'https://images.unsplash.com/photo-1598103442097-257256dee282?w=500&q=80'),
+    (('quick herb chicken', 'herb chicken', 'chicken skillet', 'roast chicken'), 'https://images.unsplash.com/photo-1768238907887-023b7ac9f450?w=500&q=80'),
     (('thai basil', 'basil chicken'), 'https://images.unsplash.com/photo-1559317152-202d30895b0a?w=500&q=80'),
     (('black bean quesadilla', 'bean quesadilla'), 'https://images.unsplash.com/photo-1618040996337-56904b7850b9?w=500&q=80'),
     (('sheet pan', 'bbq chicken'), 'https://images.unsplash.com/photo-1529193591184-b1d58069ecdd?w=500&q=80'),
@@ -39,7 +40,7 @@ TITLE_IMAGE_KEYWORDS = [
     (('curry', 'tikka', 'masala', 'biryani', 'korma', 'vindaloo'), 'https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=500&q=80'),
     (('coconut',), 'https://images.unsplash.com/photo-1547592166-23ac45744acd?w=500&q=80'),
     (('salmon', 'trout', 'cod', 'tilapia', 'fish'), 'https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=500&q=80'),
-    (('chicken', 'wing', 'poultry', 'drumstick'), 'https://images.unsplash.com/photo-1598103442097-257256dee282?w=500&q=80'),
+    (('chicken', 'wing', 'poultry', 'drumstick'), 'https://images.unsplash.com/photo-1768238907887-023b7ac9f450?w=500&q=80'),
     (('beef', 'steak', 'brisket', 'meatball'), 'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=500&q=80'),
     (('pork', 'bacon', 'ham', 'sausage', 'prosciutto'), 'https://images.unsplash.com/photo-1432130438734-24cdc404168c?w=500&q=80'),
     (('lamb', 'kebab', 'skewer'), 'https://images.unsplash.com/photo-1529042410759-befb1204b468?w=500&q=80'),
@@ -85,9 +86,9 @@ EXACT_TITLE_IMAGES = {
     'sheet pan bbq chicken': 'https://images.unsplash.com/photo-1529193591184-b1d58069ecdd?w=500&q=80',
     'classic mac and cheese': 'https://images.unsplash.com/photo-1543339496-18e0d6816ba7?w=500&q=80',
     'one pan roasted veggie bowl': 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=500&q=80',
-    'quick herb chicken skillet': 'https://images.unsplash.com/photo-1598103442097-257256dee282?w=500&q=80',
-    'lemon herb roast chicken': 'https://images.unsplash.com/photo-1598103442097-257256dee282?w=500&q=80',
-    'weeknight tomato pasta': 'https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=500&q=80',
+    'quick herb chicken skillet': 'https://images.unsplash.com/photo-1768238907887-023b7ac9f450?w=500&q=80',
+    'lemon herb roast chicken': 'https://images.unsplash.com/photo-1768238907887-023b7ac9f450?w=500&q=80',
+    'weeknight tomato pasta': 'https://images.unsplash.com/photo-1695742434600-e0f59629d2bb?w=500&q=80',
     'fried rice with vegetables': 'https://images.unsplash.com/photo-1603133872877-684f208b89d7?w=500&q=80',
     'crispy tofu stir fry': 'https://images.unsplash.com/photo-1512058564366-18510be2db19?w=500&q=80',
     'honey garlic glazed salmon': 'https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=500&q=80',
