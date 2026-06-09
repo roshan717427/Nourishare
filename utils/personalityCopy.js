@@ -3,6 +3,7 @@
  * Second person on own profile; third person with first name for others.
  */
 
+import { formatList } from './formatList';
 import { toTitleCase } from './titleCase';
 
 const TRAIT_COPY = {
@@ -129,49 +130,43 @@ function hasMeaningfulPrimary(primary) {
 }
 
 function formatCuisineClause(cuisines) {
-  const list = (cuisines || []).filter(Boolean).slice(0, 2).map(formatCuisineName);
-  if (!list.length) return '';
-
-  if (list.length === 1) {
-    return ` and enjoys ${list[0]} cooking`;
-  }
-  return ` and enjoys ${list[0]} and ${list[1]} cooking`;
+  const formatted = formatList(
+    (cuisines || []).filter(Boolean).slice(0, 3).map(formatCuisineName)
+  );
+  if (!formatted) return '';
+  return ` and enjoys ${formatted} cooking`;
 }
 
 function formatIngredientClause(ingredients) {
-  const list = (ingredients || []).filter(Boolean).slice(0, 2);
-  if (!list.length) return '';
-
-  const names = list.map((item) => toTitleCase(item)).filter(Boolean);
-  if (!names.length) return '';
-
-  if (names.length === 1) {
-    return ` and often reaches for ${names[0]}`;
-  }
-  return ` and often reaches for ${names[0]} and ${names[1]}`;
+  const formatted = formatList(
+    (ingredients || [])
+      .filter(Boolean)
+      .slice(0, 3)
+      .map((item) => toTitleCase(item))
+      .filter(Boolean)
+  );
+  if (!formatted) return '';
+  return ` and often reaches for ${formatted}`;
 }
 
 function formatStandaloneCuisinePhrase(cuisines) {
-  const list = (cuisines || []).filter(Boolean).slice(0, 2).map(formatCuisineName);
-  if (!list.length) return '';
-
-  if (list.length === 1) {
-    return `enjoys ${list[0]} cooking`;
-  }
-  return `enjoys ${list[0]} and ${list[1]} cooking`;
+  const formatted = formatList(
+    (cuisines || []).filter(Boolean).slice(0, 3).map(formatCuisineName)
+  );
+  if (!formatted) return '';
+  return `enjoys ${formatted} cooking`;
 }
 
 function formatStandaloneIngredientPhrase(ingredients) {
-  const list = (ingredients || []).filter(Boolean).slice(0, 2);
-  if (!list.length) return '';
-
-  const names = list.map((item) => toTitleCase(item)).filter(Boolean);
-  if (!names.length) return '';
-
-  if (names.length === 1) {
-    return `often reaches for ${names[0]}`;
-  }
-  return `often reaches for ${names[0]} and ${names[1]}`;
+  const formatted = formatList(
+    (ingredients || [])
+      .filter(Boolean)
+      .slice(0, 3)
+      .map((item) => toTitleCase(item))
+      .filter(Boolean)
+  );
+  if (!formatted) return '';
+  return `often reaches for ${formatted}`;
 }
 
 function pickSecondaryHint(traits, isOwnProfile) {
@@ -214,10 +209,7 @@ function buildSelectionOnlySentence(personality, isOwnProfile, firstName) {
   }
 
   const who = isOwnProfile ? "You're" : `${firstName || 'This cook'} is`;
-  if (parts.length === 1) {
-    return `${who} a cook who ${parts[0]}.`;
-  }
-  return `${who} a cook who ${parts[0]} and ${parts[1]}.`;
+  return `${who} a cook who ${formatList(parts)}.`;
 }
 
 /**
