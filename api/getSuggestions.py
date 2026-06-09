@@ -37,51 +37,71 @@ FALLBACK_IMAGES = [
     'https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=500&q=80',
 ]
 
+# Keyword → Unsplash image so fallback photos match the recipe title.
+TITLE_IMAGE_KEYWORDS = [
+    (('potato', 'potatoes'), 'https://images.unsplash.com/photo-1518977676601-b53f82aba655?w=500&q=80'),
+    (('pasta', 'spaghetti', 'mac and cheese', 'mac'), 'https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=500&q=80'),
+    (('noodle', 'ramen', 'pho', 'udon', 'sesame'), 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=500&q=80'),
+    (('pizza', 'flatbread', 'margherita'), 'https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=500&q=80'),
+    (('taco', 'quesadilla', 'burrito', 'salsa', 'guacamole'), 'https://images.unsplash.com/photo-1551504734-5ee1c4a1479b?w=500&q=80'),
+    (('curry', 'tikka', 'masala', 'tandoori', 'chickpea', 'dal', 'coconut'), 'https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=500&q=80'),
+    (('salmon', 'fish'), 'https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=500&q=80'),
+    (('chicken', 'wing'), 'https://images.unsplash.com/photo-1598103442097-257256dee282?w=500&q=80'),
+    (('beef', 'steak', 'broccoli'), 'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=500&q=80'),
+    (('shrimp', 'prawn'), 'https://images.unsplash.com/photo-1565680018434-b698cbd2771?w=500&q=80'),
+    (('tofu', 'stir-fry', 'stir fry', 'ginger soy'), 'https://images.unsplash.com/photo-1512058564366-18510be2db19?w=500&q=80'),
+    (('rice', 'fried rice', 'biryani'), 'https://images.unsplash.com/photo-1603133872877-684f208b89d7?w=500&q=80'),
+    (('salad', 'bowl', 'veggie', 'vegetable', 'greek'), 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=500&q=80'),
+    (('soup',), 'https://images.unsplash.com/photo-1547592166-23ac45744acd?w=500&q=80'),
+    (('bbq', 'grill', 'sheet pan'), 'https://images.unsplash.com/photo-1529193591184-b1d58069ecdd?w=500&q=80'),
+    (('basil', 'thai'), 'https://images.unsplash.com/photo-1559317152-202d30895b0a?w=500&q=80'),
+]
+
 # Curated ideas used when the community pool has no strong matches.
 CUISINE_TEMPLATES = {
     'italian': [
-        {'name': 'Creamy Garlic Pasta', 'ingredients': 'pasta, garlic, cream, parmesan, olive oil', 'cooking_time': '25 min', 'difficulty_level': 'easy'},
-        {'name': 'Margherita Flatbread', 'ingredients': 'pizza dough, tomato sauce, mozzarella, basil', 'cooking_time': '30 min', 'difficulty_level': 'easy'},
+        {'name': 'Creamy Garlic Pasta', 'ingredients': 'pasta, garlic, cream, parmesan, olive oil', 'cooking_time': '25 min', 'difficulty_level': 'easy', 'image': 'https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=500&q=80'},
+        {'name': 'Margherita Flatbread', 'ingredients': 'pizza dough, tomato sauce, mozzarella, basil', 'cooking_time': '30 min', 'difficulty_level': 'easy', 'image': 'https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=500&q=80'},
     ],
     'asian': [
-        {'name': 'Ginger Soy Stir-Fry', 'ingredients': 'rice, soy sauce, ginger, garlic, vegetables', 'cooking_time': '20 min', 'difficulty_level': 'easy'},
-        {'name': 'Sesame Noodle Bowl', 'ingredients': 'noodles, sesame oil, scallions, soy sauce, cucumber', 'cooking_time': '15 min', 'difficulty_level': 'easy'},
+        {'name': 'Ginger Soy Stir-Fry', 'ingredients': 'rice, soy sauce, ginger, garlic, vegetables', 'cooking_time': '20 min', 'difficulty_level': 'easy', 'image': 'https://images.unsplash.com/photo-1512058564366-18510be2db19?w=500&q=80'},
+        {'name': 'Sesame Noodle Bowl', 'ingredients': 'noodles, sesame oil, scallions, soy sauce, cucumber', 'cooking_time': '15 min', 'difficulty_level': 'easy', 'image': 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=500&q=80'},
     ],
     'mexican': [
-        {'name': 'Weeknight Chicken Tacos', 'ingredients': 'chicken, corn tortillas, lime, cilantro, onion', 'cooking_time': '25 min', 'difficulty_level': 'easy'},
-        {'name': 'Black Bean Quesadilla', 'ingredients': 'tortillas, black beans, cheese, salsa, avocado', 'cooking_time': '15 min', 'difficulty_level': 'easy'},
+        {'name': 'Weeknight Chicken Tacos', 'ingredients': 'chicken, corn tortillas, lime, cilantro, onion', 'cooking_time': '25 min', 'difficulty_level': 'easy', 'image': 'https://images.unsplash.com/photo-1551504734-5ee1c4a1479b?w=500&q=80'},
+        {'name': 'Black Bean Quesadilla', 'ingredients': 'tortillas, black beans, cheese, salsa, avocado', 'cooking_time': '15 min', 'difficulty_level': 'easy', 'image': 'https://images.unsplash.com/photo-1618040996337-56904b7850b9?w=500&q=80'},
     ],
     'thai': [
-        {'name': 'Thai Basil Chicken', 'ingredients': 'chicken, basil, garlic, chili, soy sauce, rice', 'cooking_time': '25 min', 'difficulty_level': 'medium'},
-        {'name': 'Coconut Curry Soup', 'ingredients': 'coconut milk, curry paste, vegetables, lime, cilantro', 'cooking_time': '30 min', 'difficulty_level': 'easy'},
+        {'name': 'Thai Basil Chicken', 'ingredients': 'chicken, basil, garlic, chili, soy sauce, rice', 'cooking_time': '25 min', 'difficulty_level': 'medium', 'image': 'https://images.unsplash.com/photo-1559317152-202d30895b0a?w=500&q=80'},
+        {'name': 'Coconut Curry Soup', 'ingredients': 'coconut milk, curry paste, vegetables, lime, cilantro', 'cooking_time': '30 min', 'difficulty_level': 'easy', 'image': 'https://images.unsplash.com/photo-1547592166-23ac45744acd?w=500&q=80'},
     ],
     'indian': [
-        {'name': 'Chickpea Curry', 'ingredients': 'chickpeas, tomato, onion, garlic, curry spices, rice', 'cooking_time': '35 min', 'difficulty_level': 'medium'},
-        {'name': 'Tandoori-Spiced Sheet Pan Dinner', 'ingredients': 'chicken, yogurt, tandoori spice, potatoes, lemon', 'cooking_time': '40 min', 'difficulty_level': 'medium'},
+        {'name': 'Chickpea Curry', 'ingredients': 'chickpeas, tomato, onion, garlic, curry spices, rice', 'cooking_time': '35 min', 'difficulty_level': 'medium', 'image': 'https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=500&q=80'},
+        {'name': 'Tandoori-Spiced Sheet Pan Dinner', 'ingredients': 'chicken, yogurt, tandoori spice, potatoes, lemon', 'cooking_time': '40 min', 'difficulty_level': 'medium', 'image': 'https://images.unsplash.com/photo-1529193591184-b1d58069ecdd?w=500&q=80'},
     ],
     'mediterranean': [
-        {'name': 'Greek Salad Bowl', 'ingredients': 'cucumber, tomato, feta, olives, red onion, olive oil', 'cooking_time': '15 min', 'difficulty_level': 'easy'},
-        {'name': 'Lemon Herb Salmon', 'ingredients': 'salmon, lemon, olive oil, garlic, herbs, quinoa', 'cooking_time': '25 min', 'difficulty_level': 'medium'},
+        {'name': 'Greek Salad Bowl', 'ingredients': 'cucumber, tomato, feta, olives, red onion, olive oil', 'cooking_time': '15 min', 'difficulty_level': 'easy', 'image': 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=500&q=80'},
+        {'name': 'Lemon Herb Salmon', 'ingredients': 'salmon, lemon, olive oil, garlic, herbs, quinoa', 'cooking_time': '25 min', 'difficulty_level': 'medium', 'image': 'https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=500&q=80'},
     ],
     'american': [
-        {'name': 'Sheet Pan BBQ Chicken', 'ingredients': 'chicken, bbq sauce, potatoes, corn, butter', 'cooking_time': '35 min', 'difficulty_level': 'easy'},
-        {'name': 'Classic Mac and Cheese', 'ingredients': 'pasta, cheddar, milk, butter, flour', 'cooking_time': '30 min', 'difficulty_level': 'easy'},
+        {'name': 'Sheet Pan BBQ Chicken', 'ingredients': 'chicken, bbq sauce, potatoes, corn, butter', 'cooking_time': '35 min', 'difficulty_level': 'easy', 'image': 'https://images.unsplash.com/photo-1529193591184-b1d58069ecdd?w=500&q=80'},
+        {'name': 'Classic Mac and Cheese', 'ingredients': 'pasta, cheddar, milk, butter, flour', 'cooking_time': '30 min', 'difficulty_level': 'easy', 'image': 'https://images.unsplash.com/photo-1543339496-18e0d6816ba7?w=500&q=80'},
     ],
     'general': [
-        {'name': 'One-Pan Roasted Veggie Bowl', 'ingredients': 'seasonal vegetables, olive oil, garlic, rice, herbs', 'cooking_time': '30 min', 'difficulty_level': 'easy'},
-        {'name': 'Quick Herb Chicken Skillet', 'ingredients': 'chicken, onion, garlic, herbs, lemon', 'cooking_time': '25 min', 'difficulty_level': 'easy'},
+        {'name': 'One-Pan Roasted Veggie Bowl', 'ingredients': 'seasonal vegetables, olive oil, garlic, rice, herbs', 'cooking_time': '30 min', 'difficulty_level': 'easy', 'image': 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=500&q=80'},
+        {'name': 'Quick Herb Chicken Skillet', 'ingredients': 'chicken, onion, garlic, herbs, lemon', 'cooking_time': '25 min', 'difficulty_level': 'easy', 'image': 'https://images.unsplash.com/photo-1598103442097-257256dee282?w=500&q=80'},
     ],
 }
 
 INGREDIENT_IDEAS = {
-    'chicken': {'name': 'Lemon Herb Roast Chicken', 'ingredients': 'chicken, lemon, garlic, rosemary, olive oil', 'cooking_time': '45 min', 'difficulty_level': 'medium'},
-    'pasta': {'name': 'Weeknight Tomato Pasta', 'ingredients': 'pasta, tomatoes, garlic, basil, olive oil', 'cooking_time': '20 min', 'difficulty_level': 'easy'},
-    'rice': {'name': 'Fried Rice with Vegetables', 'ingredients': 'rice, eggs, soy sauce, peas, carrots, scallions', 'cooking_time': '20 min', 'difficulty_level': 'easy'},
-    'tofu': {'name': 'Crispy Tofu Stir-Fry', 'ingredients': 'tofu, soy sauce, ginger, broccoli, sesame oil', 'cooking_time': '25 min', 'difficulty_level': 'medium'},
-    'salmon': {'name': 'Honey Garlic Glazed Salmon', 'ingredients': 'salmon, honey, garlic, soy sauce, rice', 'cooking_time': '20 min', 'difficulty_level': 'medium'},
-    'beef': {'name': 'Savory Beef and Broccoli', 'ingredients': 'beef, broccoli, soy sauce, garlic, rice', 'cooking_time': '25 min', 'difficulty_level': 'medium'},
-    'shrimp': {'name': 'Garlic Butter Shrimp', 'ingredients': 'shrimp, butter, garlic, lemon, parsley, pasta', 'cooking_time': '15 min', 'difficulty_level': 'easy'},
-    'potato': {'name': 'Crispy Roasted Potatoes', 'ingredients': 'potatoes, olive oil, rosemary, garlic, salt', 'cooking_time': '35 min', 'difficulty_level': 'easy'},
+    'chicken': {'name': 'Lemon Herb Roast Chicken', 'ingredients': 'chicken, lemon, garlic, rosemary, olive oil', 'cooking_time': '45 min', 'difficulty_level': 'medium', 'image': 'https://images.unsplash.com/photo-1598103442097-257256dee282?w=500&q=80'},
+    'pasta': {'name': 'Weeknight Tomato Pasta', 'ingredients': 'pasta, tomatoes, garlic, basil, olive oil', 'cooking_time': '20 min', 'difficulty_level': 'easy', 'image': 'https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=500&q=80'},
+    'rice': {'name': 'Fried Rice with Vegetables', 'ingredients': 'rice, eggs, soy sauce, peas, carrots, scallions', 'cooking_time': '20 min', 'difficulty_level': 'easy', 'image': 'https://images.unsplash.com/photo-1603133872877-684f208b89d7?w=500&q=80'},
+    'tofu': {'name': 'Crispy Tofu Stir-Fry', 'ingredients': 'tofu, soy sauce, ginger, broccoli, sesame oil', 'cooking_time': '25 min', 'difficulty_level': 'medium', 'image': 'https://images.unsplash.com/photo-1512058564366-18510be2db19?w=500&q=80'},
+    'salmon': {'name': 'Honey Garlic Glazed Salmon', 'ingredients': 'salmon, honey, garlic, soy sauce, rice', 'cooking_time': '20 min', 'difficulty_level': 'medium', 'image': 'https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=500&q=80'},
+    'beef': {'name': 'Savory Beef and Broccoli', 'ingredients': 'beef, broccoli, soy sauce, garlic, rice', 'cooking_time': '25 min', 'difficulty_level': 'medium', 'image': 'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=500&q=80'},
+    'shrimp': {'name': 'Garlic Butter Shrimp', 'ingredients': 'shrimp, butter, garlic, lemon, parsley, pasta', 'cooking_time': '15 min', 'difficulty_level': 'easy', 'image': 'https://images.unsplash.com/photo-1565680018434-b698cbd2771?w=500&q=80'},
+    'potato': {'name': 'Crispy Roasted Potatoes', 'ingredients': 'potatoes, olive oil, rosemary, garlic, salt', 'cooking_time': '35 min', 'difficulty_level': 'easy', 'image': 'https://images.unsplash.com/photo-1518977676601-b53f82aba655?w=500&q=80'},
 }
 
 
@@ -544,18 +564,31 @@ class SmartSuggestionsEngine:
             'typical_time': log_profile.get('typical_time', '30 min'),
         }
 
-    def _recipe_image(self, recipe, fallback_index=0, blocked_urls=None):
-        """Resolve image from community post fields; never reuse the user's own log photos."""
+    def _title_fallback_image(self, recipe_name):
+        """Pick a stock photo that matches the recipe title keywords."""
+        title_lower = self._normalize_title(recipe_name)
+        if title_lower:
+            for keywords, url in TITLE_IMAGE_KEYWORDS:
+                if any(keyword in title_lower for keyword in keywords):
+                    return url
+            idx = sum(ord(char) for char in title_lower) % len(FALLBACK_IMAGES)
+            return FALLBACK_IMAGES[idx]
+        return FALLBACK_IMAGES[0]
+
+    def _recipe_image(self, recipe, blocked_urls=None):
+        """Resolve image from the same recipe source; never reuse the user's own log photos."""
         blocked = set(blocked_urls or [])
-        image = (
-            recipe.get('image')
-            or recipe.get('photoUrl')
-            or recipe.get('photo_url')
-            or recipe.get('dish_photo_url')
+        recipe_name = (
+            recipe.get('recipe_name')
+            or recipe.get('name')
+            or recipe.get('title')
+            or ''
         )
-        if image and image not in blocked:
-            return image
-        return FALLBACK_IMAGES[fallback_index % len(FALLBACK_IMAGES)]
+        for field in ('image', 'photoUrl', 'photo_url', 'dish_photo_url'):
+            url = recipe.get(field)
+            if url and url not in blocked:
+                return url
+        return self._title_fallback_image(recipe_name)
 
     def _format_subtitle(self, recipe):
         difficulty = recipe.get('difficulty_level') or recipe.get('difficulty') or ''
@@ -567,7 +600,7 @@ class SmartSuggestionsEngine:
             parts.append(str(cooking_time))
         return ', '.join(parts) if parts else 'Suggested for you'
 
-    def _format_suggestion(self, recipe, score, why_suggested, fallback_index=0, blocked_urls=None):
+    def _format_suggestion(self, recipe, score, why_suggested, blocked_urls=None):
         """Normalize a recipe document into a suggestion payload."""
         recipe_name = recipe.get('recipe_name') or recipe.get('title') or recipe.get('name') or 'Recipe'
         ingredients = recipe.get('ingredients')
@@ -590,7 +623,7 @@ class SmartSuggestionsEngine:
             'cooking_time': recipe.get('cooking_time') or recipe.get('time') or '',
             'ingredients': ingredients_value,
             'steps': recipe.get('steps') or recipe.get('instructions') or '',
-            'image': self._recipe_image(recipe, fallback_index, blocked_urls),
+            'image': self._recipe_image(recipe, blocked_urls),
             'subtitle': self._format_subtitle(recipe),
             'recooks_count': recipe.get('recooks_count', 0),
             'likes_count': recipe.get('likes_count', 0),
@@ -695,10 +728,8 @@ class SmartSuggestionsEngine:
         generated = []
         seen_names = {self._normalize_title(name) for name in existing_names}
         blocked_urls = tried_profile.get('log_photos', set())
-        image_index = 0
 
         def add_suggestion(recipe_dict, score, reason):
-            nonlocal image_index
             name = (recipe_dict.get('recipe_name') or recipe_dict.get('name') or '').strip()
             if not name:
                 return False
@@ -714,11 +745,8 @@ class SmartSuggestionsEngine:
                 return False
             seen_names.add(normalized_name)
             generated.append(
-                self._format_suggestion(
-                    recipe_dict, score, reason, image_index, blocked_urls
-                )
+                self._format_suggestion(recipe_dict, score, reason, blocked_urls)
             )
-            image_index += 1
             return True
 
         # Top-ingredient ideas — stock images only (no user log photos).
@@ -749,6 +777,7 @@ class SmartSuggestionsEngine:
                     'ingredients': template['ingredients'],
                     'cooking_time': template['cooking_time'],
                     'difficulty_level': template['difficulty_level'],
+                    'image': template.get('image'),
                 }
                 add_suggestion(
                     template_recipe,
@@ -784,12 +813,10 @@ class SmartSuggestionsEngine:
 
         suggestions = []
         existing_names = []
-        for index, hit in enumerate(community_hits):
+        for hit in community_hits:
             existing_names.append(hit['recipe'].get('recipe_name', ''))
             suggestions.append(
-                self._format_suggestion(
-                    hit['recipe'], hit['score'], hit['reason'], index, blocked_urls
-                )
+                self._format_suggestion(hit['recipe'], hit['score'], hit['reason'], blocked_urls)
             )
 
         target_count = max(3, min(limit, 6))
@@ -817,7 +844,7 @@ class SmartSuggestionsEngine:
         scored_suggestions = []
         seen_recipes = set()
 
-        for index, recipe in enumerate(friends_recipes):
+        for recipe in friends_recipes:
             recipe_name = (recipe.get('recipe_name') or '').strip()
             normalized_name = self._normalize_title(recipe_name)
             if not normalized_name or normalized_name in seen_recipes:
@@ -840,7 +867,6 @@ class SmartSuggestionsEngine:
                     recipe,
                     score,
                     self._get_suggestion_reason(recipe, score),
-                    index,
                     blocked_urls,
                 )
             )

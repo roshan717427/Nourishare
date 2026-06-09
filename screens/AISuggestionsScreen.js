@@ -20,7 +20,7 @@ import { useNextUp } from '../context/NextUpContext';
 import { API_URL } from '../config/api';
 import { colors, radii } from '../constants/theme';
 
-// Image fallbacks only — not shown as demo recipe cards.
+// Stock images when the API omits a photo — matched by recipe title, not card index.
 const FALLBACK_IMAGES = [
   'https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=500&q=80',
   'https://images.unsplash.com/photo-1505253716362-afaea1d3d1af?w=500&q=80',
@@ -29,6 +29,39 @@ const FALLBACK_IMAGES = [
   'https://images.unsplash.com/photo-1551504734-5ee1c4a1479b?w=500&q=80',
   'https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=500&q=80',
 ];
+
+const TITLE_IMAGE_KEYWORDS = [
+  { keywords: ['potato', 'potatoes'], url: 'https://images.unsplash.com/photo-1518977676601-b53f82aba655?w=500&q=80' },
+  { keywords: ['pasta', 'spaghetti', 'mac and cheese', 'mac'], url: 'https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=500&q=80' },
+  { keywords: ['noodle', 'ramen', 'pho', 'udon', 'sesame'], url: 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=500&q=80' },
+  { keywords: ['pizza', 'flatbread', 'margherita'], url: 'https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=500&q=80' },
+  { keywords: ['taco', 'quesadilla', 'burrito', 'salsa', 'guacamole'], url: 'https://images.unsplash.com/photo-1551504734-5ee1c4a1479b?w=500&q=80' },
+  { keywords: ['curry', 'tikka', 'masala', 'tandoori', 'chickpea', 'dal', 'coconut'], url: 'https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=500&q=80' },
+  { keywords: ['salmon', 'fish'], url: 'https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=500&q=80' },
+  { keywords: ['chicken', 'wing'], url: 'https://images.unsplash.com/photo-1598103442097-257256dee282?w=500&q=80' },
+  { keywords: ['beef', 'steak', 'broccoli'], url: 'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=500&q=80' },
+  { keywords: ['shrimp', 'prawn'], url: 'https://images.unsplash.com/photo-1565680018434-b698cbd2771?w=500&q=80' },
+  { keywords: ['tofu', 'stir-fry', 'stir fry', 'ginger soy'], url: 'https://images.unsplash.com/photo-1512058564366-18510be2db19?w=500&q=80' },
+  { keywords: ['rice', 'fried rice', 'biryani'], url: 'https://images.unsplash.com/photo-1603133872877-684f208b89d7?w=500&q=80' },
+  { keywords: ['salad', 'bowl', 'veggie', 'vegetable', 'greek'], url: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=500&q=80' },
+  { keywords: ['soup'], url: 'https://images.unsplash.com/photo-1547592166-23ac45744acd?w=500&q=80' },
+  { keywords: ['bbq', 'grill', 'sheet pan'], url: 'https://images.unsplash.com/photo-1529193591184-b1d58069ecdd?w=500&q=80' },
+  { keywords: ['basil', 'thai'], url: 'https://images.unsplash.com/photo-1559317152-202d30895b0a?w=500&q=80' },
+];
+
+function titleFallbackImage(recipeName) {
+  const title = (recipeName || '').toLowerCase().replace(/[^\w\s]/g, ' ').trim();
+  for (const { keywords, url } of TITLE_IMAGE_KEYWORDS) {
+    if (keywords.some((keyword) => title.includes(keyword))) {
+      return url;
+    }
+  }
+  if (title) {
+    const hash = [...title].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+    return FALLBACK_IMAGES[hash % FALLBACK_IMAGES.length];
+  }
+  return FALLBACK_IMAGES[0];
+}
 
 function RecipeCard({ recipe, onPress, onAddPress, isInNextUp, accentColor }) {
   return (
@@ -93,24 +126,25 @@ function formatSubtitle(suggestion) {
   return [difficulty, time].filter(Boolean).join(', ') || 'Suggested for you';
 }
 
-function mapApiSuggestions(items, imageOffset = 0) {
+function mapApiSuggestions(items) {
   if (!Array.isArray(items) || items.length === 0) {
     return [];
   }
 
-  return items.map((s, index) => ({
-    ...s,
-    id: s.id || s.recipe_id || `s-${imageOffset + index}`,
-    name: s.name || s.recipe_name || 'Recipe',
-    subtitle: s.subtitle || formatSubtitle(s),
-    image:
-      s.image ||
-      FALLBACK_IMAGES[(imageOffset + index) % FALLBACK_IMAGES.length],
-    ingredients: s.ingredients,
-    steps: s.steps || undefined,
-    difficulty_level: s.difficulty_level || s.difficulty,
-    cooking_time: s.cooking_time || s.time,
-  }));
+  return items.map((s, index) => {
+    const name = s.name || s.recipe_name || 'Recipe';
+    return {
+      ...s,
+      id: s.id || s.recipe_id || `s-${index}`,
+      name,
+      subtitle: s.subtitle || formatSubtitle(s),
+      image: s.image || titleFallbackImage(name),
+      ingredients: s.ingredients,
+      steps: s.steps || undefined,
+      difficulty_level: s.difficulty_level || s.difficulty,
+      cooking_time: s.cooking_time || s.time,
+    };
+  });
 }
 
 function buildGreeting(displayName, hasLogs, hasFollowing) {
@@ -189,8 +223,8 @@ export default function AISuggestionsScreen({ navigation }) {
               ? data.friend_suggestions
               : data.suggestions || []);
 
-          setPreferenceSuggestions(mapApiSuggestions(preferenceItems, 0));
-          setFriendSuggestions(mapApiSuggestions(friendItems, 3));
+          setPreferenceSuggestions(mapApiSuggestions(preferenceItems));
+          setFriendSuggestions(mapApiSuggestions(friendItems));
         } catch (err) {
           console.log('Suggestions API unavailable:', err.message);
           if (isMounted) {
