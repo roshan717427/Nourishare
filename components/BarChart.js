@@ -85,11 +85,11 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: colors.chipCoralText,
-    marginBottom: 4,
+    marginBottom: 6,
     textAlign: 'center',
   },
   valueLabelSpacer: {
-    height: 15,
+    height: 17,
   },
   barContainer: {
     width: '72%',
