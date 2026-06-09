@@ -19,95 +19,14 @@ import { useAuth } from '../context/AuthContext';
 import { useNextUp } from '../context/NextUpContext';
 import { API_URL } from '../config/api';
 import { colors, radii, spacing, shadows } from '../constants/theme';
+import {
+  DEFAULT_FALLBACK_IMAGE,
+  resolveSuggestionImage,
+  titleFallbackImage,
+} from '../utils/suggestionImages';
 
 const CARD_WIDTH = 200;
 const IMAGE_HEIGHT = 150;
-
-// Stock images when the API omits a photo — matched by recipe title, not card index.
-const DEFAULT_FALLBACK_IMAGE =
-  'https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=500&q=80';
-
-const FALLBACK_IMAGES = [
-  DEFAULT_FALLBACK_IMAGE,
-  'https://images.unsplash.com/photo-1505253716362-afaea1d3d1af?w=500&q=80',
-  'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=500&q=80',
-  'https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=500&q=80',
-  'https://images.unsplash.com/photo-1551504734-5ee1c4a1479b?w=500&q=80',
-  'https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=500&q=80',
-];
-
-const TITLE_IMAGE_KEYWORDS = [
-  { keywords: ['potato', 'potatoes', 'crispy roasted'], url: 'https://images.unsplash.com/photo-1518977676601-b53f82aba655?w=500&q=80' },
-  { keywords: ['mac and cheese', 'macaroni'], url: 'https://images.unsplash.com/photo-1543339496-18e0d6816ba7?w=500&q=80' },
-  { keywords: ['pasta', 'spaghetti', 'lasagna', 'ravioli', 'carbonara', 'penne', 'fettuccine', 'gnocchi'], url: 'https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=500&q=80' },
-  { keywords: ['noodle', 'ramen', 'pho', 'udon', 'lo mein', 'pad thai', 'sesame'], url: 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=500&q=80' },
-  { keywords: ['pizza', 'flatbread', 'margherita', 'calzone'], url: 'https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=500&q=80' },
-  { keywords: ['taco', 'quesadilla', 'burrito', 'enchilada', 'nacho', 'salsa', 'guacamole', 'tortilla'], url: 'https://images.unsplash.com/photo-1551504734-5ee1c4a1479b?w=500&q=80' },
-  { keywords: ['curry', 'tikka', 'masala', 'tandoori', 'chickpea', 'dal', 'biryani', 'korma', 'vindaloo'], url: 'https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=500&q=80' },
-  { keywords: ['coconut', 'tom yum'], url: 'https://images.unsplash.com/photo-1547592166-23ac45744acd?w=500&q=80' },
-  { keywords: ['salmon', 'trout', 'cod', 'tilapia', 'fish'], url: 'https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=500&q=80' },
-  { keywords: ['chicken', 'wing', 'poultry', 'drumstick'], url: 'https://images.unsplash.com/photo-1598103442097-257256dee282?w=500&q=80' },
-  { keywords: ['beef', 'steak', 'brisket', 'meatball'], url: 'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=500&q=80' },
-  { keywords: ['pork', 'bacon', 'ham', 'sausage', 'prosciutto'], url: 'https://images.unsplash.com/photo-1432130438734-24cdc404168c?w=500&q=80' },
-  { keywords: ['lamb', 'kebab', 'skewer'], url: 'https://images.unsplash.com/photo-1529042410759-befb1204b468?w=500&q=80' },
-  { keywords: ['shrimp', 'prawn', 'lobster', 'crab', 'seafood'], url: 'https://images.unsplash.com/photo-1565680018434-b698cbd2771?w=500&q=80' },
-  { keywords: ['tofu', 'tempeh'], url: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&q=80' },
-  { keywords: ['stir-fry', 'stir fry', 'ginger soy', 'wok'], url: 'https://images.unsplash.com/photo-1512058564366-18510be2db19?w=500&q=80' },
-  { keywords: ['broccoli'], url: 'https://images.unsplash.com/photo-1459411552884-e45e3d4613d5?w=500&q=80' },
-  { keywords: ['rice', 'fried rice', 'risotto', 'pilaf'], url: 'https://images.unsplash.com/photo-1603133872877-684f208b89d7?w=500&q=80' },
-  { keywords: ['soup', 'stew', 'chowder', 'bisque', 'broth'], url: 'https://images.unsplash.com/photo-1547592166-23ac45744acd?w=500&q=80' },
-  { keywords: ['salad', 'slaw', 'greens'], url: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=500&q=80' },
-  { keywords: ['burger', 'sandwich', 'wrap', 'slider'], url: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500&q=80' },
-  { keywords: ['egg', 'omelette', 'frittata', 'quiche', 'breakfast'], url: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=500&q=80' },
-  { keywords: ['pancake', 'waffle', 'french toast'], url: 'https://images.unsplash.com/photo-1567620905732-2d1ec7ab7445?w=500&q=80' },
-  { keywords: ['dumpling', 'gyoza', 'potsticker', 'bao'], url: 'https://images.unsplash.com/photo-1496116218413-95a0c151e16a?w=500&q=80' },
-  { keywords: ['sushi', 'sashimi', 'poke'], url: 'https://images.unsplash.com/photo-1579584425555-c3ce17fd4351?w=500&q=80' },
-  { keywords: ['hummus', 'falafel', 'mezze'], url: 'https://images.unsplash.com/photo-1623428187425-4a3a3e5e5c0d?w=500&q=80' },
-  { keywords: ['mushroom'], url: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=500&q=80' },
-  { keywords: ['bean', 'lentil', 'chili'], url: 'https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=500&q=80' },
-  { keywords: ['avocado'], url: 'https://images.unsplash.com/photo-1523049673857-eb18f1adf7ae?w=500&q=80' },
-  { keywords: ['corn'], url: 'https://images.unsplash.com/photo-1551758254-08f81a683d77?w=500&q=80' },
-  { keywords: ['cauliflower'], url: 'https://images.unsplash.com/photo-1568584711073-975fb5061c86?w=500&q=80' },
-  { keywords: ['bbq', 'grill', 'sheet pan', 'roasted', 'roast'], url: 'https://images.unsplash.com/photo-1529193591184-b1d58069ecdd?w=500&q=80' },
-  { keywords: ['basil', 'thai', 'lemongrass'], url: 'https://images.unsplash.com/photo-1559317152-202d30895b0a?w=500&q=80' },
-  { keywords: ['bowl', 'veggie', 'vegetable', 'greek', 'grain'], url: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=500&q=80' },
-  { keywords: ['cake', 'cookie', 'dessert', 'pie', 'brownie'], url: 'https://images.unsplash.com/photo-1464349095431-e9a21285b5f3?w=500&q=80' },
-];
-
-function titleFallbackImage(recipeName) {
-  const title = (recipeName || '').toLowerCase().replace(/[^\w\s]/g, ' ').trim();
-  for (const { keywords, url } of TITLE_IMAGE_KEYWORDS) {
-    if (keywords.some((keyword) => title.includes(keyword))) {
-      return url;
-    }
-  }
-  if (title) {
-    const hash = [...title].reduce((sum, char) => sum + char.charCodeAt(0), 0);
-    return FALLBACK_IMAGES[hash % FALLBACK_IMAGES.length];
-  }
-  return DEFAULT_FALLBACK_IMAGE;
-}
-
-function isValidHttpsUrl(url) {
-  if (typeof url !== 'string') return false;
-  const cleaned = url.trim();
-  return cleaned.length > 12 && cleaned.toLowerCase().startsWith('https://');
-}
-
-function normalizeHttpsUrl(url) {
-  if (typeof url !== 'string') return '';
-  let cleaned = url.trim();
-  if (cleaned.toLowerCase().startsWith('http://')) {
-    cleaned = `https://${cleaned.slice(7)}`;
-  }
-  return cleaned;
-}
-
-function resolveSuggestionImage(suggestion, recipeName) {
-  const name = recipeName || suggestion?.name || suggestion?.recipe_name || 'Recipe';
-  const titled = titleFallbackImage(name);
-  return isValidHttpsUrl(titled) ? titled : DEFAULT_FALLBACK_IMAGE;
-}
 
 function formatSuggestionReason(raw) {
   if (!raw) return null;
@@ -185,19 +104,17 @@ function RecipeCard({ recipe, onPress, onAddPress, isInNextUp, accentColor, reas
   const difficulty = recipe.difficulty_level
     ? recipe.difficulty_level.charAt(0).toUpperCase() + recipe.difficulty_level.slice(1)
     : null;
-  const fallbackUri = resolveSuggestionImage(recipe, recipe.name);
-  const [imageUri, setImageUri] = useState(recipe.image || fallbackUri);
+  const titleImageUri = titleFallbackImage(recipe.name);
+  const [imageUri, setImageUri] = useState(titleImageUri);
 
   useEffect(() => {
-    setImageUri(recipe.image || fallbackUri);
-  }, [recipe.image, recipe.name, fallbackUri]);
+    setImageUri(titleFallbackImage(recipe.name));
+  }, [recipe.name]);
 
   const handleImageError = () => {
-    setImageUri((current) => {
-      if (current !== fallbackUri) return fallbackUri;
-      if (current !== DEFAULT_FALLBACK_IMAGE) return DEFAULT_FALLBACK_IMAGE;
-      return current;
-    });
+    setImageUri((current) => (
+      current !== DEFAULT_FALLBACK_IMAGE ? DEFAULT_FALLBACK_IMAGE : current
+    ));
   };
 
   return (
