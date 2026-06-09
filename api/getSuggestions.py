@@ -28,8 +28,10 @@ except Exception as e:
     # db will be None, which will cause errors in the handler
 
 # Stock images when no photo is available (no vision API — semantic matching only).
+DEFAULT_FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=500&q=80'
+
 FALLBACK_IMAGES = [
-    'https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=500&q=80',
+    DEFAULT_FALLBACK_IMAGE,
     'https://images.unsplash.com/photo-1505253716362-afaea1d3d1af?w=500&q=80',
     'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=500&q=80',
     'https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=500&q=80',
@@ -604,7 +606,7 @@ class SmartSuggestionsEngine:
                     return url
             idx = sum(ord(char) for char in title_lower) % len(FALLBACK_IMAGES)
             return FALLBACK_IMAGES[idx]
-        return FALLBACK_IMAGES[0]
+        return DEFAULT_FALLBACK_IMAGE
 
     def _recipe_image(self, recipe, blocked_urls=None):
         """Resolve image from the same recipe source; never reuse the user's own log photos."""
@@ -617,9 +619,12 @@ class SmartSuggestionsEngine:
         )
         for field in ('image', 'photoUrl', 'photo_url', 'dish_photo_url'):
             url = recipe.get(field)
+            if isinstance(url, str):
+                url = url.strip()
             if url and url not in blocked:
                 return url
-        return self._title_fallback_image(recipe_name)
+        image = self._title_fallback_image(recipe_name)
+        return image if image else DEFAULT_FALLBACK_IMAGE
 
     def _format_subtitle(self, recipe):
         difficulty = recipe.get('difficulty_level') or recipe.get('difficulty') or ''
@@ -679,7 +684,7 @@ class SmartSuggestionsEngine:
             'cooking_time': recipe.get('cooking_time') or recipe.get('time') or '',
             'ingredients': ingredients_value,
             'steps': recipe.get('steps') or recipe.get('instructions') or '',
-            'image': self._recipe_image(recipe, blocked_urls),
+            'image': self._recipe_image(recipe, blocked_urls) or DEFAULT_FALLBACK_IMAGE,
             'subtitle': self._format_subtitle(recipe),
             'recooks_count': recipe.get('recooks_count', 0),
             'likes_count': recipe.get('likes_count', 0),

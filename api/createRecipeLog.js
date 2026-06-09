@@ -38,8 +38,7 @@ module.exports = async (req, res) => {
     notes,
     rating,
     difficulty,
-    time,
-    source
+    time
   } = req.body;
 
   if (!username) {
@@ -60,8 +59,8 @@ module.exports = async (req, res) => {
     return;
   }
 
-  if (!isNonEmptyString(recipeInstructions)) {
-    res.status(400).json({ error: 'Recipe instructions are required' });
+  if (!isNonEmptyString(recipeInstructions) && !isNonEmptyString(recipeLink)) {
+    res.status(400).json({ error: 'Recipe steps or link is required' });
     return;
   }
 
@@ -80,11 +79,6 @@ module.exports = async (req, res) => {
     return;
   }
 
-  if (!isNonEmptyString(source)) {
-    res.status(400).json({ error: 'Source is required (use N/A if none)' });
-    return;
-  }
-
   try {
     // Filter out undefined values before saving to Firestore
     const logData = {
@@ -98,7 +92,6 @@ module.exports = async (req, res) => {
       rating,
       difficulty,
       time,
-      source,
       createdAt: FieldValue.serverTimestamp()
     };
     

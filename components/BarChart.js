@@ -83,13 +83,14 @@ const styles = StyleSheet.create({
   },
   valueLabel: {
     fontSize: 11,
+    lineHeight: 13,
     fontWeight: '700',
     color: colors.chipCoralText,
-    marginBottom: 6,
+    marginBottom: 0,
     textAlign: 'center',
   },
   valueLabelSpacer: {
-    height: 17,
+    height: 13,
   },
   barContainer: {
     width: '72%',

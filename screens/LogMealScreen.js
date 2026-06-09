@@ -27,7 +27,6 @@ export default function LogMealScreen({ navigation }) {
   const [rating, setRating] = useState(null);
   const [difficulty, setDifficulty] = useState(null);
   const [time, setTime] = useState('');
-  const [source, setSource] = useState('');
   const [recipeLink, setRecipeLink] = useState('');
   const [recipeInstructions, setRecipeInstructions] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -89,11 +88,12 @@ export default function LogMealScreen({ navigation }) {
     const missing = [];
     if (!mealName.trim()) missing.push('Meal name');
     if (!ingredients.trim()) missing.push('Ingredients');
-    if (!recipeInstructions.trim()) missing.push('Recipe');
+    if (!recipeInstructions.trim() && !recipeLink.trim()) {
+      missing.push('Recipe steps or link');
+    }
     if (!rating) missing.push('Rating');
     if (!difficulty) missing.push('Difficulty');
     if (!time.trim()) missing.push('Time');
-    if (!source.trim()) missing.push('Source');
 
     if (missing.length > 0) {
       Alert.alert(
@@ -122,10 +122,9 @@ export default function LogMealScreen({ navigation }) {
         rating,
         difficulty: difficulty.toLowerCase(),
         time: time.trim(),
-        source: source.trim(),
         photoUrl: photo || undefined,
         recipeLink: recipeLink.trim() || undefined,
-        recipeInstructions: recipeInstructions.trim(),
+        recipeInstructions: recipeInstructions.trim() || undefined,
       };
 
       // Remove undefined values
@@ -158,7 +157,6 @@ export default function LogMealScreen({ navigation }) {
               setRating(null);
               setDifficulty(null);
               setTime('');
-              setSource('');
               setRecipeLink('');
               setRecipeInstructions('');
               // Navigate back
@@ -308,27 +306,15 @@ export default function LogMealScreen({ navigation }) {
           />
         </View>
 
-        {/* Source */}
-        <View style={styles.section}>
-          <Text style={styles.label}>Source</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Recipe source or N/A"
-            value={source}
-            onChangeText={setSource}
-            placeholderTextColor="#999"
-          />
-        </View>
-
         {/* Recipe */}
         <View style={styles.section}>
           <Text style={styles.label}>Recipe</Text>
           <Text style={styles.fieldHint}>
-            Write basic steps so you can re-cook later. Add a link below if you have one.
+            Write basic steps so you can re-cook later if you wish. Or, include a link to the recipe source.
           </Text>
           <TextInput
             style={[styles.input, styles.textArea, styles.recipeInstructionsInput]}
-            placeholder="Write basic steps for your recipe (e.g. 1. Prep ingredients 2. Cook...)"
+            placeholder="Recipe steps"
             value={recipeInstructions}
             onChangeText={setRecipeInstructions}
             placeholderTextColor="#999"
@@ -338,7 +324,7 @@ export default function LogMealScreen({ navigation }) {
           />
           <TextInput
             style={styles.input}
-            placeholder="Recipe link (optional)"
+            placeholder="Recipe link or source URL"
             value={recipeLink}
             onChangeText={setRecipeLink}
             placeholderTextColor="#999"

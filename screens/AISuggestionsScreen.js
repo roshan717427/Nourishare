@@ -277,12 +277,14 @@ function mapApiSuggestions(items) {
 
   return items.map((s, index) => {
     const name = s.name || s.recipe_name || 'Recipe';
+    const rawImage = typeof s.image === 'string' ? s.image.trim() : '';
+    const image = rawImage || titleFallbackImage(name) || FALLBACK_IMAGES[0];
     return {
       ...s,
       id: s.id || s.recipe_id || `s-${index}`,
       name,
       subtitle: s.subtitle || formatSubtitle(s),
-      image: s.image || titleFallbackImage(name),
+      image,
       ingredients: s.ingredients,
       steps: s.steps || undefined,
       difficulty_level: s.difficulty_level || s.difficulty,
