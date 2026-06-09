@@ -39,24 +39,44 @@ FALLBACK_IMAGES = [
     'https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=500&q=80',
 ]
 
-# Keyword → Unsplash image so fallback photos match the recipe title.
+# Keyword → Unsplash image so suggestion photos match the recipe title.
+# Order matters: more specific dish keywords before broad ones (e.g. noodle before bowl).
 TITLE_IMAGE_KEYWORDS = [
-    (('potato', 'potatoes'), 'https://images.unsplash.com/photo-1518977676601-b53f82aba655?w=500&q=80'),
-    (('pasta', 'spaghetti', 'mac and cheese', 'mac'), 'https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=500&q=80'),
-    (('noodle', 'ramen', 'pho', 'udon', 'sesame'), 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=500&q=80'),
-    (('pizza', 'flatbread', 'margherita'), 'https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=500&q=80'),
-    (('taco', 'quesadilla', 'burrito', 'salsa', 'guacamole'), 'https://images.unsplash.com/photo-1551504734-5ee1c4a1479b?w=500&q=80'),
-    (('curry', 'tikka', 'masala', 'tandoori', 'chickpea', 'dal', 'coconut'), 'https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=500&q=80'),
-    (('salmon', 'fish'), 'https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=500&q=80'),
-    (('chicken', 'wing'), 'https://images.unsplash.com/photo-1598103442097-257256dee282?w=500&q=80'),
-    (('beef', 'steak', 'broccoli'), 'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=500&q=80'),
-    (('shrimp', 'prawn'), 'https://images.unsplash.com/photo-1565680018434-b698cbd2771?w=500&q=80'),
-    (('tofu', 'stir-fry', 'stir fry', 'ginger soy'), 'https://images.unsplash.com/photo-1512058564366-18510be2db19?w=500&q=80'),
-    (('rice', 'fried rice', 'biryani'), 'https://images.unsplash.com/photo-1603133872877-684f208b89d7?w=500&q=80'),
-    (('salad', 'bowl', 'veggie', 'vegetable', 'greek'), 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=500&q=80'),
-    (('soup',), 'https://images.unsplash.com/photo-1547592166-23ac45744acd?w=500&q=80'),
-    (('bbq', 'grill', 'sheet pan'), 'https://images.unsplash.com/photo-1529193591184-b1d58069ecdd?w=500&q=80'),
-    (('basil', 'thai'), 'https://images.unsplash.com/photo-1559317152-202d30895b0a?w=500&q=80'),
+    (('potato', 'potatoes', 'crispy roasted'), 'https://images.unsplash.com/photo-1518977676601-b53f82aba655?w=500&q=80'),
+    (('mac and cheese', 'macaroni'), 'https://images.unsplash.com/photo-1543339496-18e0d6816ba7?w=500&q=80'),
+    (('pasta', 'spaghetti', 'lasagna', 'ravioli', 'carbonara', 'penne', 'fettuccine', 'gnocchi'), 'https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=500&q=80'),
+    (('noodle', 'ramen', 'pho', 'udon', 'lo mein', 'pad thai', 'sesame'), 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=500&q=80'),
+    (('pizza', 'flatbread', 'margherita', 'calzone'), 'https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=500&q=80'),
+    (('taco', 'quesadilla', 'burrito', 'enchilada', 'nacho', 'salsa', 'guacamole', 'tortilla'), 'https://images.unsplash.com/photo-1551504734-5ee1c4a1479b?w=500&q=80'),
+    (('curry', 'tikka', 'masala', 'tandoori', 'chickpea', 'dal', 'biryani', 'korma', 'vindaloo'), 'https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=500&q=80'),
+    (('coconut', 'tom yum'), 'https://images.unsplash.com/photo-1547592166-23ac45744acd?w=500&q=80'),
+    (('salmon', 'trout', 'cod', 'tilapia', 'fish'), 'https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=500&q=80'),
+    (('chicken', 'wing', 'poultry', 'drumstick'), 'https://images.unsplash.com/photo-1598103442097-257256dee282?w=500&q=80'),
+    (('beef', 'steak', 'brisket', 'meatball'), 'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=500&q=80'),
+    (('pork', 'bacon', 'ham', 'sausage', 'prosciutto'), 'https://images.unsplash.com/photo-1432130438734-24cdc404168c?w=500&q=80'),
+    (('lamb', 'kebab', 'skewer'), 'https://images.unsplash.com/photo-1529042410759-befb1204b468?w=500&q=80'),
+    (('shrimp', 'prawn', 'lobster', 'crab', 'seafood'), 'https://images.unsplash.com/photo-1565680018434-b698cbd2771?w=500&q=80'),
+    (('tofu', 'tempeh'), 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&q=80'),
+    (('stir-fry', 'stir fry', 'ginger soy', 'wok'), 'https://images.unsplash.com/photo-1512058564366-18510be2db19?w=500&q=80'),
+    (('broccoli',), 'https://images.unsplash.com/photo-1459411552884-e45e3d4613d5?w=500&q=80'),
+    (('rice', 'fried rice', 'risotto', 'pilaf'), 'https://images.unsplash.com/photo-1603133872877-684f208b89d7?w=500&q=80'),
+    (('soup', 'stew', 'chowder', 'bisque', 'broth'), 'https://images.unsplash.com/photo-1547592166-23ac45744acd?w=500&q=80'),
+    (('salad', 'slaw', 'greens'), 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=500&q=80'),
+    (('burger', 'sandwich', 'wrap', 'slider'), 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500&q=80'),
+    (('egg', 'omelette', 'frittata', 'quiche', 'breakfast'), 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=500&q=80'),
+    (('pancake', 'waffle', 'french toast'), 'https://images.unsplash.com/photo-1567620905732-2d1ec7ab7445?w=500&q=80'),
+    (('dumpling', 'gyoza', 'potsticker', 'bao'), 'https://images.unsplash.com/photo-1496116218413-95a0c151e16a?w=500&q=80'),
+    (('sushi', 'sashimi', 'poke'), 'https://images.unsplash.com/photo-1579584425555-c3ce17fd4351?w=500&q=80'),
+    (('hummus', 'falafel', 'mezze'), 'https://images.unsplash.com/photo-1623428187425-4a3a3e5e5c0d?w=500&q=80'),
+    (('mushroom',), 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=500&q=80'),
+    (('bean', 'lentil', 'chili'), 'https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=500&q=80'),
+    (('avocado',), 'https://images.unsplash.com/photo-1523049673857-eb18f1adf7ae?w=500&q=80'),
+    (('corn',), 'https://images.unsplash.com/photo-1551758254-08f81a683d77?w=500&q=80'),
+    (('cauliflower',), 'https://images.unsplash.com/photo-1568584711073-975fb5061c86?w=500&q=80'),
+    (('bbq', 'grill', 'sheet pan', 'roasted', 'roast'), 'https://images.unsplash.com/photo-1529193591184-b1d58069ecdd?w=500&q=80'),
+    (('basil', 'thai', 'lemongrass'), 'https://images.unsplash.com/photo-1559317152-202d30895b0a?w=500&q=80'),
+    (('bowl', 'veggie', 'vegetable', 'greek', 'grain'), 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=500&q=80'),
+    (('cake', 'cookie', 'dessert', 'pie', 'brownie'), 'https://images.unsplash.com/photo-1464349095431-e9a21285b5f3?w=500&q=80'),
 ]
 
 # Curated ideas used when the community pool has no strong matches.
@@ -626,24 +646,23 @@ class SmartSuggestionsEngine:
             return FALLBACK_IMAGES[idx]
         return DEFAULT_FALLBACK_IMAGE
 
+    def _title_matched_image(self, recipe_name):
+        """Canonical suggestion image: always derived from the dish title."""
+        image = self._title_fallback_image(recipe_name)
+        return image if self._is_valid_https_url(image) else DEFAULT_FALLBACK_IMAGE
+
     def _recipe_image(self, recipe, blocked_urls=None):
-        """Resolve image from the same recipe source; never reuse the user's own log photos."""
-        blocked = set(blocked_urls or [])
+        """Use title-matched stock photos — community/friend uploads may not match the dish name."""
         recipe_name = (
             recipe.get('recipe_name')
             or recipe.get('name')
             or recipe.get('title')
             or ''
         )
-        for field in ('image', 'photoUrl', 'photo_url', 'dish_photo_url'):
-            url = self._normalize_https_url(recipe.get(field))
-            if self._is_valid_https_url(url) and url not in blocked:
-                return url
-        image = self._title_fallback_image(recipe_name)
-        return image if self._is_valid_https_url(image) else DEFAULT_FALLBACK_IMAGE
+        return self._title_matched_image(recipe_name)
 
     def _ensure_suggestion_images(self, suggestions):
-        """Guarantee every suggestion payload has a valid HTTPS image URL."""
+        """Guarantee every suggestion has a title-matched HTTPS image URL."""
         finalized = []
         for suggestion in suggestions or []:
             name = (
@@ -651,12 +670,7 @@ class SmartSuggestionsEngine:
                 or suggestion.get('name')
                 or 'Recipe'
             )
-            image = self._normalize_https_url(suggestion.get('image'))
-            if not self._is_valid_https_url(image):
-                image = self._title_fallback_image(name)
-            if not self._is_valid_https_url(image):
-                image = DEFAULT_FALLBACK_IMAGE
-            suggestion['image'] = image
+            suggestion['image'] = self._title_matched_image(name)
             finalized.append(suggestion)
         return finalized
 
