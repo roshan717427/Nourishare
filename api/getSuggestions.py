@@ -1,11 +1,19 @@
 from http.server import BaseHTTPRequestHandler
+import importlib.util
 import json
 import os
 import re
+import sys
 from collections import Counter
 from datetime import datetime
 
-from suggestion_images import DEFAULT_FALLBACK_IMAGE, title_matched_image
+_suggestion_images_path = os.path.join(os.path.dirname(__file__), 'suggestion_images.py')
+_spec = importlib.util.spec_from_file_location('suggestion_images', _suggestion_images_path)
+_suggestion_images = importlib.util.module_from_spec(_spec)
+sys.modules['suggestion_images'] = _suggestion_images
+_spec.loader.exec_module(_suggestion_images)
+DEFAULT_FALLBACK_IMAGE = _suggestion_images.DEFAULT_FALLBACK_IMAGE
+title_matched_image = _suggestion_images.title_matched_image
 
 # Import Firebase Admin SDK
 from firebase_admin import firestore
