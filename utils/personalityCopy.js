@@ -3,6 +3,8 @@
  * Second person on own profile; third person with first name for others.
  */
 
+import { toTitleCase } from './titleCase';
+
 const TRAIT_COPY = {
   'Kitchen Enthusiast': {
     adjective: 'curious',
@@ -90,9 +92,7 @@ export function extractFirstName(displayName) {
 }
 
 function formatCuisineName(cuisine) {
-  const raw = String(cuisine || '').trim();
-  if (!raw) return '';
-  return raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+  return toTitleCase(cuisine);
 }
 
 function resolveTraitCopy(primary) {
@@ -142,7 +142,7 @@ function formatIngredientClause(ingredients) {
   const list = (ingredients || []).filter(Boolean).slice(0, 2);
   if (!list.length) return '';
 
-  const names = list.map((item) => String(item).trim().toLowerCase()).filter(Boolean);
+  const names = list.map((item) => toTitleCase(item)).filter(Boolean);
   if (!names.length) return '';
 
   if (names.length === 1) {
@@ -165,7 +165,7 @@ function formatStandaloneIngredientPhrase(ingredients) {
   const list = (ingredients || []).filter(Boolean).slice(0, 2);
   if (!list.length) return '';
 
-  const names = list.map((item) => String(item).trim().toLowerCase()).filter(Boolean);
+  const names = list.map((item) => toTitleCase(item)).filter(Boolean);
   if (!names.length) return '';
 
   if (names.length === 1) {

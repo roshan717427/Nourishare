@@ -1,6 +1,7 @@
 const { initializeApp, cert, getApps } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 const { refreshUserPersonality, isPersonalityStale } = require('./personalityHelper');
+const { capitalizeList } = require('../utils/titleCase');
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -130,13 +131,21 @@ module.exports = async (req, res) => {
     if (!data.top_cuisines_user_set) {
       kitchenPersonality.top_cuisines = [];
     } else if (Array.isArray(kitchenPersonality.top_cuisines)) {
-      kitchenPersonality.top_cuisines = kitchenPersonality.top_cuisines
-        .map((item) => String(item || '').trim())
-        .filter(Boolean)
-        .slice(0, 3);
+      kitchenPersonality.top_cuisines = capitalizeList(
+        kitchenPersonality.top_cuisines
+          .map((item) => String(item || '').trim())
+          .filter(Boolean)
+          .slice(0, 3)
+      );
     }
     if (!data.favorite_ingredients_user_set) {
       kitchenPersonality.favorite_ingredients = [];
+    } else if (Array.isArray(kitchenPersonality.favorite_ingredients)) {
+      kitchenPersonality.favorite_ingredients = capitalizeList(
+        kitchenPersonality.favorite_ingredients
+          .map((item) => String(item || '').trim())
+          .filter(Boolean)
+      );
     }
 
     const response = {

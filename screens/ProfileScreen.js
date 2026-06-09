@@ -27,6 +27,7 @@ import PortfolioGalleryModal from '../components/PortfolioGalleryModal';
 import { API_URL } from '../config/api';
 import { colors, radii, spacing } from '../constants/theme';
 import { buildPersonalityDescriptionParts } from '../utils/personalityCopy';
+import { capitalizeList } from '../utils/titleCase';
 
 const PORTFOLIO_FAVORITES_MAX = 2;
 const TOP_CUISINES_MAX = 3;
@@ -430,10 +431,14 @@ export default function ProfileScreen({ navigation, route }) {
     setEditPrimaryTrait(p.primary_trait || '');
     setEditSecondaryTraits((p.secondary_traits || []).join(', '));
     setEditTopCuisines(
-      profile?.top_cuisines_user_set ? (p.top_cuisines || []).join(', ') : ''
+      profile?.top_cuisines_user_set
+        ? capitalizeList(p.top_cuisines || []).join(', ')
+        : ''
     );
     setEditFavoriteIngredients(
-      profile?.favorite_ingredients_user_set ? (p.favorite_ingredients || []).join(', ') : ''
+      profile?.favorite_ingredients_user_set
+        ? capitalizeList(p.favorite_ingredients || []).join(', ')
+        : ''
     );
     setEditProfileModalVisible(true);
   };
@@ -474,8 +479,8 @@ export default function ProfileScreen({ navigation, route }) {
       const kitchen_personality = {
         primary_trait: editPrimaryTrait.trim(),
         secondary_traits: parseCommaList(editSecondaryTraits),
-        top_cuisines: topCuisines,
-        favorite_ingredients: parseCommaList(editFavoriteIngredients),
+        top_cuisines: capitalizeList(topCuisines),
+        favorite_ingredients: capitalizeList(parseCommaList(editFavoriteIngredients)),
       };
       const payload = {
         username: user.username,
@@ -604,9 +609,11 @@ export default function ProfileScreen({ navigation, route }) {
 
   const personality = profile?.kitchen_personality || {};
   const stats = personality?.cooking_stats || {};
-  const topCuisines = profile?.top_cuisines_user_set ? personality?.top_cuisines || [] : [];
+  const topCuisines = profile?.top_cuisines_user_set
+    ? capitalizeList(personality?.top_cuisines || [])
+    : [];
   const favoriteIngredients = profile?.favorite_ingredients_user_set
-    ? personality?.favorite_ingredients || []
+    ? capitalizeList(personality?.favorite_ingredients || [])
     : [];
   const followers = profile?.followers || 0;
   const followingCount = profile?.following || 0;

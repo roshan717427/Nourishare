@@ -4,6 +4,8 @@
  * stays in sync without a separate analyze endpoint call.
  */
 
+const { capitalizeList } = require('../utils/titleCase');
+
 const CUISINE_CATEGORIES = {
   italian: ['pasta', 'pizza', 'risotto', 'bruschetta', 'tiramisu'],
   asian: ['sushi', 'stir-fry', 'curry', 'dumplings', 'ramen'],
@@ -215,13 +217,19 @@ function mergeWithUserEdits(analyzed, existingPersonality, userData = {}) {
 
   // Cuisines and ingredients are only preserved when explicitly set via Edit Profile.
   if (userData.top_cuisines_user_set) {
-    merged.top_cuisines = (existingPersonality.top_cuisines || [])
-      .map((item) => String(item || '').trim())
-      .filter(Boolean)
-      .slice(0, 3);
+    merged.top_cuisines = capitalizeList(
+      (existingPersonality.top_cuisines || [])
+        .map((item) => String(item || '').trim())
+        .filter(Boolean)
+        .slice(0, 3)
+    );
   }
   if (userData.favorite_ingredients_user_set) {
-    merged.favorite_ingredients = existingPersonality.favorite_ingredients || [];
+    merged.favorite_ingredients = capitalizeList(
+      (existingPersonality.favorite_ingredients || [])
+        .map((item) => String(item || '').trim())
+        .filter(Boolean)
+    );
   }
 
   return merged;
