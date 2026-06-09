@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,9 +6,9 @@ import {
   ScrollView,
   Image,
   TouchableOpacity,
-  ActivityIndicator,
   Alert,
   Platform,
+  Animated,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,7 +18,10 @@ import BottomNavigation from '../components/BottomNavigation';
 import { useAuth } from '../context/AuthContext';
 import { useNextUp } from '../context/NextUpContext';
 import { API_URL } from '../config/api';
-import { colors, radii } from '../constants/theme';
+import { colors, radii, spacing, shadows } from '../constants/theme';
+
+const CARD_WIDTH = 200;
+const IMAGE_HEIGHT = 150;
 
 // Stock images when the API omits a photo — matched by recipe title, not card index.
 const FALLBACK_IMAGES = [
@@ -63,17 +66,91 @@ function titleFallbackImage(recipeName) {
   return FALLBACK_IMAGES[0];
 }
 
-function RecipeCard({ recipe, onPress, onAddPress, isInNextUp, accentColor }) {
+function formatSuggestionReason(raw) {
+  if (!raw) return null;
+  const why = `${raw}`.trim();
+  if (!why) return null;
+
+  if (/^(it |your friend )/i.test(why)) {
+    return why;
+  }
+  if (/^a great /i.test(why)) {
+    return `it is ${why}`;
+  }
+  if (/^(highly rated|well-?rated|popular recipe|liked by|cooked by|recently cooked)/i.test(why)) {
+    if (/^cooked by your friend$/i.test(why)) {
+      return 'your friend cooked it';
+    }
+    if (/^recently cooked$/i.test(why)) {
+      return 'your friend cooked it recently';
+    }
+    return `it is ${why}`;
+  }
+  if (/^(matches|shares|picked|fits|based on)/i.test(why)) {
+    if (/^picked /i.test(why)) {
+      return `it was ${why}`;
+    }
+    if (/^based on /i.test(why)) {
+      return `it is ${why}`;
+    }
+    return `it ${why}`;
+  }
+  if (/^features /i.test(why)) {
+    return `it ${why}`;
+  }
+
+  return why;
+}
+
+function SectionHeader({ eyebrow, title, icon, accentColor, tintBg }) {
   return (
-    <TouchableOpacity style={styles.recipeCard} onPress={onPress} activeOpacity={0.85}>
+    <View style={styles.sectionHeaderWrap}>
+      <View style={styles.sectionHeader}>
+        <View style={[styles.sectionIconCircle, { backgroundColor: tintBg }]}>
+          <Ionicons name={icon} size={20} color={accentColor} />
+        </View>
+        <View style={styles.sectionHeaderText}>
+          <Text style={[styles.sectionEyebrow, { color: accentColor }]}>{eyebrow}</Text>
+          <Text style={styles.sectionTitle}>{title}</Text>
+        </View>
+      </View>
+      <View style={[styles.sectionRule, { backgroundColor: accentColor }]} />
+    </View>
+  );
+}
+
+function MetaChip({ icon, label, tint, textColor }) {
+  if (!label) return null;
+  return (
+    <View style={[styles.metaChip, { backgroundColor: tint }]}>
+      <Ionicons name={icon} size={11} color={textColor} />
+      <Text style={[styles.metaChipText, { color: textColor }]} numberOfLines={1}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+function RecipeCard({ recipe, onPress, onAddPress, isInNextUp, accentColor, reasonTint, reasonTextColor }) {
+  const why = formatSuggestionReason(recipe.why_suggested);
+  const difficulty = recipe.difficulty_level
+    ? recipe.difficulty_level.charAt(0).toUpperCase() + recipe.difficulty_level.slice(1)
+    : null;
+
+  return (
+    <TouchableOpacity
+      style={[styles.recipeCard, shadows.cardSoft]}
+      onPress={onPress}
+      activeOpacity={0.88}
+    >
       <View style={styles.recipeImageWrap}>
         <Image source={{ uri: recipe.image }} style={styles.recipeImage} />
         <LinearGradient
-          colors={['transparent', 'rgba(0,0,0,0.45)']}
+          colors={['transparent', 'rgba(0,0,0,0.55)']}
           style={styles.recipeImageGradient}
         />
         <TouchableOpacity
-          style={[styles.addButton, isInNextUp && styles.addButtonActive]}
+          style={[styles.addButton, isInNextUp && styles.addButtonActive, shadows.cardSoft]}
           onPress={(e) => {
             e?.stopPropagation?.();
             onAddPress?.();
@@ -85,31 +162,92 @@ function RecipeCard({ recipe, onPress, onAddPress, isInNextUp, accentColor }) {
           <Ionicons
             name={isInNextUp ? 'checkmark' : 'add'}
             size={18}
-            color={isInNextUp ? colors.card : colors.primary}
+            color={isInNextUp ? colors.card : accentColor}
           />
         </TouchableOpacity>
         {recipe.rating ? (
-          <View style={styles.ratingBadge}>
-            <Ionicons name="star" size={12} color={colors.star} />
+          <View style={[styles.ratingBadge, shadows.cardSoft]}>
+            <Ionicons name="star" size={11} color={colors.star} />
             <Text style={styles.ratingText}>{recipe.rating}</Text>
           </View>
         ) : null}
       </View>
-      <View style={[styles.recipeInfo, { borderLeftColor: accentColor }]}>
+
+      <View style={styles.recipeBody}>
         <Text style={styles.recipeName} numberOfLines={2}>
           {recipe.name}
         </Text>
-        <Text style={styles.recipeSubtitle}>{recipe.subtitle}</Text>
+
+        <View style={styles.metaRow}>
+          <MetaChip
+            icon="speedometer-outline"
+            label={difficulty}
+            tint={colors.chipTeal}
+            textColor={colors.chipTealText}
+          />
+          <MetaChip
+            icon="time-outline"
+            label={recipe.cooking_time}
+            tint={colors.chipAmber}
+            textColor={colors.chipAmberText}
+          />
+        </View>
+
+        {why ? (
+          <View style={[styles.reasonBox, { backgroundColor: reasonTint }]}>
+            <Ionicons name="sparkles" size={12} color={reasonTextColor} style={styles.reasonIcon} />
+            <Text style={[styles.reasonText, { color: reasonTextColor }]} numberOfLines={2}>
+              Suggested because {why}.
+            </Text>
+          </View>
+        ) : (
+          <Text style={styles.recipeSubtitle} numberOfLines={1}>
+            {recipe.subtitle}
+          </Text>
+        )}
       </View>
     </TouchableOpacity>
   );
 }
 
+function SkeletonCard({ pulseAnim }) {
+  const opacity = pulseAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.35, 0.7],
+  });
+
+  return (
+    <View style={[styles.recipeCard, styles.skeletonCard]}>
+      <Animated.View style={[styles.skeletonImage, { opacity }]} />
+      <View style={styles.recipeBody}>
+        <Animated.View style={[styles.skeletonLine, styles.skeletonLineTitle, { opacity }]} />
+        <Animated.View style={[styles.skeletonLine, styles.skeletonLineShort, { opacity }]} />
+        <Animated.View style={[styles.skeletonLine, styles.skeletonLineReason, { opacity }]} />
+      </View>
+    </View>
+  );
+}
+
+function SkeletonRow({ pulseAnim }) {
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.cardRow}
+      scrollEnabled={false}
+    >
+      {[0, 1, 2].map((i) => (
+        <SkeletonCard key={`sk-${i}`} pulseAnim={pulseAnim} />
+      ))}
+    </ScrollView>
+  );
+}
+
 function SectionEmptyState({ icon, title, hint, accentColor, chipColors }) {
   return (
-    <View style={styles.sectionEmpty}>
+    <View style={[styles.sectionEmpty, shadows.cardSoft]}>
       <LinearGradient colors={chipColors} style={styles.sectionEmptyIcon}>
-        <Ionicons name={icon} size={28} color={accentColor} />
+        <Ionicons name={icon} size={30} color={accentColor} />
       </LinearGradient>
       <Text style={styles.sectionEmptyTitle}>{title}</Text>
       <Text style={styles.sectionEmptyHint}>{hint}</Text>
@@ -123,7 +261,7 @@ function formatSubtitle(suggestion) {
       suggestion.difficulty_level.slice(1)
     : null;
   const time = suggestion.cooking_time || null;
-  return [difficulty, time].filter(Boolean).join(', ') || 'Suggested for you';
+  return [difficulty, time].filter(Boolean).join(' · ') || 'Suggested for you';
 }
 
 function mapApiSuggestions(items) {
@@ -143,6 +281,7 @@ function mapApiSuggestions(items) {
       steps: s.steps || undefined,
       difficulty_level: s.difficulty_level || s.difficulty,
       cooking_time: s.cooking_time || s.time,
+      why_suggested: s.why_suggested || s.reason,
     };
   });
 }
@@ -171,6 +310,29 @@ export default function AISuggestionsScreen({ navigation }) {
   const [hasLogs, setHasLogs] = useState(false);
   const [preferenceSuggestions, setPreferenceSuggestions] = useState([]);
   const [friendSuggestions, setFriendSuggestions] = useState([]);
+
+  const pulseAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!loading) return undefined;
+
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 0,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [loading, pulseAnim]);
 
   useFocusEffect(
     useCallback(() => {
@@ -283,13 +445,13 @@ export default function AISuggestionsScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
 
       <LinearGradient
         colors={[colors.gradientStart, colors.gradientEnd]}
         start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={styles.headerGradient}
+        end={{ x: 1, y: 1 }}
+        style={[styles.headerGradient, shadows.header]}
       >
         <TouchableOpacity
           onPress={() => {
@@ -302,11 +464,16 @@ export default function AISuggestionsScreen({ navigation }) {
           style={styles.backButton}
           activeOpacity={0.7}
         >
-          <Ionicons name="arrow-back" size={24} color="#fff" />
+          <Ionicons name="arrow-back" size={22} color="#fff" />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          <Ionicons name="sparkles" size={22} color="#fff" />
-          <Text style={styles.headerTitle}>Munchable AI</Text>
+          <View style={styles.headerBadge}>
+            <Ionicons name="sparkles" size={18} color={colors.primary} />
+          </View>
+          <View>
+            <Text style={styles.headerTitle}>Munchable AI</Text>
+            <Text style={styles.headerSubtitle}>Curated picks, just for you</Text>
+          </View>
         </View>
         <View style={styles.backButton} />
       </LinearGradient>
@@ -315,21 +482,35 @@ export default function AISuggestionsScreen({ navigation }) {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.greetingCard}>
-          <Text style={styles.greeting}>
-            {buildGreeting(displayName, hasLogs, hasFollowing)}
-          </Text>
+        <View style={[styles.greetingCard, shadows.cardSoft]}>
+          <LinearGradient
+            colors={[colors.cardWarm, colors.card]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.greetingGradient}
+          >
+            <View style={styles.greetingAccent} />
+            <View style={styles.greetingContent}>
+              <View style={styles.greetingIconWrap}>
+                <Ionicons name="bulb-outline" size={18} color={colors.primary} />
+              </View>
+              <Text style={styles.greeting}>
+                {loading ? 'Finding recipes tailored to your tastes...' : buildGreeting(displayName, hasLogs, hasFollowing)}
+              </Text>
+            </View>
+          </LinearGradient>
         </View>
 
+        <SectionHeader
+          eyebrow="YOUR TASTES"
+          title="Based on Your Preferences"
+          icon="heart"
+          accentColor={colors.primary}
+          tintBg={colors.chipCoral}
+        />
         {loading ? (
-          <ActivityIndicator size="large" color={colors.primary} style={styles.loader} />
-        ) : null}
-
-        <View style={styles.sectionHeader}>
-          <Ionicons name="heart" size={18} color={colors.primary} />
-          <Text style={styles.sectionTitle}>Based on Your Preferences</Text>
-        </View>
-        {showPreferenceEmpty ? (
+          <SkeletonRow pulseAnim={pulseAnim} />
+        ) : showPreferenceEmpty ? (
           <SectionEmptyState
             icon="restaurant-outline"
             title={preferenceEmptyCopy.title}
@@ -350,12 +531,15 @@ export default function AISuggestionsScreen({ navigation }) {
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.cardRow}
+            decelerationRate="fast"
           >
             {preferenceSuggestions.map((recipe) => (
               <RecipeCard
                 key={recipe.id}
                 recipe={recipe}
                 accentColor={colors.primary}
+                reasonTint={colors.chipCoral}
+                reasonTextColor={colors.chipCoralText}
                 isInNextUp={isInNextUp(recipe.id)}
                 onAddPress={() => handleAddToNextUp(recipe)}
                 onPress={() => openRecipe(recipe)}
@@ -364,11 +548,16 @@ export default function AISuggestionsScreen({ navigation }) {
           </ScrollView>
         )}
 
-        <View style={styles.sectionHeader}>
-          <Ionicons name="people" size={18} color={colors.accent} />
-          <Text style={styles.sectionTitle}>Inspired by Your Friends</Text>
-        </View>
-        {showFriendEmpty ? (
+        <SectionHeader
+          eyebrow="YOUR CIRCLE"
+          title="Inspired by Your Friends"
+          icon="people"
+          accentColor={colors.accent}
+          tintBg={colors.chipTeal}
+        />
+        {loading ? (
+          <SkeletonRow pulseAnim={pulseAnim} />
+        ) : showFriendEmpty ? (
           <SectionEmptyState
             icon="people-outline"
             title={friendEmptyCopy.title}
@@ -381,12 +570,15 @@ export default function AISuggestionsScreen({ navigation }) {
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.cardRow}
+            decelerationRate="fast"
           >
             {friendSuggestions.map((recipe) => (
               <RecipeCard
                 key={recipe.id}
                 recipe={recipe}
                 accentColor={colors.accent}
+                reasonTint={colors.chipTeal}
+                reasonTextColor={colors.chipTealText}
                 isInNextUp={isInNextUp(recipe.id)}
                 onAddPress={() => handleAddToNextUp(recipe)}
                 onPress={() => openRecipe(recipe)}
@@ -410,98 +602,167 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
+    paddingHorizontal: spacing.md + 4,
     paddingTop: Platform.OS === 'ios' ? 60 : 40,
-    paddingBottom: 16,
+    paddingBottom: spacing.lg,
   },
   backButton: {
-    width: 32,
-    height: 32,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerCenter: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
+  },
+  headerBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitle: {
     fontSize: 20,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#fff',
+    letterSpacing: -0.3,
+  },
+  headerSubtitle: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.85)',
+    marginTop: 1,
+    letterSpacing: 0.2,
   },
   scrollContent: {
-    paddingBottom: 24,
+    paddingBottom: spacing.lg,
   },
   greetingCard: {
-    marginHorizontal: 20,
-    marginTop: 16,
-    backgroundColor: colors.card,
-    borderRadius: radii.lg,
-    padding: 16,
+    marginHorizontal: spacing.md + 4,
+    marginTop: spacing.lg,
+    borderRadius: radii.xl,
+    overflow: 'hidden',
     borderWidth: 1,
     borderColor: colors.border,
   },
-  greeting: {
-    fontSize: 16,
-    lineHeight: 24,
-    color: colors.text,
+  greetingGradient: {
+    flexDirection: 'row',
+    overflow: 'hidden',
   },
-  loader: {
-    marginVertical: 16,
+  greetingAccent: {
+    width: 4,
+    backgroundColor: colors.primary,
+  },
+  greetingContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: spacing.md + 2,
+    gap: 12,
+  },
+  greetingIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.chipCoral,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  greeting: {
+    flex: 1,
+    fontSize: 15,
+    lineHeight: 23,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  sectionHeaderWrap: {
+    marginTop: spacing.xl,
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.md + 4,
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    marginTop: 24,
-    marginBottom: 14,
-    gap: 8,
+    gap: 12,
+    marginBottom: 10,
   },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  sectionEmpty: {
-    marginHorizontal: 20,
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: 28,
-    paddingHorizontal: 24,
-  },
-  sectionEmptyIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+  sectionIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 14,
+  },
+  sectionHeaderText: {
+    flex: 1,
+  },
+  sectionEyebrow: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    marginBottom: 2,
+  },
+  sectionTitle: {
+    fontSize: 21,
+    fontWeight: '800',
+    color: colors.text,
+    letterSpacing: -0.4,
+  },
+  sectionRule: {
+    height: 3,
+    width: 48,
+    borderRadius: 2,
+    opacity: 0.85,
+  },
+  sectionEmpty: {
+    marginHorizontal: spacing.md + 4,
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 32,
+    paddingHorizontal: spacing.lg,
+  },
+  sectionEmptyIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
   },
   sectionEmptyTitle: {
-    fontSize: 17,
-    fontWeight: '700',
+    fontSize: 18,
+    fontWeight: '800',
     color: colors.text,
-    marginBottom: 6,
+    marginBottom: 8,
     textAlign: 'center',
+    letterSpacing: -0.2,
   },
   sectionEmptyHint: {
     fontSize: 14,
-    lineHeight: 20,
-    color: colors.textSecondary,
+    lineHeight: 21,
+    color: colors.textMuted,
     textAlign: 'center',
+    maxWidth: 260,
   },
   cardRow: {
-    paddingHorizontal: 20,
+    paddingHorizontal: spacing.md + 4,
+    paddingBottom: 4,
   },
   recipeCard: {
-    width: 180,
-    marginRight: 16,
+    width: CARD_WIDTH,
+    marginRight: spacing.md,
     backgroundColor: colors.card,
-    borderRadius: radii.lg,
+    borderRadius: radii.xl,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: colors.border,
@@ -513,14 +774,14 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 10,
     left: 10,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.95)',
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(255,255,255,0.96)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: 'rgba(255,255,255,0.6)',
     zIndex: 2,
   },
   addButtonActive: {
@@ -528,8 +789,8 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
   recipeImage: {
-    width: 180,
-    height: 150,
+    width: CARD_WIDTH,
+    height: IMAGE_HEIGHT,
     backgroundColor: colors.borderLight,
   },
   recipeImageGradient: {
@@ -537,7 +798,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: 50,
+    height: 60,
   },
   ratingBadge: {
     position: 'absolute',
@@ -545,29 +806,95 @@ const styles = StyleSheet.create({
     right: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    backgroundColor: 'rgba(255,255,255,0.94)',
     borderRadius: radii.pill,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    gap: 4,
+    gap: 3,
   },
   ratingText: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
     color: colors.text,
   },
-  recipeInfo: {
-    padding: 12,
-    borderLeftWidth: 4,
+  recipeBody: {
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 14,
   },
   recipeName: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
     color: colors.text,
-    marginBottom: 4,
+    marginBottom: 8,
+    lineHeight: 21,
+    letterSpacing: -0.2,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 10,
+  },
+  metaChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: radii.pill,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    gap: 4,
+  },
+  metaChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  reasonBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    borderRadius: radii.sm,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  reasonIcon: {
+    marginTop: 1,
+    marginRight: 6,
+  },
+  reasonText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 17,
+    fontStyle: 'italic',
+    fontWeight: '500',
   },
   recipeSubtitle: {
-    fontSize: 13,
+    fontSize: 12,
     color: colors.textMuted,
+    fontWeight: '500',
+  },
+  skeletonCard: {
+    borderColor: colors.borderLight,
+  },
+  skeletonImage: {
+    width: CARD_WIDTH,
+    height: IMAGE_HEIGHT,
+    backgroundColor: colors.borderLight,
+  },
+  skeletonLine: {
+    backgroundColor: colors.borderLight,
+    borderRadius: radii.sm,
+    marginBottom: 8,
+  },
+  skeletonLineTitle: {
+    height: 16,
+    width: '85%',
+  },
+  skeletonLineShort: {
+    height: 12,
+    width: '55%',
+  },
+  skeletonLineReason: {
+    height: 32,
+    width: '100%',
+    marginBottom: 0,
   },
 });

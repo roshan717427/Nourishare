@@ -53,4 +53,28 @@ export const radii = {
   round: 999,
 };
 
-export default { colors, spacing, radii };
+export const shadows = {
+  card: {
+    shadowColor: '#FF6B4A',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    elevation: 5,
+  },
+  cardSoft: {
+    shadowColor: '#1A1A2E',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  header: {
+    shadowColor: '#E85A3A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+};
+
+export default { colors, spacing, radii, shadows };
