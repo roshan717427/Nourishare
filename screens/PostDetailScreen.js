@@ -155,6 +155,38 @@ export default function PostDetailScreen({ navigation, route }) {
     }
   };
 
+  const handleDeleteComment = (commentId) => {
+    if (!username || !postId || !commentId) return;
+
+    Alert.alert(
+      'Delete comment?',
+      'Remove this comment? This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const res = await fetch(`${API_URL}/social?action=deleteComment`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, postId, commentId, collection }),
+              });
+              const data = await res.json().catch(() => ({}));
+              if (!res.ok) {
+                throw new Error(data.error || 'Failed to delete comment');
+              }
+              setComments((prev) => prev.filter((c) => c.id !== commentId));
+            } catch (err) {
+              Alert.alert('Could not delete comment', err.message);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const authorUsername = post.user?.username || post.username || null;
   const authorName = post.user?.name || post.username || 'Someone';
   const isOwnPost = !!username && authorUsername === username && collection === 'logs';
@@ -381,7 +413,18 @@ export default function PostDetailScreen({ navigation, route }) {
                   </Text>
                 </View>
                 <View style={styles.commentBubble}>
-                  <Text style={styles.commentAuthor}>{c.name || c.username}</Text>
+                  <View style={styles.commentHeader}>
+                    <Text style={styles.commentAuthor}>{c.name || c.username}</Text>
+                    {username && c.username === username ? (
+                      <TouchableOpacity
+                        onPress={() => handleDeleteComment(c.id)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityLabel="Delete comment"
+                      >
+                        <Ionicons name="trash-outline" size={16} color={colors.error} />
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
                   <Text style={styles.commentText}>{c.text}</Text>
                 </View>
               </View>
@@ -656,11 +699,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  commentHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 2,
+  },
   commentAuthor: {
     fontSize: 14,
     fontWeight: '700',
     color: colors.text,
-    marginBottom: 2,
+    flex: 1,
   },
   commentText: {
     fontSize: 15,

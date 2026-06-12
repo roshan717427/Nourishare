@@ -254,6 +254,56 @@ class SmartSuggestionsEngine:
 
         return False
 
+    def _token_matches_pantry(self, recipe_token, pantry_tokens):
+        """Fuzzy match: lowercase trim, substring or token match."""
+        if not recipe_token or not pantry_tokens:
+            return False
+        for pantry in pantry_tokens:
+            if pantry in recipe_token or recipe_token in pantry:
+                return True
+        return False
+
+    def _split_by_pantry(self, recipe_ingredients, pantry_tokens):
+        """Split recipe ingredients into have vs need lists based on pantry."""
+        recipe_tokens = self._normalize_ingredients(recipe_ingredients)
+        if not pantry_tokens:
+            return [], recipe_tokens
+        have = []
+        need = []
+        for token in recipe_tokens:
+            if self._token_matches_pantry(token, pantry_tokens):
+                have.append(token)
+            else:
+                need.append(token)
+        return have, need
+
+    def _pantry_boost_score(self, recipe_tokens, pantry_tokens):
+        """Score boost 0-50 when pantry overlaps with recipe ingredients."""
+        if not pantry_tokens or not recipe_tokens:
+            return 0.0
+        overlap = sum(
+            1 for token in recipe_tokens if self._token_matches_pantry(token, pantry_tokens)
+        )
+        ratio = overlap / max(len(recipe_tokens), 1)
+        return min(50.0, ratio * 50 + overlap * 5)
+
+    def _apply_pantry(self, suggestions, pantry_ingredients):
+        """Rank by pantry overlap and attach ingredients_have / ingredients_need."""
+        pantry_tokens = self._normalize_ingredients(pantry_ingredients)
+        if not pantry_tokens:
+            return suggestions
+        for suggestion in suggestions:
+            recipe_tokens = self._normalize_ingredients(suggestion.get('ingredients'))
+            have, need = self._split_by_pantry(suggestion.get('ingredients'), pantry_tokens)
+            suggestion['ingredients_have'] = have
+            suggestion['ingredients_need'] = need
+            boost = self._pantry_boost_score(recipe_tokens, pantry_tokens)
+            suggestion['suggestion_score'] = round(
+                float(suggestion.get('suggestion_score', 0)) + boost, 2
+            )
+        suggestions.sort(key=lambda item: item.get('suggestion_score', 0), reverse=True)
+        return suggestions
+
     def _ingredient_overlap_score(self, candidate_tokens, user_tokens):
         """Score 0-40 based on shared ingredient keywords."""
         if not user_tokens or not candidate_tokens:
@@ -1311,7 +1361,7 @@ class SmartSuggestionsEngine:
         suggestions.sort(key=lambda item: item['suggestion_score'], reverse=True)
         return suggestions[:limit]
 
-    def get_suggestions(self, username, limit=10):
+    def get_suggestions(self, username, limit=10, pantry_ingredients=None):
         """Get smart suggestions for a user (preferences + friends)."""
         try:
             logs = self._get_user_logs(username)
@@ -1337,6 +1387,14 @@ class SmartSuggestionsEngine:
                 preference_suggestions
             )
             friend_suggestions = self._ensure_suggestion_images(friend_suggestions)
+
+            if pantry_ingredients:
+                preference_suggestions = self._apply_pantry(
+                    preference_suggestions, pantry_ingredients
+                )
+                friend_suggestions = self._apply_pantry(
+                    friend_suggestions, pantry_ingredients
+                )
 
             return {
                 'preference_suggestions': preference_suggestions,
@@ -1465,6 +1523,9 @@ class handler(BaseHTTPRequestHandler):
             
             username = data.get('username')
             limit = data.get('limit', 10)
+            pantry_ingredients = data.get('pantry_ingredients')
+            if pantry_ingredients is not None and not isinstance(pantry_ingredients, list):
+                pantry_ingredients = None
             
             if not username:
                 error_response = {
@@ -1477,7 +1538,7 @@ class handler(BaseHTTPRequestHandler):
             
             # Generate suggestions
             engine = SmartSuggestionsEngine()
-            result = engine.get_suggestions(username, limit)
+            result = engine.get_suggestions(username, limit, pantry_ingredients)
             
             # Return success response
             response = {

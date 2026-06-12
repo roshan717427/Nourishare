@@ -66,6 +66,9 @@ export default function RecipeDetailScreen({ navigation, route }) {
   const why = formatSuggestionReason(recipe.why_suggested);
 
   const ingredients = toIngredientList(recipe.ingredients);
+  const ingredientsHave = Array.isArray(recipe.ingredientsHave) ? recipe.ingredientsHave : [];
+  const ingredientsNeed = Array.isArray(recipe.ingredientsNeed) ? recipe.ingredientsNeed : [];
+  const showPantrySplit = ingredientsHave.length > 0 || ingredientsNeed.length > 0;
   const steps = getRecipeSteps(recipe);
   const notes = recipe.cooking_notes || recipe.notes || null;
   const showNotesSeparately = steps.length > 0 && notes && !steps.includes(notes);
@@ -140,6 +143,37 @@ export default function RecipeDetailScreen({ navigation, route }) {
 
           {hasRecipeContent(recipe) ? (
             <RecipeSection recipe={recipe} style={styles.recipeSection} />
+          ) : null}
+
+          {showPantrySplit ? (
+            <>
+              {ingredientsHave.length > 0 ? (
+                <>
+                  <Text style={styles.sectionTitle}>You have</Text>
+                  <View style={[styles.ingredientsCard, styles.ingredientsHaveCard]}>
+                    {ingredientsHave.map((item, idx) => (
+                      <View key={`have-${idx}`} style={styles.bulletRow}>
+                        <Ionicons name="checkmark-circle" size={16} color={colors.chipTealText} />
+                        <Text style={styles.bulletText}>{item}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </>
+              ) : null}
+              {ingredientsNeed.length > 0 ? (
+                <>
+                  <Text style={styles.sectionTitle}>You need</Text>
+                  <View style={[styles.ingredientsCard, styles.ingredientsNeedCard]}>
+                    {ingredientsNeed.map((item, idx) => (
+                      <View key={`need-${idx}`} style={styles.bulletRow}>
+                        <Ionicons name="cart-outline" size={16} color={colors.chipCoralText} />
+                        <Text style={styles.bulletText}>{item}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </>
+              ) : null}
+            </>
           ) : null}
 
           <Text style={styles.sectionTitle}>Ingredients</Text>
@@ -305,10 +339,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  ingredientsHaveCard: {
+    backgroundColor: colors.chipTeal,
+    borderColor: colors.chipTeal,
+  },
+  ingredientsNeedCard: {
+    backgroundColor: colors.chipCoral,
+    borderColor: colors.chipCoral,
+  },
   bulletRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     marginBottom: 10,
+    gap: 10,
   },
   bullet: {
     width: 8,

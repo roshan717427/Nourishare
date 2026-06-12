@@ -9,6 +9,7 @@ import {
   Alert,
   Platform,
   Animated,
+  TextInput,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -99,7 +100,7 @@ function MetaChip({ icon, label, tint, textColor }) {
   );
 }
 
-function RecipeCard({ recipe, onPress, onAddPress, isInNextUp, accentColor, reasonTint, reasonTextColor }) {
+function RecipeCard({ recipe, onPress, onAddPress, isInNextUp, accentColor, reasonTint, reasonTextColor, showPantry }) {
   const why = formatSuggestionReason(recipe.why_suggested);
   const difficulty = recipe.difficulty_level
     ? recipe.difficulty_level.charAt(0).toUpperCase() + recipe.difficulty_level.slice(1)
@@ -189,6 +190,21 @@ function RecipeCard({ recipe, onPress, onAddPress, isInNextUp, accentColor, reas
             {recipe.subtitle}
           </Text>
         )}
+
+        {showPantry && (recipe.ingredientsHave?.length > 0 || recipe.ingredientsNeed?.length > 0) ? (
+          <View style={styles.pantryBlock}>
+            {recipe.ingredientsHave?.length > 0 ? (
+              <Text style={styles.pantryHave} numberOfLines={2}>
+                You have: {recipe.ingredientsHave.join(', ')}
+              </Text>
+            ) : null}
+            {recipe.ingredientsNeed?.length > 0 ? (
+              <Text style={styles.pantryNeed} numberOfLines={2}>
+                You need: {recipe.ingredientsNeed.join(', ')}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
       </View>
     </TouchableOpacity>
   );
@@ -267,8 +283,18 @@ function mapApiSuggestions(items) {
       difficulty_level: s.difficulty_level || s.difficulty,
       cooking_time: s.cooking_time || s.time,
       why_suggested: s.why_suggested || s.reason,
+      ingredientsHave: Array.isArray(s.ingredients_have) ? s.ingredients_have : [],
+      ingredientsNeed: Array.isArray(s.ingredients_need) ? s.ingredients_need : [],
     };
   });
+}
+
+function parsePantryInput(text) {
+  if (!text || !`${text}`.trim()) return [];
+  return `${text}`
+    .split(/[,;\n]+/)
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
 }
 
 function buildGreeting(displayName, hasLogs, hasFollowing) {
@@ -296,6 +322,8 @@ export default function AISuggestionsScreen({ navigation }) {
   const [hasFriends, setHasFriends] = useState(false);
   const [preferenceSuggestions, setPreferenceSuggestions] = useState([]);
   const [friendSuggestions, setFriendSuggestions] = useState([]);
+  const [pantryText, setPantryText] = useState('');
+  const [pantryActive, setPantryActive] = useState(null);
 
   const pulseAnim = useRef(new Animated.Value(0)).current;
 
@@ -324,7 +352,7 @@ export default function AISuggestionsScreen({ navigation }) {
     useCallback(() => {
       let isMounted = true;
 
-      const fetchSuggestions = async () => {
+      const fetchSuggestions = async (pantryList = null) => {
         setLoading(true);
 
         let logsCount = 0;
@@ -342,10 +370,15 @@ export default function AISuggestionsScreen({ navigation }) {
         }
 
         try {
+          const body = { username, limit: 6 };
+          if (pantryList && pantryList.length > 0) {
+            body.pantry_ingredients = pantryList;
+          }
+
           const response = await fetch(`${API_URL}/getSuggestions`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, limit: 6 }),
+            body: JSON.stringify(body),
           });
 
           if (!isMounted) {
@@ -391,12 +424,26 @@ export default function AISuggestionsScreen({ navigation }) {
         }
       };
 
-      fetchSuggestions();
+      fetchSuggestions(pantryActive);
       return () => {
         isMounted = false;
       };
-    }, [username, hasFollowing])
+    }, [username, hasFollowing, pantryActive])
   );
+
+  const handleSkipPantry = () => {
+    setPantryText('');
+    setPantryActive([]);
+  };
+
+  const handleMatchPantry = () => {
+    const parsed = parsePantryInput(pantryText);
+    if (parsed.length === 0) {
+      Alert.alert('Add ingredients', 'Enter what you have on hand, separated by commas.');
+      return;
+    }
+    setPantryActive(parsed);
+  };
 
   const openRecipe = (recipe) => {
     navigation.navigate('RecipeDetail', { recipe });
@@ -472,6 +519,41 @@ export default function AISuggestionsScreen({ navigation }) {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        <View style={[styles.pantryCard, shadows.cardSoft]}>
+          <View style={styles.pantryHeader}>
+            <Ionicons name="basket-outline" size={18} color={colors.primary} />
+            <Text style={styles.pantryTitle}>What's in your pantry?</Text>
+          </View>
+          <Text style={styles.pantryHint}>
+            Optional. List ingredients you have and we'll rank recipes you can make.
+          </Text>
+          <TextInput
+            style={styles.pantryInput}
+            placeholder="e.g. chicken, rice, garlic, soy sauce"
+            placeholderTextColor={colors.textMuted}
+            value={pantryText}
+            onChangeText={setPantryText}
+            multiline
+          />
+          <View style={styles.pantryActions}>
+            <TouchableOpacity
+              style={styles.pantrySkipButton}
+              onPress={handleSkipPantry}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.pantrySkipText}>Skip</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.pantryMatchButton}
+              onPress={handleMatchPantry}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="search" size={16} color="#fff" />
+              <Text style={styles.pantryMatchText}>Find matches</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         <View style={[styles.greetingCard, shadows.cardSoft]}>
           <LinearGradient
             colors={[colors.cardWarm, colors.card]}
@@ -530,6 +612,7 @@ export default function AISuggestionsScreen({ navigation }) {
                 accentColor={colors.primary}
                 reasonTint={colors.chipCoral}
                 reasonTextColor={colors.chipCoralText}
+                showPantry={pantryActive && pantryActive.length > 0}
                 isInNextUp={isInNextUp(recipe.id)}
                 onAddPress={() => handleAddToNextUp(recipe)}
                 onPress={() => openRecipe(recipe)}
@@ -569,6 +652,7 @@ export default function AISuggestionsScreen({ navigation }) {
                 accentColor={colors.accent}
                 reasonTint={colors.chipTeal}
                 reasonTextColor={colors.chipTealText}
+                showPantry={pantryActive && pantryActive.length > 0}
                 isInNextUp={isInNextUp(recipe.id)}
                 onAddPress={() => handleAddToNextUp(recipe)}
                 onPress={() => openRecipe(recipe)}
@@ -632,6 +716,78 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: spacing.lg,
+  },
+  pantryCard: {
+    marginHorizontal: spacing.md + 4,
+    marginTop: spacing.lg,
+    backgroundColor: colors.card,
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md + 2,
+  },
+  pantryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  pantryTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.text,
+    letterSpacing: -0.2,
+  },
+  pantryHint: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: colors.textMuted,
+    marginBottom: 10,
+  },
+  pantryInput: {
+    backgroundColor: colors.inputBg,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: colors.text,
+    minHeight: 44,
+    maxHeight: 80,
+    marginBottom: 12,
+  },
+  pantryActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
+  pantrySkipButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  pantrySkipText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  pantryMatchButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.primary,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: radii.pill,
+  },
+  pantryMatchText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#fff',
   },
   greetingCard: {
     marginHorizontal: spacing.md + 4,
@@ -860,6 +1016,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textMuted,
     fontWeight: '500',
+  },
+  pantryBlock: {
+    marginTop: 8,
+    gap: 4,
+  },
+  pantryHave: {
+    fontSize: 11,
+    lineHeight: 15,
+    color: colors.chipTealText,
+    fontWeight: '600',
+  },
+  pantryNeed: {
+    fontSize: 11,
+    lineHeight: 15,
+    color: colors.chipCoralText,
+    fontWeight: '600',
   },
   skeletonCard: {
     borderColor: colors.borderLight,

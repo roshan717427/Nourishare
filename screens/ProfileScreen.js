@@ -127,6 +127,10 @@ function PortfolioPreview({ favoriteDishes, totalCount, onDishPress, onViewAll }
 }
 
 function NextUpCard({ recipe, onPress, onRemove }) {
+  const hasPantry =
+    (Array.isArray(recipe.ingredientsHave) && recipe.ingredientsHave.length > 0) ||
+    (Array.isArray(recipe.ingredientsNeed) && recipe.ingredientsNeed.length > 0);
+
   return (
     <TouchableOpacity style={styles.nextUpCard} onPress={onPress} activeOpacity={0.85}>
       {recipe.image ? (
@@ -144,6 +148,19 @@ function NextUpCard({ recipe, onPress, onRemove }) {
           <Text style={styles.nextUpSubtitle} numberOfLines={1}>
             {recipe.subtitle}
           </Text>
+        ) : null}
+        {hasPantry ? (
+          <View style={styles.nextUpPantry}>
+            {recipe.ingredientsNeed?.length > 0 ? (
+              <Text style={styles.nextUpNeed} numberOfLines={2}>
+                Need: {recipe.ingredientsNeed.join(', ')}
+              </Text>
+            ) : (
+              <Text style={styles.nextUpHave} numberOfLines={1}>
+                You have everything!
+              </Text>
+            )}
+          </View>
         ) : null}
       </View>
       {onRemove ? (
@@ -1311,6 +1328,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textMuted,
     marginTop: 2,
+  },
+  nextUpPantry: {
+    marginTop: 6,
+  },
+  nextUpHave: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.chipTealText,
+  },
+  nextUpNeed: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.chipCoralText,
+    lineHeight: 15,
   },
   nextUpRemove: {
     position: 'absolute',

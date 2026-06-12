@@ -52,6 +52,10 @@
  *   - addComment    POST  ?action=addComment
  *                   body  { username, postId, collection, text }
  *                   resp  { message, comment, comments_count }
+ *   - deleteComment POST  ?action=deleteComment
+ *                   body  { username, postId, commentId, collection }
+ *                   resp  { message, comments_count }
+ *                   Only the comment author may delete (username must match).
  *   - likes         GET   ?action=likes&postId=<id>
  *                   resp  { likes: [{ username, name }], likes_count }
  *   - like          POST  ?action=like
@@ -623,6 +627,47 @@ async function handleComments(req, res) {
   res.status(200).json({ comments });
 }
 
+async function handleDeleteComment(req, res) {
+  if (req.method !== 'POST') return methodNotAllowed(res);
+
+  const { username, postId, commentId } = req.body;
+  if (!username || !postId || !commentId) {
+    return res.status(400).json({ error: 'username, postId and commentId are required' });
+  }
+  const collectionName = resolveCollection(req.body.collection);
+  if (!collectionName) {
+    return res.status(400).json({ error: 'Invalid collection' });
+  }
+
+  const commentRef = db
+    .collection('post_comments')
+    .doc(postId)
+    .collection('items')
+    .doc(commentId);
+  const commentDoc = await commentRef.get();
+  if (!commentDoc.exists) {
+    return res.status(404).json({ error: 'Comment not found' });
+  }
+  if (commentDoc.data().username !== username) {
+    return res.status(403).json({ error: 'You can only delete your own comments' });
+  }
+
+  await commentRef.delete();
+
+  const postRef = db.collection(collectionName).doc(postId);
+  const postDoc = await postRef.get();
+  let newCount = 0;
+  if (postDoc.exists) {
+    const current = postDoc.data().comments_count || 0;
+    if (current > 0) {
+      await postRef.set({ comments_count: FieldValue.increment(-1) }, { merge: true });
+      newCount = current - 1;
+    }
+  }
+
+  res.status(200).json({ message: 'Comment deleted', comments_count: newCount });
+}
+
 async function handleAddComment(req, res) {
   if (req.method !== 'POST') return methodNotAllowed(res);
 
@@ -820,6 +865,7 @@ const handlers = {
   postdetail: handlePostDetail,
   comments: handleComments,
   addcomment: handleAddComment,
+  deletecomment: handleDeleteComment,
   likes: handleLikes,
   like: handleLike,
   unlike: handleUnlike,
