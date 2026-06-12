@@ -17,9 +17,9 @@ export const FALLBACK_IMAGES = [
 
 // Verified Unsplash food photos — longest / most specific keywords first.
 export const TITLE_IMAGE_KEYWORDS = [
-  { keywords: ['tomato pasta', 'weeknight pasta', 'pasta bolognese', 'meat pasta'], url: 'https://images.unsplash.com/photo-1695742434600-e0f59629d2bb?w=500&q=80' },
+  { keywords: ['tomato pasta', 'weeknight pasta', 'pasta bolognese', 'meat pasta'], url: 'https://images.unsplash.com/photo-1621996346565-e3dbc646d9a9?w=500&q=80' },
   { keywords: ['coconut curry soup', 'coconut curry', 'tom yum'], url: 'https://images.unsplash.com/photo-1547592166-23ac45744acd?w=500&q=80' },
-  { keywords: ['mac and cheese', 'macaroni'], url: 'https://images.unsplash.com/photo-1543339496-18e0d6816ba7?w=500&q=80' },
+  { keywords: ['mac and cheese', 'mac n cheese', 'macaroni'], url: 'https://images.unsplash.com/photo-1539136788836-5699e78bfc75?w=500&q=80' },
   { keywords: ['pad thai', 'lo mein', 'fried rice'], url: 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=500&q=80' },
   { keywords: ['ginger soy', 'stir-fry', 'stir fry'], url: 'https://images.unsplash.com/photo-1512058564366-18510be2db19?w=500&q=80' },
   { keywords: ['sesame noodle', 'sesame'], url: 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=500&q=80' },
@@ -89,11 +89,11 @@ export const EXACT_TITLE_IMAGES = {
   'greek salad bowl': 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=500&q=80',
   'lemon herb salmon': 'https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=500&q=80',
   'sheet pan bbq chicken': 'https://images.unsplash.com/photo-1529193591184-b1d58069ecdd?w=500&q=80',
-  'classic mac and cheese': 'https://images.unsplash.com/photo-1543339496-18e0d6816ba7?w=500&q=80',
+  'classic mac and cheese': 'https://images.unsplash.com/photo-1539136788836-5699e78bfc75?w=500&q=80',
   'one pan roasted veggie bowl': 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=500&q=80',
   'quick herb chicken skillet': 'https://images.unsplash.com/photo-1768238907887-023b7ac9f450?w=500&q=80',
   'lemon herb roast chicken': 'https://images.unsplash.com/photo-1768238907887-023b7ac9f450?w=500&q=80',
-  'weeknight tomato pasta': 'https://images.unsplash.com/photo-1695742434600-e0f59629d2bb?w=500&q=80',
+  'weeknight tomato pasta': 'https://images.unsplash.com/photo-1621996346565-e3dbc646d9a9?w=500&q=80',
   'fried rice with vegetables': 'https://images.unsplash.com/photo-1603133872877-684f208b89d7?w=500&q=80',
   'crispy tofu stir fry': 'https://images.unsplash.com/photo-1512058564366-18510be2db19?w=500&q=80',
   'honey garlic glazed salmon': 'https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=500&q=80',

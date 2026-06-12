@@ -317,13 +317,14 @@ export default function AISuggestionsScreen({ navigation }) {
   const displayName = user?.name || username;
   const hasFollowing = following.length > 0;
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [hasLogs, setHasLogs] = useState(false);
   const [hasFriends, setHasFriends] = useState(false);
   const [preferenceSuggestions, setPreferenceSuggestions] = useState([]);
   const [friendSuggestions, setFriendSuggestions] = useState([]);
   const [pantryText, setPantryText] = useState('');
   const [pantryActive, setPantryActive] = useState(null);
+  const [pantryResolved, setPantryResolved] = useState(false);
 
   const pulseAnim = useRef(new Animated.Value(0)).current;
 
@@ -350,6 +351,10 @@ export default function AISuggestionsScreen({ navigation }) {
 
   useFocusEffect(
     useCallback(() => {
+      if (!pantryResolved) {
+        return undefined;
+      }
+
       let isMounted = true;
 
       const fetchSuggestions = async (pantryList = null) => {
@@ -428,12 +433,13 @@ export default function AISuggestionsScreen({ navigation }) {
       return () => {
         isMounted = false;
       };
-    }, [username, hasFollowing, pantryActive])
+    }, [username, hasFollowing, pantryActive, pantryResolved])
   );
 
   const handleSkipPantry = () => {
     setPantryText('');
     setPantryActive([]);
+    setPantryResolved(true);
   };
 
   const handleMatchPantry = () => {
@@ -443,6 +449,7 @@ export default function AISuggestionsScreen({ navigation }) {
       return;
     }
     setPantryActive(parsed);
+    setPantryResolved(true);
   };
 
   const openRecipe = (recipe) => {
@@ -516,44 +523,51 @@ export default function AISuggestionsScreen({ navigation }) {
       </LinearGradient>
 
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          !pantryResolved && styles.scrollContentPantryFocus,
+        ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.pantryCard, shadows.cardSoft]}>
-          <View style={styles.pantryHeader}>
-            <Ionicons name="basket-outline" size={18} color={colors.primary} />
-            <Text style={styles.pantryTitle}>What's in your pantry?</Text>
+        {!pantryResolved ? (
+          <View style={styles.pantryFocusWrap}>
+            <View style={[styles.pantryCard, styles.pantryCardFocus, shadows.cardSoft]}>
+              <View style={styles.pantryHeader}>
+                <Ionicons name="basket-outline" size={20} color={colors.primary} />
+                <Text style={styles.pantryTitle}>What's in your pantry?</Text>
+              </View>
+              <Text style={styles.pantryHint}>
+                List ingredients you have and we'll rank recipes you can make, or skip to see your usual picks.
+              </Text>
+              <TextInput
+                style={styles.pantryInput}
+                placeholder="e.g. chicken, rice, garlic, soy sauce"
+                placeholderTextColor={colors.textMuted}
+                value={pantryText}
+                onChangeText={setPantryText}
+                multiline
+              />
+              <View style={styles.pantryActions}>
+                <TouchableOpacity
+                  style={styles.pantrySkipButton}
+                  onPress={handleSkipPantry}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.pantrySkipText}>Skip</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.pantryMatchButton}
+                  onPress={handleMatchPantry}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="search" size={16} color="#fff" />
+                  <Text style={styles.pantryMatchText}>Find matches</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
-          <Text style={styles.pantryHint}>
-            Optional. List ingredients you have and we'll rank recipes you can make.
-          </Text>
-          <TextInput
-            style={styles.pantryInput}
-            placeholder="e.g. chicken, rice, garlic, soy sauce"
-            placeholderTextColor={colors.textMuted}
-            value={pantryText}
-            onChangeText={setPantryText}
-            multiline
-          />
-          <View style={styles.pantryActions}>
-            <TouchableOpacity
-              style={styles.pantrySkipButton}
-              onPress={handleSkipPantry}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.pantrySkipText}>Skip</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.pantryMatchButton}
-              onPress={handleMatchPantry}
-              activeOpacity={0.85}
-            >
-              <Ionicons name="search" size={16} color="#fff" />
-              <Text style={styles.pantryMatchText}>Find matches</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
+        ) : (
+          <>
         <View style={[styles.greetingCard, shadows.cardSoft]}>
           <LinearGradient
             colors={[colors.cardWarm, colors.card]}
@@ -660,6 +674,8 @@ export default function AISuggestionsScreen({ navigation }) {
             ))}
           </ScrollView>
         )}
+          </>
+        )}
       </ScrollView>
 
       <BottomNavigation navigation={navigation} activeTab="AI" />
@@ -717,6 +733,15 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: spacing.lg,
   },
+  scrollContentPantryFocus: {
+    flexGrow: 1,
+  },
+  pantryFocusWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md + 4,
+    paddingVertical: spacing.xl,
+  },
   pantryCard: {
     marginHorizontal: spacing.md + 4,
     marginTop: spacing.lg,
@@ -725,6 +750,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.md + 2,
+  },
+  pantryCardFocus: {
+    marginHorizontal: 0,
+    marginTop: 0,
   },
   pantryHeader: {
     flexDirection: 'row',
