@@ -316,59 +316,28 @@ export default function ProfileScreen({ navigation, route }) {
       });
 
       if (!response.ok) {
-        setProfile(getMockProfile());
-        setError(null);
+        setProfile(null);
+        setError('Could not load profile');
         return;
       }
 
       const data = await response.json();
       if (!data || (!data.name && !data.username)) {
-        setProfile(getMockProfile());
+        setProfile(null);
+        setError('Profile not found');
         return;
       }
 
       setProfile(data);
       setFavoriteIds(data.portfolio_favorites || data.portfolioFavorites || []);
     } catch (err) {
-      console.log('Error fetching profile, using mock data:', err.message);
-      setProfile(getMockProfile());
-      setError(null);
+      console.log('Error fetching profile:', err.message);
+      setProfile(null);
+      setError(err.message || 'Could not load profile');
     } finally {
       setLoading(false);
     }
   };
-
-  const getMockProfile = () => ({
-    name: 'Ava Patel',
-    username: 'ava_patel',
-    profilePhotoUrl: null,
-    joinedDate: '2021',
-    kitchen_personality: {
-      primary_trait: 'Adventurous and Comforting',
-      secondary_traits: ['Bold Flavors', 'Classic Dishes'],
-      top_cuisines: [],
-      favorite_ingredients: [],
-      cooking_stats: {
-        total_recipes: 125,
-        avg_rating: 4.7,
-      },
-    },
-    followers: 350,
-    cookingFrequency: [
-      { month: 'Jan', value: 8 },
-      { month: 'Feb', value: 18 },
-      { month: 'Mar', value: 15 },
-      { month: 'Apr', value: 12 },
-      { month: 'May', value: 10 },
-      { month: 'Jun', value: 17 },
-      { month: 'Jul', value: 9 },
-      { month: 'Aug', value: 14 },
-      { month: 'Sep', value: 11 },
-      { month: 'Oct', value: 16 },
-      { month: 'Nov', value: 7 },
-      { month: 'Dec', value: 13 },
-    ],
-  });
 
   const openDish = (dish) => {
     navigation.navigate('PostDetail', {
@@ -589,11 +558,6 @@ export default function ProfileScreen({ navigation, route }) {
   }
 
   if (error && !profile && !loading) {
-    if (!profile) {
-      setProfile(getMockProfile());
-      return null;
-    }
-
     return (
       <View style={styles.container}>
         <StatusBar style="dark" />
@@ -749,7 +713,7 @@ export default function ProfileScreen({ navigation, route }) {
             <Ionicons name="images" size={20} color={colors.primary} />
             <Text style={styles.sectionTitle}>Culinary Portfolio</Text>
             {isOwnProfile ? (
-              <Text style={styles.portfolioHint}>Favorite up to 2</Text>
+              <Text style={styles.portfolioHint}>Favorite up to 2 in gallery</Text>
             ) : null}
           </View>
           {dishesLoading ? (
@@ -762,7 +726,7 @@ export default function ProfileScreen({ navigation, route }) {
               </Text>
               <Text style={styles.emptyDishesText}>
                 {isOwnProfile
-                  ? 'Tap Post to log your first meal, then favorite up to 2 for your portfolio!'
+                  ? 'Tap Post to log your first meal, then favorite up to 2 in your gallery!'
                   : `${profile?.name || 'This user'} hasn't logged any meals yet.`}
               </Text>
             </View>
@@ -774,32 +738,6 @@ export default function ProfileScreen({ navigation, route }) {
                 onDishPress={openDish}
                 onViewAll={() => setGalleryVisible(true)}
               />
-              {isOwnProfile ? (
-                <View style={styles.allDishesSection}>
-                  <Text style={styles.allDishesTitle}>All your dishes</Text>
-                  <Text style={styles.allDishesHint}>
-                    Tap the heart to showcase a dish on your portfolio (max {PORTFOLIO_FAVORITES_MAX}).
-                  </Text>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.dishesRow}
-                  >
-                    {dishes.map((dish) => (
-                      <DishCard
-                        key={dish.id}
-                        dish={dish}
-                        onPress={() => openDish(dish)}
-                        showFavorite
-                        showDelete
-                        isFavorited={favoriteIds.includes(dish.id)}
-                        onToggleFavorite={() => togglePortfolioFavorite(dish.id)}
-                        onDelete={() => handleDeleteDish(dish)}
-                      />
-                    ))}
-                  </ScrollView>
-                </View>
-              ) : null}
             </>
           )}
         </View>
@@ -926,6 +864,9 @@ export default function ProfileScreen({ navigation, route }) {
           setGalleryVisible(false);
           openDish(dish);
         }}
+        showFavorite={isOwnProfile}
+        favoriteIds={favoriteIds}
+        onToggleFavorite={togglePortfolioFavorite}
       />
 
       <Modal

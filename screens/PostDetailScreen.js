@@ -20,6 +20,7 @@ import { API_URL } from '../config/api';
 import { colors, radii, shadows } from '../constants/theme';
 import { toIngredientList } from '../utils/recipeParsing';
 import RecipeSection, { hasRecipeContent } from '../components/RecipeSection';
+import CookedWithTags from '../components/CookedWithTags';
 
 function postToNextUpRecipe(post, collection, postId) {
   const difficulty = post.difficulty
@@ -270,6 +271,13 @@ export default function PostDetailScreen({ navigation, route }) {
               authorName
             )}
           </Text>
+
+          <CookedWithTags
+            usernames={post.cookedWith}
+            onPressUser={(targetUsername) =>
+              navigation.navigate('Profile', { username: targetUsername })
+            }
+          />
 
           {metaChips.length > 0 ? (
             <View style={styles.metaRow}>

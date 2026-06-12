@@ -38,7 +38,8 @@ module.exports = async (req, res) => {
     notes,
     rating,
     difficulty,
-    time
+    time,
+    cookedWith,
   } = req.body;
 
   if (!username) {
@@ -79,6 +80,21 @@ module.exports = async (req, res) => {
     return;
   }
 
+  const normalizeCookedWith = (value) => {
+    const raw = Array.isArray(value)
+      ? value
+      : typeof value === 'string'
+        ? value.split(',')
+        : [];
+    return [...new Set(
+      raw
+        .map((entry) => String(entry || '').trim().replace(/^@/, '').toLowerCase())
+        .filter(Boolean)
+    )];
+  };
+
+  const cookedWithList = normalizeCookedWith(cookedWith);
+
   try {
     // Filter out undefined values before saving to Firestore
     const logData = {
@@ -94,6 +110,10 @@ module.exports = async (req, res) => {
       time,
       createdAt: FieldValue.serverTimestamp()
     };
+
+    if (cookedWithList.length > 0) {
+      logData.cookedWith = cookedWithList;
+    }
     
     // Remove undefined values
     Object.keys(logData).forEach(key => {

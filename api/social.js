@@ -294,6 +294,7 @@ function normalizePost(doc, collectionName) {
     // Original recipe "source" (e.g. a website/cookbook), distinct from
     // postSource which is the Firestore collection.
     source: data.source || null,
+    cookedWith: Array.isArray(data.cookedWith) ? data.cookedWith.filter(Boolean) : [],
     created_at_ms: createdMs,
     likes_count: data.likes_count || 0,
     comments_count: data.comments_count || 0,

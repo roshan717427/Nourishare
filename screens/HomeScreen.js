@@ -18,75 +18,10 @@ import BottomNavigation from '../components/BottomNavigation';
 import MunchableHeader from '../components/MunchableHeader';
 import { useAuth } from '../context/AuthContext';
 import { API_URL } from '../config/api';
+import CookedWithTags from '../components/CookedWithTags';
 import { colors, radii } from '../constants/theme';
 
-const SAMPLE_FEED = [
-  {
-    id: 'sample-1',
-    postSource: 'recipe_posts',
-    title: 'Chicken Tikka Masala',
-    description: 'Liam made Chicken Tikka Masala and gave it 4 stars.',
-    photoUrl: 'https://images.unsplash.com/photo-1565557623262-b51c2513a641?w=400&q=80',
-    rating: 4,
-    likes_count: 12,
-    comments_count: 3,
-    created_at_ms: Date.now() - 2 * 86400000,
-    user: { username: 'liam', name: 'Liam' },
-  },
-  {
-    id: 'sample-2',
-    postSource: 'recipe_posts',
-    title: 'Spaghetti Carbonara',
-    description: 'Isabella whipped up Spaghetti Carbonara for a perfect 5 stars.',
-    photoUrl: 'https://images.unsplash.com/photo-1612874742237-6526221588e3?w=400&q=80',
-    rating: 5,
-    likes_count: 25,
-    comments_count: 8,
-    created_at_ms: Date.now() - 86400000,
-    user: { username: 'isabella', name: 'Isabella' },
-  },
-  {
-    id: 'sample-3',
-    postSource: 'recipe_posts',
-    title: 'Beef Tacos',
-    description: 'Owen made Beef Tacos and rated them 3 stars.',
-    photoUrl: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=400&q=80',
-    rating: 3,
-    likes_count: 18,
-    comments_count: 5,
-    created_at_ms: Date.now() - 3 * 86400000,
-    user: { username: 'owen', name: 'Owen' },
-  },
-];
-
 const CARD_ACCENTS = [colors.primary, colors.accent, colors.secondary, colors.chipAmberText];
-
-function getSamplePostsForFollowing(followingList) {
-  if (!followingList?.length) return [];
-  const followedLower = new Set(
-    followingList.map((u) => (u || '').toLowerCase()).filter(Boolean)
-  );
-  return SAMPLE_FEED.filter((post) =>
-    followedLower.has((post.user?.username || '').toLowerCase())
-  );
-}
-
-function mergeFeedWithSamplePosts(apiPosts, followingList) {
-  const samplePosts = getSamplePostsForFollowing(followingList);
-  if (samplePosts.length === 0) return apiPosts;
-
-  const seen = new Set(apiPosts.map((p) => `${p.postSource}:${p.id}`));
-  const merged = [...apiPosts];
-  for (const post of samplePosts) {
-    const key = `${post.postSource}:${post.id}`;
-    if (!seen.has(key)) {
-      merged.push(post);
-      seen.add(key);
-    }
-  }
-  merged.sort((a, b) => (b.created_at_ms || 0) - (a.created_at_ms || 0));
-  return merged;
-}
 
 function timeAgo(ms) {
   if (!ms) return '';
@@ -134,7 +69,7 @@ function StoryAvatar({ name, avatar, index, selected, hasSelection, onPress }) {
   );
 }
 
-function FeedCard({ item, onPress, accentColor }) {
+function FeedCard({ item, onPress, onPressUser, accentColor }) {
   const authorName = item.user?.name || item.user?.username || item.username || 'Someone';
   const ratingText =
     item.rating != null && item.rating !== '' ? ` · rated ${item.rating}/5` : '';
@@ -149,6 +84,11 @@ function FeedCard({ item, onPress, accentColor }) {
         <Text style={styles.cardTitle}>
           {authorName} cooked {item.title}
         </Text>
+        <CookedWithTags
+          usernames={item.cookedWith}
+          onPressUser={onPressUser}
+          compact
+        />
         <Text style={styles.cardDescription} numberOfLines={3}>
           {description}
         </Text>
@@ -225,10 +165,10 @@ export default function HomeScreen({ navigation }) {
           const data = await res.json();
           apiPosts = Array.isArray(data.recipe_posts) ? data.recipe_posts : [];
         }
-        setFeed(mergeFeedWithSamplePosts(apiPosts, following));
+        setFeed(apiPosts);
       } catch (err) {
-        console.log('Feed unavailable, using sample data:', err.message);
-        setFeed(mergeFeedWithSamplePosts([], following));
+        console.log('Feed unavailable:', err.message);
+        setFeed([]);
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -399,6 +339,9 @@ export default function HomeScreen({ navigation }) {
                   item={item}
                   accentColor={CARD_ACCENTS[index % CARD_ACCENTS.length]}
                   onPress={() => openPost(item)}
+                  onPressUser={(targetUsername) =>
+                    navigation.navigate('Profile', { username: targetUsername })
+                  }
                 />
               </View>
             );

@@ -29,7 +29,14 @@ export default function LogMealScreen({ navigation }) {
   const [time, setTime] = useState('');
   const [recipeLink, setRecipeLink] = useState('');
   const [recipeInstructions, setRecipeInstructions] = useState('');
+  const [cookedWith, setCookedWith] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const parseCookedWith = (text) =>
+    String(text || '')
+      .split(',')
+      .map((entry) => entry.trim().replace(/^@/, ''))
+      .filter(Boolean);
 
   const pickImage = async () => {
     // Request permissions
@@ -127,6 +134,11 @@ export default function LogMealScreen({ navigation }) {
         recipeInstructions: recipeInstructions.trim() || undefined,
       };
 
+      const cookedWithList = parseCookedWith(cookedWith);
+      if (cookedWithList.length > 0) {
+        logData.cookedWith = cookedWithList;
+      }
+
       // Remove undefined values
       Object.keys(logData).forEach(key => {
         if (logData[key] === undefined) {
@@ -159,6 +171,7 @@ export default function LogMealScreen({ navigation }) {
               setTime('');
               setRecipeLink('');
               setRecipeInstructions('');
+              setCookedWith('');
               // Navigate back
               navigation.goBack();
             },
@@ -331,6 +344,23 @@ export default function LogMealScreen({ navigation }) {
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="url"
+          />
+        </View>
+
+        {/* Cooked with */}
+        <View style={styles.section}>
+          <Text style={styles.label}>Cooked with (optional)</Text>
+          <Text style={styles.fieldHint}>
+            Tag friends who helped. Separate usernames with commas, e.g. @alex, @sam
+          </Text>
+          <TextInput
+            style={styles.input}
+            placeholder="@username1, @username2"
+            value={cookedWith}
+            onChangeText={setCookedWith}
+            placeholderTextColor="#999"
+            autoCapitalize="none"
+            autoCorrect={false}
           />
         </View>
 

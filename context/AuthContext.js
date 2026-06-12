@@ -60,12 +60,7 @@ export function AuthProvider({ children }) {
   // Hydrate the persisted following list whenever a username becomes available
   // (login / session restore). The backend (GET /api/social?action=following)
   // is the source of truth at startup; optimistic follow/unfollow updates
-  // happen on top of this for the rest of the session. That action returns
-  // following as objects ({ username, name, timestamp }), so we map down to the
-  // bare usernames the rest of the social state works with.
-  // Merge server results with any in-flight optimistic follows so demo users
-  // (404 from follow API) are not wiped if the user taps Follow before hydration
-  // finishes.
+  // happen on top of this for the rest of the session.
   const username = user?.username;
   useEffect(() => {
     if (!username) {
@@ -84,16 +79,9 @@ export function AuthProvider({ children }) {
           const fromServer = data.following
             .map((item) => (typeof item === 'string' ? item : item?.username))
             .filter(Boolean);
-          setFollowing((prev) => {
-            const serverKeys = new Set(fromServer.map(normalizeUsername));
-            const pendingLocal = prev.filter(
-              (u) => !serverKeys.has(normalizeUsername(u))
-            );
-            return [...fromServer, ...pendingLocal];
-          });
+          setFollowing(fromServer);
         }
       } catch (err) {
-        // Offline / no backend: keep whatever local follow state exists
         console.log('Could not load following list:', err.message);
       }
     })();

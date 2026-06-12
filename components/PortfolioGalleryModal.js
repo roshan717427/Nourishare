@@ -19,7 +19,7 @@ const GRID_GAP = 10;
 const GRID_PADDING = 20;
 const TILE_SIZE = (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP) / 2;
 
-function GalleryTile({ dish, onPress }) {
+function GalleryTile({ dish, onPress, showFavorite, isFavorited, onToggleFavorite }) {
   return (
     <TouchableOpacity style={styles.tile} onPress={onPress} activeOpacity={0.85}>
       {dish.photoUrl ? (
@@ -29,6 +29,23 @@ function GalleryTile({ dish, onPress }) {
           <Ionicons name="restaurant-outline" size={28} color={colors.textMuted} />
         </View>
       )}
+      {showFavorite ? (
+        <TouchableOpacity
+          style={[styles.favoriteButton, isFavorited && styles.favoriteButtonActive]}
+          onPress={(e) => {
+            e.stopPropagation?.();
+            onToggleFavorite?.();
+          }}
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          accessibilityLabel={isFavorited ? 'Remove from portfolio favorites' : 'Add to portfolio favorites'}
+        >
+          <Ionicons
+            name={isFavorited ? 'heart' : 'heart-outline'}
+            size={16}
+            color={isFavorited ? colors.card : colors.primary}
+          />
+        </TouchableOpacity>
+      ) : null}
       <View style={styles.tileOverlay}>
         <Text style={styles.tileTitle} numberOfLines={2}>
           {dish.title}
@@ -44,7 +61,16 @@ function GalleryTile({ dish, onPress }) {
   );
 }
 
-export default function PortfolioGalleryModal({ visible, dishes, ownerName, onClose, onDishPress }) {
+export default function PortfolioGalleryModal({
+  visible,
+  dishes,
+  ownerName,
+  onClose,
+  onDishPress,
+  showFavorite,
+  favoriteIds,
+  onToggleFavorite,
+}) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -72,7 +98,13 @@ export default function PortfolioGalleryModal({ visible, dishes, ownerName, onCl
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
             renderItem={({ item }) => (
-              <GalleryTile dish={item} onPress={() => onDishPress?.(item)} />
+              <GalleryTile
+                dish={item}
+                onPress={() => onDishPress?.(item)}
+                showFavorite={showFavorite}
+                isFavorited={favoriteIds?.includes(item.id)}
+                onToggleFavorite={() => onToggleFavorite?.(item.id)}
+              />
             )}
             ListEmptyComponent={
               <View style={styles.empty}>
@@ -142,6 +174,24 @@ const styles = StyleSheet.create({
     backgroundColor: colors.borderLight,
     borderWidth: 1,
     borderColor: colors.border,
+    position: 'relative',
+  },
+  favoriteButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  favoriteButtonActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   tileImage: {
     width: '100%',

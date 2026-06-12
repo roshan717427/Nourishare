@@ -17,8 +17,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import BottomNavigation from '../components/BottomNavigation';
 import { colors, spacing, radii } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
-import { searchUsers, findUser, SAMPLE_USERS } from '../data/sampleUsers';
-import { hasProfileData, rankRecommendations } from '../utils/recommendFollows';
+import { hasProfileData } from '../utils/recommendFollows';
 import { API_URL } from '../config/api';
 
 function UserRow({ user, onPress }) {
@@ -81,20 +80,6 @@ function RecommendCard({ user, following, onPressProfile, onToggleFollow }) {
   );
 }
 
-function mergeRecommendations(remote, local) {
-  const byUser = new Map();
-  [...remote, ...local].forEach((item) => {
-    if (!item?.username) return;
-    const key = item.username.toLowerCase();
-    const existing = byUser.get(key);
-    if (!existing || item.matchScore > existing.matchScore) {
-      byUser.set(key, item);
-    }
-  });
-  return Array.from(byUser.values())
-    .sort((a, b) => b.matchScore - a.matchScore)
-    .slice(0, 6);
-}
 
 export default function ExploreScreen({ navigation }) {
   const { user, following, follow, unfollow, isFollowing } = useAuth();
@@ -116,9 +101,7 @@ export default function ExploreScreen({ navigation }) {
       return;
     }
 
-    const local = searchUsers(trimmed);
-    const seen = new Set(local.map((u) => u.username.toLowerCase()));
-    const merged = [...local];
+    const merged = [];
 
     try {
       const response = await fetch(
@@ -129,8 +112,7 @@ export default function ExploreScreen({ navigation }) {
         const data = await response.json();
         const remoteUsers = Array.isArray(data?.users) ? data.users : [];
         remoteUsers.forEach((u) => {
-          if (u && u.username && !seen.has(u.username.toLowerCase())) {
-            seen.add(u.username.toLowerCase());
+          if (u && u.username) {
             merged.push(u);
           }
         });
@@ -149,8 +131,7 @@ export default function ExploreScreen({ navigation }) {
 
   const openProfile = (result) => {
     Keyboard.dismiss();
-    const profile = findUser(result.username) || result;
-    navigation.navigate('Profile', { username: result.username, profile });
+    navigation.navigate('Profile', { username: result.username, profile: result });
   };
 
   const loadRecommendations = useCallback(async () => {
@@ -210,13 +191,7 @@ export default function ExploreScreen({ navigation }) {
       return;
     }
 
-    if (userProfile) {
-      const exclude = [username, ...followingRef.current];
-      const demoRecs = rankRecommendations(userProfile, SAMPLE_USERS, { exclude, limit: 6 });
-      setRecommendations(mergeRecommendations(remoteRecs, demoRecs));
-    } else {
-      setRecommendations(remoteRecs);
-    }
+    setRecommendations(remoteRecs);
     setRecsLoading(false);
   }, [user?.username]);
 
