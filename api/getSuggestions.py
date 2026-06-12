@@ -65,7 +65,7 @@ CUISINE_TEMPLATES = {
     ],
     'american': [
         {'name': 'Sheet Pan BBQ Chicken', 'ingredients': 'chicken, bbq sauce, potatoes, corn, butter', 'cooking_time': '35 min', 'difficulty_level': 'easy', 'image': 'https://images.unsplash.com/photo-1529193591184-b1d58069ecdd?w=500&q=80'},
-        {'name': 'Classic Mac and Cheese', 'ingredients': 'pasta, cheddar, milk, butter, flour', 'cooking_time': '30 min', 'difficulty_level': 'easy', 'image': 'https://images.unsplash.com/photo-1539136788836-5699e78bfc75?w=500&q=80'},
+        {'name': 'Classic Mac and Cheese', 'ingredients': 'pasta, cheddar, milk, butter, flour', 'cooking_time': '30 min', 'difficulty_level': 'easy', 'image': 'https://images.unsplash.com/photo-1563379926898-05f4575a45d8?w=500&q=80'},
     ],
     'general': [
         {'name': 'One-Pan Roasted Veggie Bowl', 'ingredients': 'seasonal vegetables, olive oil, garlic, rice, herbs', 'cooking_time': '30 min', 'difficulty_level': 'easy', 'image': 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=500&q=80'},
