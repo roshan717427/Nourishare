@@ -19,7 +19,15 @@ const GRID_GAP = 10;
 const GRID_PADDING = 20;
 const TILE_SIZE = (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP) / 2;
 
-function GalleryTile({ dish, onPress, showFavorite, isFavorited, onToggleFavorite }) {
+function GalleryTile({
+  dish,
+  onPress,
+  showFavorite,
+  isFavorited,
+  onToggleFavorite,
+  showDelete,
+  onDelete,
+}) {
   return (
     <TouchableOpacity style={styles.tile} onPress={onPress} activeOpacity={0.85}>
       {dish.photoUrl ? (
@@ -29,6 +37,19 @@ function GalleryTile({ dish, onPress, showFavorite, isFavorited, onToggleFavorit
           <Ionicons name="restaurant-outline" size={28} color={colors.textMuted} />
         </View>
       )}
+      {showDelete ? (
+        <TouchableOpacity
+          style={styles.deleteButton}
+          onPress={(e) => {
+            e.stopPropagation?.();
+            onDelete?.();
+          }}
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          accessibilityLabel="Delete logged dish"
+        >
+          <Ionicons name="trash-outline" size={15} color={colors.error} />
+        </TouchableOpacity>
+      ) : null}
       {showFavorite ? (
         <TouchableOpacity
           style={[styles.favoriteButton, isFavorited && styles.favoriteButtonActive]}
@@ -70,6 +91,8 @@ export default function PortfolioGalleryModal({
   showFavorite,
   favoriteIds,
   onToggleFavorite,
+  showDelete,
+  onDelete,
 }) {
   const insets = useSafeAreaInsets();
 
@@ -104,6 +127,8 @@ export default function PortfolioGalleryModal({
                 showFavorite={showFavorite}
                 isFavorited={favoriteIds?.includes(item.id)}
                 onToggleFavorite={() => onToggleFavorite?.(item.id)}
+                showDelete={showDelete}
+                onDelete={() => onDelete?.(item)}
               />
             )}
             ListEmptyComponent={
@@ -175,6 +200,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     position: 'relative',
+  },
+  deleteButton: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    zIndex: 2,
   },
   favoriteButton: {
     position: 'absolute',

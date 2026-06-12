@@ -884,6 +884,8 @@ export default function ProfileScreen({ navigation, route }) {
         showFavorite={isOwnProfile}
         favoriteIds={favoriteIds}
         onToggleFavorite={togglePortfolioFavorite}
+        showDelete={isOwnProfile}
+        onDelete={handleDeleteDish}
       />
 
       <Modal
