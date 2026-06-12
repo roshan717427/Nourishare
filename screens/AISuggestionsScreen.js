@@ -40,12 +40,15 @@ function formatSuggestionReason(raw) {
   if (/^a great /i.test(why)) {
     return `it is ${why}`;
   }
-  if (/^(highly rated|well-?rated|popular recipe|liked by|cooked by|recently cooked)/i.test(why)) {
+  if (/^(highly rated|well-?rated|popular recipe|liked by)/i.test(why)) {
+    return `it is ${why}`;
+  }
+  if (/^(cooked by|recently cooked)/i.test(why)) {
     if (/^cooked by your friend$/i.test(why)) {
-      return 'your friend cooked it';
+      return "inspired by your friend's cooking style";
     }
     if (/^recently cooked$/i.test(why)) {
-      return 'your friend cooked it recently';
+      return "inspired by your friend's recent cooking style";
     }
     return `it is ${why}`;
   }

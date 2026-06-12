@@ -65,7 +65,7 @@ CUISINE_TEMPLATES = {
     ],
     'american': [
         {'name': 'Sheet Pan BBQ Chicken', 'ingredients': 'chicken, bbq sauce, potatoes, corn, butter', 'cooking_time': '35 min', 'difficulty_level': 'easy', 'image': 'https://images.unsplash.com/photo-1529193591184-b1d58069ecdd?w=500&q=80'},
-        {'name': 'Classic Mac and Cheese', 'ingredients': 'pasta, cheddar, milk, butter, flour', 'cooking_time': '30 min', 'difficulty_level': 'easy', 'image': 'https://images.unsplash.com/photo-1563379926898-05f4575a45d8?w=500&q=80'},
+        {'name': 'Classic Mac and Cheese', 'ingredients': 'pasta, cheddar, milk, butter, flour', 'cooking_time': '30 min', 'difficulty_level': 'easy', 'image': 'https://images.unsplash.com/photo-1667499989723-c4ab9549d63c?w=500&q=80'},
     ],
     'general': [
         {'name': 'One-Pan Roasted Veggie Bowl', 'ingredients': 'seasonal vegetables, olive oil, garlic, rice, herbs', 'cooking_time': '30 min', 'difficulty_level': 'easy', 'image': 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=500&q=80'},
@@ -722,6 +722,8 @@ class SmartSuggestionsEngine:
             'name': recipe_name,
             'recipe_id': recipe.get('id') or recipe.get('recipe_id') or '',
             'username': recipe.get('username', ''),
+            'inspired_by': recipe.get('inspired_by') or '',
+            'inspired_by_username': recipe.get('inspired_by_username') or '',
             'rating': recipe.get('rating', 0),
             'cooking_notes': recipe.get('cooking_notes') or recipe.get('notes') or '',
             'difficulty_level': recipe.get('difficulty_level') or recipe.get('difficulty') or 'medium',
@@ -1093,13 +1095,13 @@ class SmartSuggestionsEngine:
         return score
 
     def _friend_variant_reason(self, inspiration_entry, variant_dict):
-        """Explain similarity to a friend's meal without implying they cooked this dish."""
+        """Explain similarity to a friend's tastes without implying they cooked this dish."""
         friend_name = inspiration_entry.get('friend_name') or 'your friend'
         is_recent = inspiration_entry.get('recency_score', 0) >= 15
-        recency_phrase = (
-            f'a meal {friend_name} cooked recently'
+        enjoy_phrase = (
+            f'what {friend_name} has been enjoying lately'
             if is_recent
-            else f'what {friend_name} made'
+            else f'what {friend_name} enjoys'
         )
 
         variant_name = (
@@ -1121,7 +1123,7 @@ class SmartSuggestionsEngine:
             and inspiration_cuisine in variant_cuisines
         ):
             clauses.append(
-                f'it is in the same {cuisine_label} style as {recency_phrase}'
+                f'it is in the same {cuisine_label} style as {enjoy_phrase}'
             )
 
         if variant_tokens and inspiration_tokens:
@@ -1129,15 +1131,15 @@ class SmartSuggestionsEngine:
             overlap_ratio = self._ingredient_overlap_ratio(variant_tokens, inspiration_tokens)
             if len(shared) >= 2:
                 clauses.append(
-                    f'it shares ingredients with a dish {friend_name} cooked'
+                    f'it uses similar ingredients to {enjoy_phrase}'
                 )
             elif overlap_ratio >= 0.25:
                 clauses.append(
-                    f'it uses similar ingredients to {recency_phrase}'
+                    f'it uses similar ingredients to {enjoy_phrase}'
                 )
 
         if not clauses:
-            return f'it is similar to {recency_phrase}'
+            return f'it is similar to {enjoy_phrase}'
         return self._join_reason_clauses(clauses[:2])
 
     def _template_variants_for_inspiration(
@@ -1179,7 +1181,9 @@ class SmartSuggestionsEngine:
                     'cooking_time': template.get('cooking_time', ''),
                     'difficulty_level': template.get('difficulty_level', 'medium'),
                     'image': template.get('image'),
-                    'username': inspiration_entry.get('friend_username', ''),
+                    'inspired_by_username': inspiration_entry.get('friend_username', ''),
+                    'inspired_by': inspiration_entry.get('friend_name')
+                    or inspiration_entry.get('friend_username', ''),
                 }
                 score = self._variant_similarity_score(variant, inspiration_entry)
                 if score >= 20:
@@ -1208,7 +1212,9 @@ class SmartSuggestionsEngine:
                     'cooking_time': idea.get('cooking_time', ''),
                     'difficulty_level': idea.get('difficulty_level', 'medium'),
                     'image': idea.get('image'),
-                    'username': inspiration_entry.get('friend_username', ''),
+                    'inspired_by_username': inspiration_entry.get('friend_username', ''),
+                    'inspired_by': inspiration_entry.get('friend_name')
+                    or inspiration_entry.get('friend_username', ''),
                 }
                 score = self._variant_similarity_score(variant, inspiration_entry)
                 if score >= 20:
@@ -1478,12 +1484,14 @@ class SmartSuggestionsEngine:
                 pass
 
         if is_recent and not clauses:
-            return 'your friend cooked it recently'
+            return "inspired by your friend's recent cooking style"
         if is_recent:
-            return self._join_reason_clauses(clauses + ['your friend cooked it recently'])
+            return self._join_reason_clauses(
+                clauses + ["inspired by your friend's recent cooking style"]
+            )
         if clauses:
             return self._join_reason_clauses(clauses)
-        return 'your friend cooked it'
+        return "inspired by your friend's cooking style"
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):

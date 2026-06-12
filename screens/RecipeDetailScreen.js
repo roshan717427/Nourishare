@@ -29,12 +29,15 @@ function formatSuggestionReason(raw) {
   if (/^a great /i.test(why)) {
     return `it is ${why}`;
   }
-  if (/^(highly rated|well-?rated|popular recipe|liked by|cooked by|recently cooked)/i.test(why)) {
+  if (/^(highly rated|well-?rated|popular recipe|liked by)/i.test(why)) {
+    return `it is ${why}`;
+  }
+  if (/^(cooked by|recently cooked)/i.test(why)) {
     if (/^cooked by your friend$/i.test(why)) {
-      return 'your friend cooked it';
+      return "inspired by your friend's cooking style";
     }
     if (/^recently cooked$/i.test(why)) {
-      return 'your friend cooked it recently';
+      return "inspired by your friend's recent cooking style";
     }
     return `it is ${why}`;
   }
@@ -63,6 +66,8 @@ export default function RecipeDetailScreen({ navigation, route }) {
   const time = recipe.cooking_time || recipe.time || null;
   const rating = recipe.rating != null && recipe.rating !== '' ? recipe.rating : null;
   const author = recipe.username || null;
+  const inspiredBy = recipe.inspired_by || null;
+  const inspiredByUsername = recipe.inspired_by_username || null;
   const why = formatSuggestionReason(recipe.why_suggested);
 
   const ingredients = toIngredientList(recipe.ingredients);
@@ -111,7 +116,21 @@ export default function RecipeDetailScreen({ navigation, route }) {
 
         <View style={styles.body}>
           <Text style={styles.title}>{name}</Text>
-          {author ? (
+          {inspiredBy ? (
+            <Text style={styles.byline}>
+              Inspired by{' '}
+              {inspiredByUsername ? (
+                <Text
+                  style={styles.bylineLink}
+                  onPress={() => navigation.navigate('Profile', { username: inspiredByUsername })}
+                >
+                  {inspiredBy}
+                </Text>
+              ) : (
+                inspiredBy
+              )}
+            </Text>
+          ) : author ? (
             <Text style={styles.byline}>
               Cooked by{' '}
               <Text
@@ -207,7 +226,7 @@ export default function RecipeDetailScreen({ navigation, route }) {
           ) : (
             <Text style={styles.emptyText}>
               Step-by-step instructions aren't available yet. Try searching for
-              "{name}" online or ask the friend who cooked it!
+              "{name}" online for a full recipe.
             </Text>
           )}
 
