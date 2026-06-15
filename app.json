@@ -16,8 +16,12 @@
       "**/*"
     ],
     "ios": {
+      "appleTeamID": "862RFB9H5Y",
       "supportsTablet": true,
-      "bundleIdentifier": "com.munchable.app"
+      "bundleIdentifier": "com.munchable.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
