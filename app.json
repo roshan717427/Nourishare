@@ -18,7 +18,7 @@
     "ios": {
       "appleTeamID": "862RFB9H5Y",
       "supportsTablet": true,
-      "bundleIdentifier": "com.munchable.app",
+      "bundleIdentifier": "com.roshanpaul.munchable",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -28,7 +28,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.munchable.app",
+      "package": "com.roshanpaul.munchable",
       "permissions": [
         "android.permission.RECORD_AUDIO"
       ]
