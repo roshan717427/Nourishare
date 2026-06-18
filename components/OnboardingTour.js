@@ -259,7 +259,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   skipText: {
-    fontSize: 15,
+    fontSize: 13,
     color: colors.textMuted,
     fontWeight: '600',
   },
