@@ -1,6 +1,6 @@
 /**
  * Shared title → stock image mapping for AI suggestion cards.
- * Server (api/suggestion_images.py) mirrors this data and matching logic.
+ * Server (api/_helpers/suggestion_images.py) mirrors this data and matching logic.
  */
 
 export const DEFAULT_FALLBACK_IMAGE =
