@@ -292,7 +292,6 @@ export default function ProfileScreen({ navigation, route }) {
   const [editFavoriteIngredients, setEditFavoriteIngredients] = useState('');
 
   const username = route?.params?.username || user?.username || 'current_user';
-  const passedProfile = route?.params?.profile;
   const isOwnProfile = !route?.params?.username || route.params.username === user?.username;
   const following = isFollowing(username);
 
@@ -319,17 +318,10 @@ export default function ProfileScreen({ navigation, route }) {
 
   useFocusEffect(
     useCallback(() => {
-      if (passedProfile && !isOwnProfile) {
-        setProfile(passedProfile);
-        setFavoriteIds(passedProfile.portfolio_favorites || passedProfile.portfolioFavorites || []);
-        setError(null);
-        setLoading(false);
-      } else {
-        fetchProfile();
-      }
+      fetchProfile();
       fetchDishes();
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [username, passedProfile, fetchDishes, isOwnProfile])
+    }, [username, fetchDishes])
   );
 
   const handleToggleFollow = () => {
@@ -913,7 +905,7 @@ export default function ProfileScreen({ navigation, route }) {
         )}
       </ScrollView>
 
-      <BottomNavigation navigation={navigation} activeTab="Profile" />
+      <BottomNavigation navigation={navigation} activeTab={isOwnProfile ? 'Profile' : 'Explore'} />
 
       <PortfolioGalleryModal
         visible={galleryVisible}

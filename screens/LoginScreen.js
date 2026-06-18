@@ -95,11 +95,10 @@ export default function LoginScreen({ navigation }) {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.logoRow}>
-            <Ionicons name="restaurant" size={32} color="#fff" />
+            <Ionicons name="restaurant" size={48} color="#fff" />
             <Text style={styles.brand}>Munchable</Text>
           </View>
           <Text style={styles.title}>Welcome back</Text>
-          <Text style={styles.subtitle}>Sign in to see what your friends are cooking</Text>
 
           <View style={styles.formCard}>
             <TextInput
@@ -174,27 +173,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 24,
-    gap: 10,
+    marginBottom: 16,
+    gap: 12,
   },
   brand: {
-    fontSize: 28,
+    fontSize: 42,
     fontWeight: '800',
     color: '#fff',
   },
   title: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#fff',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: 'rgba(255,255,255,0.85)',
+    fontSize: 20,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.9)',
     textAlign: 'center',
     marginBottom: 28,
-    lineHeight: 22,
   },
   formCard: {
     backgroundColor: colors.card,

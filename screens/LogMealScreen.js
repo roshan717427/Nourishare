@@ -10,6 +10,8 @@ import {
   Alert,
   Platform,
   KeyboardAvoidingView,
+  Modal,
+  FlatList,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { StatusBar } from 'expo-status-bar';
@@ -19,6 +21,51 @@ import { colors } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
 import { API_URL } from '../config/api';
 
+const HOUR_OPTIONS = Array.from({ length: 13 }, (_, i) => i);
+const MINUTE_OPTIONS = Array.from({ length: 12 }, (_, i) => i * 5);
+
+function formatCookTime(hours, minutes) {
+  if (hours > 0 && minutes > 0) return `${hours} hr ${minutes} min`;
+  if (hours > 0) return `${hours} hr`;
+  return `${minutes} min`;
+}
+
+function TimePickerModal({ visible, title, options, selected, onSelect, onClose, formatLabel }) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.pickerOverlay}>
+        <TouchableOpacity style={styles.pickerBackdrop} activeOpacity={1} onPress={onClose} />
+        <View style={styles.pickerSheet}>
+          <Text style={styles.pickerTitle}>{title}</Text>
+          <FlatList
+            data={options}
+            keyExtractor={(item) => String(item)}
+            showsVerticalScrollIndicator={false}
+            style={styles.pickerList}
+            renderItem={({ item }) => {
+              const isSelected = item === selected;
+              return (
+                <TouchableOpacity
+                  style={[styles.pickerOption, isSelected && styles.pickerOptionSelected]}
+                  onPress={() => {
+                    onSelect(item);
+                    onClose();
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.pickerOptionText, isSelected && styles.pickerOptionTextSelected]}>
+                    {formatLabel(item)}
+                  </Text>
+                </TouchableOpacity>
+              );
+            }}
+          />
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 export default function LogMealScreen({ navigation }) {
   const { user } = useAuth();
   const [mealName, setMealName] = useState('');
@@ -26,7 +73,10 @@ export default function LogMealScreen({ navigation }) {
   const [ingredients, setIngredients] = useState('');
   const [rating, setRating] = useState(null);
   const [difficulty, setDifficulty] = useState(null);
-  const [time, setTime] = useState('');
+  const [cookHours, setCookHours] = useState(0);
+  const [cookMinutes, setCookMinutes] = useState(30);
+  const [hoursPickerVisible, setHoursPickerVisible] = useState(false);
+  const [minutesPickerVisible, setMinutesPickerVisible] = useState(false);
   const [recipeLink, setRecipeLink] = useState('');
   const [recipeInstructions, setRecipeInstructions] = useState('');
   const [cookedWith, setCookedWith] = useState('');
@@ -100,7 +150,7 @@ export default function LogMealScreen({ navigation }) {
     }
     if (!rating) missing.push('Rating');
     if (!difficulty) missing.push('Difficulty');
-    if (!time.trim()) missing.push('Time');
+    if (cookHours === 0 && cookMinutes === 0) missing.push('Time');
 
     if (missing.length > 0) {
       Alert.alert(
@@ -128,7 +178,7 @@ export default function LogMealScreen({ navigation }) {
         ingredients: ingredients.trim(),
         rating,
         difficulty: difficulty.toLowerCase(),
-        time: time.trim(),
+        time: formatCookTime(cookHours, cookMinutes),
         photoUrl: photo || undefined,
         recipeLink: recipeLink.trim() || undefined,
         recipeInstructions: recipeInstructions.trim() || undefined,
@@ -168,7 +218,8 @@ export default function LogMealScreen({ navigation }) {
               setIngredients('');
               setRating(null);
               setDifficulty(null);
-              setTime('');
+              setCookHours(0);
+              setCookMinutes(30);
               setRecipeLink('');
               setRecipeInstructions('');
               setCookedWith('');
@@ -310,14 +361,46 @@ export default function LogMealScreen({ navigation }) {
         {/* Time */}
         <View style={styles.section}>
           <Text style={styles.label}>Time</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Add time"
-            value={time}
-            onChangeText={setTime}
-            placeholderTextColor="#999"
-          />
+          <View style={styles.timePickerRow}>
+            <TouchableOpacity
+              style={styles.timePickerButton}
+              onPress={() => setHoursPickerVisible(true)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.timePickerValue}>{cookHours}</Text>
+              <Text style={styles.timePickerUnit}>hr</Text>
+              <Ionicons name="chevron-down" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.timePickerButton}
+              onPress={() => setMinutesPickerVisible(true)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.timePickerValue}>{cookMinutes}</Text>
+              <Text style={styles.timePickerUnit}>min</Text>
+              <Ionicons name="chevron-down" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+          </View>
         </View>
+
+        <TimePickerModal
+          visible={hoursPickerVisible}
+          title="Hours"
+          options={HOUR_OPTIONS}
+          selected={cookHours}
+          onSelect={setCookHours}
+          onClose={() => setHoursPickerVisible(false)}
+          formatLabel={(h) => `${h} hr`}
+        />
+        <TimePickerModal
+          visible={minutesPickerVisible}
+          title="Minutes"
+          options={MINUTE_OPTIONS}
+          selected={cookMinutes}
+          onSelect={setCookMinutes}
+          onClose={() => setMinutesPickerVisible(false)}
+          formatLabel={(m) => `${m} min`}
+        />
 
         {/* Recipe */}
         <View style={styles.section}>
@@ -524,6 +607,76 @@ const styles = StyleSheet.create({
   },
   difficultyButtonTextSelected: {
     color: '#fff',
+  },
+  timePickerRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  timePickerButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    backgroundColor: '#fff',
+    gap: 6,
+  },
+  timePickerValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#000',
+  },
+  timePickerUnit: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+    marginRight: 4,
+  },
+  pickerOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  pickerBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  pickerSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingTop: 16,
+    paddingBottom: Platform.OS === 'ios' ? 32 : 16,
+    maxHeight: '50%',
+  },
+  pickerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#000',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  pickerList: {
+    paddingHorizontal: 16,
+  },
+  pickerOption: {
+    paddingVertical: 14,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  pickerOptionSelected: {
+    backgroundColor: '#f0f0f0',
+  },
+  pickerOptionText: {
+    fontSize: 18,
+    color: '#333',
+  },
+  pickerOptionTextSelected: {
+    fontWeight: '700',
+    color: '#000',
   },
   submitButton: {
     backgroundColor: '#000',

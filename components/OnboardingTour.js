@@ -38,6 +38,14 @@ export const ONBOARDING_STEPS = [
     tabLabel: 'Explore',
   },
   {
+    id: 'ai',
+    icon: 'sparkles',
+    title: 'AI recipe ideas',
+    description:
+      'Get personalized suggestions from your tastes and pantry. Tap + on any recipe to add it to Next Up.',
+    tabLabel: 'AI',
+  },
+  {
     id: 'post',
     icon: 'add-circle',
     title: 'Log what you cook',
@@ -45,19 +53,11 @@ export const ONBOARDING_STEPS = [
     tabLabel: 'Post',
   },
   {
-    id: 'ai',
-    icon: 'sparkles',
-    title: 'AI recipe ideas',
+    id: 'profile',
+    icon: 'person',
+    title: 'Your kitchen profile',
     description:
-      'Get personalized suggestions from your tastes and pantry. Tap + on any recipe to add it to Next Up, your private cooking queue.',
-    tabLabel: 'AI',
-  },
-  {
-    id: 'next-up',
-    icon: 'list',
-    title: 'Next Up',
-    description:
-      'Your profile keeps a private list of recipes you want to try. Only you can see it, so it\'s perfect for planning your next meal.',
+      'See your cooking stats, kitchen personality, and every dish you\'ve logged.',
     tabLabel: 'Profile',
   },
   {
@@ -69,11 +69,11 @@ export const ONBOARDING_STEPS = [
     tabLabel: 'Profile',
   },
   {
-    id: 'profile',
-    icon: 'person',
-    title: 'Your kitchen profile',
+    id: 'next-up',
+    icon: 'list',
+    title: 'Next Up',
     description:
-      'See your cooking stats, kitchen personality, and every dish you\'ve logged.',
+      'Your profile keeps a private list of recipes you want to try. Only you can see it.',
     tabLabel: 'Profile',
   },
 ];
@@ -158,21 +158,10 @@ export default function OnboardingTour() {
             ))}
           </View>
 
-          {isFirstStep ? (
-            <TouchableOpacity
-              style={[styles.primaryButton, styles.primaryButtonFull]}
-              onPress={nextStep}
-              activeOpacity={0.85}
-              accessibilityRole="button"
-              accessibilityLabel={isLastStep ? 'Finish tour' : 'Next step'}
-            >
-              <Text style={styles.primaryButtonText}>{isLastStep ? 'Got it' : 'Next'}</Text>
-              {!isLastStep ? (
-                <Ionicons name="arrow-forward" size={18} color={colors.card} style={styles.buttonIcon} />
-              ) : null}
-            </TouchableOpacity>
-          ) : (
-            <View style={styles.buttonRow}>
+          <View style={styles.buttonRow}>
+            {isFirstStep ? (
+              <View style={styles.buttonSpacer} />
+            ) : (
               <TouchableOpacity
                 style={styles.secondaryButton}
                 onPress={prevStep}
@@ -183,21 +172,21 @@ export default function OnboardingTour() {
                 <Ionicons name="arrow-back" size={18} color={colors.primary} style={styles.backButtonIcon} />
                 <Text style={styles.secondaryButtonText}>Back</Text>
               </TouchableOpacity>
+            )}
 
-              <TouchableOpacity
-                style={[styles.primaryButton, styles.primaryButtonCompact]}
-                onPress={nextStep}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityLabel={isLastStep ? 'Finish tour' : 'Next step'}
-              >
-                <Text style={styles.primaryButtonText}>{isLastStep ? 'Got it' : 'Next'}</Text>
-                {!isLastStep ? (
-                  <Ionicons name="arrow-forward" size={18} color={colors.card} style={styles.buttonIcon} />
-                ) : null}
-              </TouchableOpacity>
-            </View>
-          )}
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={nextStep}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel={isLastStep ? 'Finish tour' : 'Next step'}
+            >
+              <Text style={styles.primaryButtonText}>{isLastStep ? 'Got it' : 'Next'}</Text>
+              {!isLastStep ? (
+                <Ionicons name="arrow-forward" size={18} color={colors.card} style={styles.buttonIcon} />
+              ) : null}
+            </TouchableOpacity>
+          </View>
 
           <Text style={styles.stepCounter}>
             {currentStep + 1} of {totalSteps}
@@ -345,6 +334,9 @@ const styles = StyleSheet.create({
   backButtonIcon: {
     marginRight: spacing.xs,
   },
+  buttonSpacer: {
+    flex: 1,
+  },
   primaryButton: {
     flex: 1,
     flexDirection: 'row',
@@ -353,13 +345,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderRadius: radii.pill,
     paddingVertical: 14,
-    paddingHorizontal: spacing.xl,
-  },
-  primaryButtonFull: {
-    width: '100%',
-  },
-  primaryButtonCompact: {
-    flex: 1.2,
+    paddingHorizontal: spacing.md,
   },
   primaryButtonText: {
     color: colors.card,
