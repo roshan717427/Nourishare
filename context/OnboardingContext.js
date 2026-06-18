@@ -3,9 +3,26 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from './AuthContext';
 
 const STORAGE_PREFIX = '@munchable/onboarding_complete_';
+const UID_STORAGE_PREFIX = '@munchable/onboarding_complete_uid_';
 
 export function getOnboardingStorageKey(username) {
   return `${STORAGE_PREFIX}${username}`;
+}
+
+export function getOnboardingUidStorageKey(uid) {
+  return `${UID_STORAGE_PREFIX}${uid}`;
+}
+
+export async function clearOnboardingStorage(username, uid) {
+  const keys = [];
+  if (username) keys.push(getOnboardingStorageKey(username));
+  if (uid) keys.push(getOnboardingUidStorageKey(uid));
+  if (keys.length === 0) return;
+  try {
+    await AsyncStorage.multiRemove(keys);
+  } catch {
+    // Ignore — best-effort cleanup on account delete.
+  }
 }
 
 const OnboardingContext = createContext({
@@ -15,6 +32,7 @@ const OnboardingContext = createContext({
   nextStep: () => {},
   prevStep: () => {},
   skipTour: () => {},
+  dontShowAgain: () => {},
   completeTour: () => {},
 });
 
@@ -57,12 +75,15 @@ export function OnboardingProvider({ children, totalSteps }) {
 
     (async () => {
       try {
-        const completed = await AsyncStorage.getItem(getOnboardingStorageKey(username));
+        const [completedByUsername, completedByUid] = await Promise.all([
+          AsyncStorage.getItem(getOnboardingStorageKey(username)),
+          user.uid ? AsyncStorage.getItem(getOnboardingUidStorageKey(user.uid)) : null,
+        ]);
         if (cancelled || generation !== checkGenerationRef.current) return;
         if (sessionDismissedRef.current) return;
 
         checkedUsernameRef.current = username;
-        const shouldShow = completed !== 'true';
+        const shouldShow = completedByUsername !== 'true' && completedByUid !== 'true';
         setTourActive(shouldShow);
         if (shouldShow) {
           setCurrentStep(0);
@@ -79,18 +100,28 @@ export function OnboardingProvider({ children, totalSteps }) {
     return () => {
       cancelled = true;
     };
-  }, [user?.username, initializing]);
+  }, [user?.username, user?.uid, initializing]);
 
   const persistCompletion = useCallback(async () => {
     if (!user?.username) return;
     try {
-      await AsyncStorage.setItem(getOnboardingStorageKey(user.username), 'true');
+      const entries = [[getOnboardingStorageKey(user.username), 'true']];
+      if (user.uid) {
+        entries.push([getOnboardingUidStorageKey(user.uid), 'true']);
+      }
+      await AsyncStorage.multiSet(entries);
     } catch {
       // Ignore — tour is already dismissed in UI.
     }
-  }, [user?.username]);
+  }, [user?.username, user?.uid]);
 
-  const dismissTour = useCallback(async () => {
+  const dismissForSession = useCallback(() => {
+    sessionDismissedRef.current = true;
+    setTourActive(false);
+    setCurrentStep(0);
+  }, []);
+
+  const dismissPermanently = useCallback(async () => {
     sessionDismissedRef.current = true;
     setTourActive(false);
     setCurrentStep(0);
@@ -98,20 +129,24 @@ export function OnboardingProvider({ children, totalSteps }) {
   }, [persistCompletion]);
 
   const completeTour = useCallback(() => {
-    dismissTour();
-  }, [dismissTour]);
+    dismissPermanently();
+  }, [dismissPermanently]);
 
   const skipTour = useCallback(() => {
-    dismissTour();
-  }, [dismissTour]);
+    dismissForSession();
+  }, [dismissForSession]);
+
+  const dontShowAgain = useCallback(() => {
+    dismissPermanently();
+  }, [dismissPermanently]);
 
   const nextStep = useCallback(() => {
     if (currentStep >= totalSteps - 1) {
-      dismissTour();
+      dismissPermanently();
       return;
     }
     setCurrentStep((prev) => prev + 1);
-  }, [currentStep, totalSteps, dismissTour]);
+  }, [currentStep, totalSteps, dismissPermanently]);
 
   const prevStep = useCallback(() => {
     setCurrentStep((prev) => Math.max(0, prev - 1));
@@ -128,6 +163,7 @@ export function OnboardingProvider({ children, totalSteps }) {
         nextStep,
         prevStep,
         skipTour,
+        dontShowAgain,
         completeTour,
       }}
     >

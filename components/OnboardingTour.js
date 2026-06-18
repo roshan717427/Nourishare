@@ -114,7 +114,8 @@ function TabHint({ activeLabel }) {
 
 export default function OnboardingTour() {
   const insets = useSafeAreaInsets();
-  const { visible, currentStep, totalSteps, nextStep, prevStep, skipTour } = useOnboarding();
+  const { visible, currentStep, totalSteps, nextStep, prevStep, skipTour, dontShowAgain } =
+    useOnboarding();
 
   const step = ONBOARDING_STEPS[currentStep];
   if (!step) {
@@ -131,6 +132,16 @@ export default function OnboardingTour() {
         <Pressable style={styles.backdrop} onPress={skipTour} accessibilityLabel="Skip tour" />
 
         <View style={styles.card}>
+          <TouchableOpacity
+            style={styles.dontShowAgainButton}
+            onPress={dontShowAgain}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Don't show this again"
+          >
+            <Text style={styles.dontShowAgainText}>Don't show this again</Text>
+          </TouchableOpacity>
+
           <TouchableOpacity
             style={styles.skipButton}
             onPress={skipTour}
@@ -234,6 +245,19 @@ const styles = StyleSheet.create({
     padding: spacing.xs,
     zIndex: 1,
   },
+  dontShowAgainButton: {
+    position: 'absolute',
+    top: spacing.md,
+    left: spacing.md,
+    padding: spacing.xs,
+    zIndex: 1,
+    maxWidth: '55%',
+  },
+  dontShowAgainText: {
+    fontSize: 13,
+    color: colors.textMuted,
+    fontWeight: '600',
+  },
   skipText: {
     fontSize: 15,
     color: colors.textMuted,
@@ -246,6 +270,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.chipCoral,
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: spacing.lg,
     marginBottom: spacing.md,
   },
   title: {

@@ -22,6 +22,7 @@ import BottomNavigation from '../components/BottomNavigation';
 import StatsCard from '../components/StatsCard';
 import BarChart from '../components/BarChart';
 import { useAuth } from '../context/AuthContext';
+import { clearOnboardingStorage } from '../context/OnboardingContext';
 import { useNextUp } from '../context/NextUpContext';
 import PortfolioGalleryModal from '../components/PortfolioGalleryModal';
 import { API_URL } from '../config/api';
@@ -571,6 +572,7 @@ export default function ProfileScreen({ navigation, route }) {
               if (!response.ok) {
                 throw new Error(data.error || 'Failed to delete account');
               }
+              await clearOnboardingStorage(user.username, user.uid);
               await signOut();
             } catch (err) {
               Alert.alert('Could not delete account', err.message);
