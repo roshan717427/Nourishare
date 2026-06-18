@@ -18,7 +18,7 @@ export const ONBOARDING_STEPS = [
     icon: 'home',
     title: 'Welcome to Munchable!',
     description:
-      'Your home feed shows what friends are cooking. Rate dishes, leave comments, and get inspired.',
+      'Your home feed shows what friends are cooking. Drop likes, leave comments, and get inspired.',
     tabLabel: 'Home',
   },
   {
@@ -42,7 +42,7 @@ export const ONBOARDING_STEPS = [
     icon: 'sparkles',
     title: 'AI recipe ideas',
     description:
-      'Get personalized suggestions from your tastes and pantry. Tap + on any recipe to add it to Next Up.',
+      'Get personalized suggestions from your tastes and pantry. Tap + on any recipe to add it to Cook Next.',
     tabLabel: 'AI',
   },
   {
@@ -71,7 +71,7 @@ export const ONBOARDING_STEPS = [
   {
     id: 'next-up',
     icon: 'list',
-    title: 'Next Up',
+    title: 'Cook Next',
     description:
       'Your profile keeps a private list of recipes you want to try. Only you can see it.',
     tabLabel: 'Profile',
@@ -158,10 +158,8 @@ export default function OnboardingTour() {
             ))}
           </View>
 
-          <View style={styles.buttonRow}>
-            {isFirstStep ? (
-              <View style={styles.buttonSpacer} />
-            ) : (
+          <View style={[styles.buttonRow, isFirstStep && styles.buttonRowFirst]}>
+            {!isFirstStep ? (
               <TouchableOpacity
                 style={styles.secondaryButton}
                 onPress={prevStep}
@@ -172,10 +170,10 @@ export default function OnboardingTour() {
                 <Ionicons name="arrow-back" size={18} color={colors.primary} style={styles.backButtonIcon} />
                 <Text style={styles.secondaryButtonText}>Back</Text>
               </TouchableOpacity>
-            )}
+            ) : null}
 
             <TouchableOpacity
-              style={styles.primaryButton}
+              style={[styles.primaryButton, isFirstStep && styles.primaryButtonFirst]}
               onPress={nextStep}
               activeOpacity={0.85}
               accessibilityRole="button"
@@ -314,6 +312,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     width: '100%',
   },
+  buttonRowFirst: {
+    justifyContent: 'center',
+  },
   secondaryButton: {
     flex: 1,
     flexDirection: 'row',
@@ -334,9 +335,6 @@ const styles = StyleSheet.create({
   backButtonIcon: {
     marginRight: spacing.xs,
   },
-  buttonSpacer: {
-    flex: 1,
-  },
   primaryButton: {
     flex: 1,
     flexDirection: 'row',
@@ -346,6 +344,11 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     paddingVertical: 14,
     paddingHorizontal: spacing.md,
+  },
+  primaryButtonFirst: {
+    flex: 0,
+    minWidth: 140,
+    paddingHorizontal: spacing.xl,
   },
   primaryButtonText: {
     color: colors.card,

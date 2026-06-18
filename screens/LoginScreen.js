@@ -21,6 +21,7 @@ export default function LoginScreen({ navigation }) {
   const { signIn } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const resolveEmail = async (identifier) => {
@@ -111,15 +112,30 @@ export default function LoginScreen({ navigation }) {
               autoCorrect={false}
             />
 
-            <TextInput
-              style={styles.input}
-              placeholder="Password"
-              placeholderTextColor={colors.textMuted}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              autoCapitalize="none"
-            />
+            <View style={styles.passwordRow}>
+              <TextInput
+                style={styles.passwordInput}
+                placeholder="Password"
+                placeholderTextColor={colors.textMuted}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+              />
+              <TouchableOpacity
+                style={styles.passwordToggle}
+                onPress={() => setShowPassword((prev) => !prev)}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+              >
+                <Ionicons
+                  name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                  size={22}
+                  color={colors.textMuted}
+                />
+              </TouchableOpacity>
+            </View>
 
             <TouchableOpacity
               activeOpacity={0.7}
@@ -208,6 +224,29 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  passwordRow: {
+    position: 'relative',
+    marginBottom: 14,
+  },
+  passwordInput: {
+    backgroundColor: colors.inputBg,
+    borderRadius: radii.md,
+    paddingHorizontal: 18,
+    paddingRight: 48,
+    paddingVertical: 16,
+    fontSize: 17,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  passwordToggle: {
+    position: 'absolute',
+    right: 12,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    paddingHorizontal: 4,
   },
   forgotWrapper: {
     alignSelf: 'flex-start',
