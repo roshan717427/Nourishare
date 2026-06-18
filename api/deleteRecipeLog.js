@@ -1,8 +1,8 @@
 const { initializeApp, cert, getApps } = require('firebase-admin/app');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
-const { refreshUserPersonality } = require('./personalityHelper');
-const { requireAuthForUsername } = require('./verifyAuth');
-const { validatePostId } = require('./validateInput');
+const { refreshUserPersonality } = require('./_helpers/personalityHelper');
+const { requireAuthForUsername } = require('./_helpers/verifyAuth');
+const { validatePostId } = require('./_helpers/validateInput');
 
 let db;
 try {

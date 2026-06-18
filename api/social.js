@@ -85,7 +85,7 @@
 const { initializeApp, cert, getApps } = require('firebase-admin/app');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { hasProfileData, rankRecommendations } = require('../utils/recommendFollows');
-const { requireAuthForUsername } = require('./verifyAuth');
+const { requireAuthForUsername } = require('./_helpers/verifyAuth');
 const {
   POST_COLLECTIONS,
   normalizeUsername,
@@ -94,7 +94,7 @@ const {
   validateEmail,
   validateSearchQuery,
   resolveCollection,
-} = require('./validateInput');
+} = require('./_helpers/validateInput');
 
 const SEARCH_RESULT_LIMIT = 20;
 const RECOMMENDED_CANDIDATE_LIMIT = 50;

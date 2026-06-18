@@ -4,6 +4,7 @@ import sys
 import os
 from collections import Counter
 
+sys.path.append(os.path.join(os.path.dirname(__file__), '_helpers'))
 from validate_input import normalize_username
 
 # Add the functions directory to Python path

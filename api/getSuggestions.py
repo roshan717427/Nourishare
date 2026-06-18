@@ -7,7 +7,10 @@ import sys
 from collections import Counter
 from datetime import datetime
 
-_suggestion_images_path = os.path.join(os.path.dirname(__file__), 'suggestion_images.py')
+_helpers_dir = os.path.join(os.path.dirname(__file__), '_helpers')
+sys.path.append(_helpers_dir)
+
+_suggestion_images_path = os.path.join(_helpers_dir, 'suggestion_images.py')
 _spec = importlib.util.spec_from_file_location('suggestion_images', _suggestion_images_path)
 _suggestion_images = importlib.util.module_from_spec(_spec)
 sys.modules['suggestion_images'] = _suggestion_images

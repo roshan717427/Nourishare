@@ -1,7 +1,7 @@
 const { initializeApp, cert, getApps } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
-const { requireAuthForUsername } = require('./verifyAuth');
-const { pickProfileUpdates } = require('./validateInput');
+const { requireAuthForUsername } = require('./_helpers/verifyAuth');
+const { pickProfileUpdates } = require('./_helpers/validateInput');
 const { capitalizeList } = require('../utils/titleCase');
 
 let db;

@@ -1,8 +1,8 @@
 const { initializeApp, cert, getApps } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
-const { refreshUserPersonality, isPersonalityStale } = require('./personalityHelper');
+const { refreshUserPersonality, isPersonalityStale } = require('./_helpers/personalityHelper');
 const { capitalizeList } = require('../utils/titleCase');
-const { normalizeUsername } = require('./validateInput');
+const { normalizeUsername } = require('./_helpers/validateInput');
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
