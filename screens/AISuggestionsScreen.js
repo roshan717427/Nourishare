@@ -522,7 +522,7 @@ export default function AISuggestionsScreen({ navigation }) {
             <Text style={styles.headerSubtitle}>Curated picks, just for you</Text>
           </View>
         </View>
-        <View style={styles.backButton} />
+        <View style={styles.headerSpacer} />
       </LinearGradient>
 
       <ScrollView
@@ -706,6 +706,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  headerSpacer: {
+    width: 40,
+    height: 40,
   },
   headerCenter: {
     flexDirection: 'row',

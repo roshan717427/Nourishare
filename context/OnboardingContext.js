@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from './AuthContext';
 
@@ -23,6 +23,7 @@ export function OnboardingProvider({ children, totalSteps }) {
   const [visible, setVisible] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [ready, setReady] = useState(false);
+  const checkedUserRef = useRef(null);
 
   useEffect(() => {
     if (initializing) {
@@ -33,26 +34,30 @@ export function OnboardingProvider({ children, totalSteps }) {
       setVisible(false);
       setCurrentStep(0);
       setReady(false);
+      checkedUserRef.current = null;
       return;
     }
 
     let cancelled = false;
-    setReady(false);
+    const isNewUser = checkedUserRef.current !== user.username;
+    if (isNewUser) {
+      setReady(false);
+    }
 
     (async () => {
       try {
         const key = getOnboardingStorageKey(user.username);
         const completed = await AsyncStorage.getItem(key);
         if (cancelled) return;
+        checkedUserRef.current = user.username;
         setVisible(completed !== 'true');
         setCurrentStep(0);
+        setReady(true);
       } catch {
         // Fail open — don't block the app if storage is unavailable.
         if (!cancelled) {
+          checkedUserRef.current = user.username;
           setVisible(false);
-        }
-      } finally {
-        if (!cancelled) {
           setReady(true);
         }
       }

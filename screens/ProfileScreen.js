@@ -204,7 +204,7 @@ function NextUpCard({ recipe, onPress, onRemove }) {
             onRemove();
           }}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          accessibilityLabel="Remove from Next Up"
+          accessibilityLabel="Remove from Cook Next"
         >
           <Ionicons name="close-circle" size={20} color={colors.textMuted} />
         </TouchableOpacity>
@@ -549,6 +549,38 @@ export default function ProfileScreen({ navigation, route }) {
     }
   };
 
+  const handleDeleteAccount = () => {
+    if (!user?.username) return;
+
+    Alert.alert(
+      'Delete account?',
+      'This permanently removes your profile and data. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete account',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const response = await fetch(`${API_URL}/deleteUserProfile`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: user.username }),
+              });
+              const data = await response.json().catch(() => ({}));
+              if (!response.ok) {
+                throw new Error(data.error || 'Failed to delete account');
+              }
+              await signOut();
+            } catch (err) {
+              Alert.alert('Could not delete account', err.message);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleDeleteDish = (dish) => {
     if (!isOwnProfile || !user?.username) return;
 
@@ -710,7 +742,7 @@ export default function ProfileScreen({ navigation, route }) {
               activeOpacity={0.85}
             >
               <Ionicons name="create-outline" size={17} color={colors.primary} />
-              <Text style={styles.editProfileButtonText}>Edit Profile</Text>
+              <Text style={styles.editProfileButtonText}>Account Settings</Text>
               <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
@@ -720,7 +752,7 @@ export default function ProfileScreen({ navigation, route }) {
           <View style={styles.section}>
             <View style={styles.sectionTitleRow}>
               <Ionicons name="bookmark" size={20} color={colors.accent} />
-              <Text style={styles.sectionTitle}>Next Up</Text>
+              <Text style={styles.sectionTitle}>Cook Next</Text>
               <View style={styles.privateBadge}>
                 <Ionicons name="lock-closed" size={11} color={colors.textMuted} />
                 <Text style={styles.privateBadgeText}>Only you</Text>
@@ -829,7 +861,7 @@ export default function ProfileScreen({ navigation, route }) {
                 ))}
               </View>
             ) : isOwnProfile ? (
-              <Text style={styles.sectionEditHint}>Edit profile to select.</Text>
+              <Text style={styles.sectionEditHint}>Go to account settings to select.</Text>
             ) : null}
           </View>
         )}
@@ -850,7 +882,7 @@ export default function ProfileScreen({ navigation, route }) {
                 ))}
               </View>
             ) : isOwnProfile ? (
-              <Text style={styles.sectionEditHint}>Edit profile to select.</Text>
+              <Text style={styles.sectionEditHint}>Go to account settings to select.</Text>
             ) : null}
           </View>
         )}
@@ -935,7 +967,7 @@ export default function ProfileScreen({ navigation, route }) {
         >
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Edit Profile</Text>
+              <Text style={styles.modalTitle}>Account Settings</Text>
               <TouchableOpacity
                 onPress={closeEditProfile}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -1031,6 +1063,15 @@ export default function ProfileScreen({ navigation, route }) {
               <Text style={styles.modalHint}>
                 Your cooking stats still update automatically. Custom traits and tags stay as you set them.
               </Text>
+
+              <TouchableOpacity
+                style={styles.deleteAccountButton}
+                onPress={handleDeleteAccount}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="trash-outline" size={18} color={colors.error} />
+                <Text style={styles.deleteAccountButtonText}>Delete account</Text>
+              </TouchableOpacity>
             </ScrollView>
 
             <View style={styles.modalActions}>
@@ -1669,6 +1710,23 @@ const styles = StyleSheet.create({
   modalSaveButtonText: {
     color: '#fff',
     fontSize: 16,
+    fontWeight: '700',
+  },
+  deleteAccountButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 28,
+    paddingVertical: 14,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.error,
+    backgroundColor: colors.card,
+  },
+  deleteAccountButtonText: {
+    color: colors.error,
+    fontSize: 15,
     fontWeight: '700',
   },
   dishCard: {

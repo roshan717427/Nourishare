@@ -42,7 +42,7 @@ export const ONBOARDING_STEPS = [
     icon: 'sparkles',
     title: 'AI recipe ideas',
     description:
-      'Get personalized suggestions from your tastes and pantry. Tap + on any recipe to add it to Cook Next.',
+      'Get personalized suggestions from your tastes and pantry. Tap + on any recipe to add it to your Cook Next portfolio.',
     tabLabel: 'AI',
   },
   {
@@ -71,9 +71,9 @@ export const ONBOARDING_STEPS = [
   {
     id: 'next-up',
     icon: 'list',
-    title: 'Cook Next',
+    title: 'Cook Next Portfolio.',
     description:
-      'Your profile keeps a private list of recipes you want to try. Only you can see it.',
+      'Your private Cook Next portfolio saves recipes you want to try. Only you can see it.',
     tabLabel: 'Profile',
   },
 ];
@@ -120,12 +120,12 @@ export default function OnboardingTour() {
   const isFirstStep = currentStep === 0;
   const isLastStep = currentStep >= totalSteps - 1;
 
-  if (!step) {
+  if (!visible || !step) {
     return null;
   }
 
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
+    <Modal visible transparent animationType="fade" statusBarTranslucent>
       <View style={[styles.overlay, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <Pressable style={styles.backdrop} onPress={skipTour} accessibilityLabel="Skip tour" />
 
@@ -161,7 +161,7 @@ export default function OnboardingTour() {
           <View style={[styles.buttonRow, isFirstStep && styles.buttonRowFirst]}>
             {!isFirstStep ? (
               <TouchableOpacity
-                style={styles.secondaryButton}
+                style={[styles.secondaryButton, styles.navButton]}
                 onPress={prevStep}
                 activeOpacity={0.85}
                 accessibilityRole="button"
@@ -173,7 +173,10 @@ export default function OnboardingTour() {
             ) : null}
 
             <TouchableOpacity
-              style={[styles.primaryButton, isFirstStep && styles.primaryButtonFirst]}
+              style={[
+                styles.primaryButton,
+                isFirstStep ? styles.primaryButtonFirst : styles.navButton,
+              ]}
               onPress={nextStep}
               activeOpacity={0.85}
               accessibilityRole="button"
@@ -315,8 +318,12 @@ const styles = StyleSheet.create({
   buttonRowFirst: {
     justifyContent: 'center',
   },
-  secondaryButton: {
+  navButton: {
     flex: 1,
+    flexBasis: 0,
+    minHeight: 48,
+  },
+  secondaryButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -336,7 +343,6 @@ const styles = StyleSheet.create({
     marginRight: spacing.xs,
   },
   primaryButton: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
