@@ -85,14 +85,21 @@
 const { initializeApp, cert, getApps } = require('firebase-admin/app');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { hasProfileData, rankRecommendations } = require('../utils/recommendFollows');
+const { requireAuthForUsername } = require('./verifyAuth');
+const {
+  POST_COLLECTIONS,
+  normalizeUsername,
+  validatePostId,
+  sanitizeCommentText,
+  validateEmail,
+  validateSearchQuery,
+  resolveCollection,
+} = require('./validateInput');
 
 const SEARCH_RESULT_LIMIT = 20;
 const RECOMMENDED_CANDIDATE_LIMIT = 50;
 const RECOMMENDED_RESULT_LIMIT = 6;
 const FEED_LIMIT = 50;
-// Collections that may hold a post. Restricts like/comment writes to known
-// collections so an arbitrary `collection` param can't target other data.
-const POST_COLLECTIONS = ['logs', 'recipe_posts'];
 
 let db;
 try {
@@ -117,16 +124,18 @@ async function handleFollow(req, res) {
   if (req.method !== 'POST') return methodNotAllowed(res);
 
   const { username, targetUsername, target_username } = req.body;
-  const targetUser = targetUsername || target_username;
+  const auth = await requireAuthForUsername(req, res, username);
+  if (!auth) return;
 
-  if (!username || !targetUser) {
-    return res.status(400).json({ error: 'Username and targetUsername are required' });
+  const targetUser = normalizeUsername(targetUsername || target_username);
+  if (!targetUser) {
+    return res.status(400).json({ error: 'Valid targetUsername is required' });
   }
-  if (username === targetUser) {
+  if (auth.username === targetUser) {
     return res.status(400).json({ error: 'Cannot follow yourself' });
   }
 
-  const userRef = db.collection('users').doc(username);
+  const userRef = db.collection('users').doc(auth.username);
   const targetRef = db.collection('users').doc(targetUser);
   const [userDoc, targetDoc] = await Promise.all([userRef.get(), targetRef.get()]);
   if (!userDoc.exists || !targetDoc.exists) {
@@ -135,14 +144,14 @@ async function handleFollow(req, res) {
 
   const followingRef = db
     .collection('following')
-    .doc(username)
+    .doc(auth.username)
     .collection('user_following')
     .doc(targetUser);
   const followersRef = db
     .collection('followers')
     .doc(targetUser)
     .collection('user_followers')
-    .doc(username);
+    .doc(auth.username);
 
   const existing = await followingRef.get();
   if (existing.exists) {
@@ -162,13 +171,15 @@ async function handleUnfollow(req, res) {
   if (req.method !== 'POST') return methodNotAllowed(res);
 
   const { username, targetUsername, target_username } = req.body;
-  const targetUser = targetUsername || target_username;
+  const auth = await requireAuthForUsername(req, res, username);
+  if (!auth) return;
 
-  if (!username || !targetUser) {
-    return res.status(400).json({ error: 'Username and targetUsername are required' });
+  const targetUser = normalizeUsername(targetUsername || target_username);
+  if (!targetUser) {
+    return res.status(400).json({ error: 'Valid targetUsername is required' });
   }
 
-  const userRef = db.collection('users').doc(username);
+  const userRef = db.collection('users').doc(auth.username);
   const targetRef = db.collection('users').doc(targetUser);
   const [userDoc, targetDoc] = await Promise.all([userRef.get(), targetRef.get()]);
   if (!userDoc.exists || !targetDoc.exists) {
@@ -177,14 +188,14 @@ async function handleUnfollow(req, res) {
 
   const followingRef = db
     .collection('following')
-    .doc(username)
+    .doc(auth.username)
     .collection('user_following')
     .doc(targetUser);
   const followersRef = db
     .collection('followers')
     .doc(targetUser)
     .collection('user_followers')
-    .doc(username);
+    .doc(auth.username);
 
   const existing = await followingRef.get();
   if (!existing.exists) {
@@ -198,9 +209,9 @@ async function handleUnfollow(req, res) {
 async function handleFollowers(req, res) {
   if (req.method !== 'GET') return methodNotAllowed(res);
 
-  const { username } = req.query;
+  const username = normalizeUsername(req.query.username);
   if (!username) {
-    return res.status(400).json({ error: 'Username is required' });
+    return res.status(400).json({ error: 'Valid username is required' });
   }
 
   const userDoc = await db.collection('users').doc(username).get();
@@ -232,9 +243,9 @@ async function handleFollowers(req, res) {
 async function handleFollowing(req, res) {
   if (req.method !== 'GET') return methodNotAllowed(res);
 
-  const { username } = req.query;
+  const username = normalizeUsername(req.query.username);
   if (!username) {
-    return res.status(400).json({ error: 'Username is required' });
+    return res.status(400).json({ error: 'Valid username is required' });
   }
 
   const userDoc = await db.collection('users').doc(username).get();
@@ -314,9 +325,9 @@ function chunk(arr, size) {
 async function handleFeed(req, res) {
   if (req.method !== 'GET') return methodNotAllowed(res);
 
-  const { username } = req.query;
+  const username = normalizeUsername(req.query.username);
   if (!username) {
-    return res.status(400).json({ error: 'Username is required' });
+    return res.status(400).json({ error: 'Valid username is required' });
   }
 
   const userDoc = await db.collection('users').doc(username).get();
@@ -378,18 +389,21 @@ async function handleLogin(req, res) {
   if (req.method !== 'POST') return methodNotAllowed(res);
 
   const { username, email } = req.body;
-  if (!username && !email) {
-    return res.status(400).json({ error: 'Username or email is required' });
+  const normalizedUsername = normalizeUsername(username);
+  const normalizedEmail = validateEmail(email);
+
+  if (!normalizedUsername && !normalizedEmail) {
+    return res.status(400).json({ error: 'Valid username or email is required' });
   }
 
   let userDoc;
-  if (username) {
-    userDoc = await db.collection('users').doc(username).get();
+  if (normalizedUsername) {
+    userDoc = await db.collection('users').doc(normalizedUsername).get();
     if (!userDoc.exists) {
       return res.status(404).json({ error: 'User not found' });
     }
   } else {
-    const snapshot = await db.collection('users').where('email', '==', email).limit(1).get();
+    const snapshot = await db.collection('users').where('email', '==', normalizedEmail).limit(1).get();
     if (snapshot.empty) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -412,8 +426,7 @@ function toPublicUser(doc) {
 async function handleSearchUsers(req, res) {
   if (req.method !== 'GET') return methodNotAllowed(res);
 
-  const { q } = req.query;
-  const prefix = (q || '').trim();
+  const prefix = validateSearchQuery(req.query.q);
   if (!prefix) {
     return res.status(200).json({ users: [] });
   }
@@ -469,9 +482,9 @@ async function handleSearchUsers(req, res) {
 async function handleRecommendedFollows(req, res) {
   if (req.method !== 'GET') return methodNotAllowed(res);
 
-  const { username } = req.query;
+  const username = normalizeUsername(req.query.username);
   if (!username) {
-    return res.status(400).json({ error: 'Username is required' });
+    return res.status(400).json({ error: 'Valid username is required' });
   }
 
   const userDoc = await db.collection('users').doc(username).get();
@@ -510,9 +523,9 @@ async function handleRecommendedFollows(req, res) {
 async function handleCheckEmail(req, res) {
   if (req.method !== 'GET') return methodNotAllowed(res);
 
-  const email = (req.query.email || '').trim();
+  const email = validateEmail(req.query.email);
   if (!email) {
-    return res.status(400).json({ error: 'Email is required' });
+    return res.status(400).json({ error: 'Valid email is required' });
   }
 
   const snapshot = await db
@@ -532,10 +545,6 @@ async function handleCheckEmail(req, res) {
 
 // Validate + resolve the post's collection. Returns the collection name or
 // null (caller should 400). Defaults to 'logs' (where createRecipeLog writes).
-function resolveCollection(value) {
-  const collectionName = (value || 'logs').toString();
-  return POST_COLLECTIONS.includes(collectionName) ? collectionName : null;
-}
 
 async function loadComments(postId) {
   const snapshot = await db
@@ -587,14 +596,15 @@ async function loadLikes(postId) {
 async function handlePostDetail(req, res) {
   if (req.method !== 'GET') return methodNotAllowed(res);
 
-  const { postId, username } = req.query;
+  const postId = validatePostId(req.query.postId);
   if (!postId) {
-    return res.status(400).json({ error: 'postId is required' });
+    return res.status(400).json({ error: 'Valid postId is required' });
   }
   const collectionName = resolveCollection(req.query.collection);
   if (!collectionName) {
     return res.status(400).json({ error: 'Invalid collection' });
   }
+  const viewerUsername = req.query.username ? normalizeUsername(req.query.username) : null;
 
   const postDoc = await db.collection(collectionName).doc(postId).get();
   if (!postDoc.exists) {
@@ -611,7 +621,7 @@ async function handlePostDetail(req, res) {
   }
 
   const [comments, likes] = await Promise.all([loadComments(postId), loadLikes(postId)]);
-  const likedByMe = username ? likes.some(l => l.username === username) : false;
+  const likedByMe = viewerUsername ? likes.some(l => l.username === viewerUsername) : false;
 
   res.status(200).json({ post, comments, likes, likedByMe });
 }
@@ -619,9 +629,9 @@ async function handlePostDetail(req, res) {
 async function handleComments(req, res) {
   if (req.method !== 'GET') return methodNotAllowed(res);
 
-  const { postId } = req.query;
+  const postId = validatePostId(req.query.postId);
   if (!postId) {
-    return res.status(400).json({ error: 'postId is required' });
+    return res.status(400).json({ error: 'Valid postId is required' });
   }
   const comments = await loadComments(postId);
   res.status(200).json({ comments });
@@ -631,8 +641,13 @@ async function handleDeleteComment(req, res) {
   if (req.method !== 'POST') return methodNotAllowed(res);
 
   const { username, postId, commentId } = req.body;
-  if (!username || !postId || !commentId) {
-    return res.status(400).json({ error: 'username, postId and commentId are required' });
+  const auth = await requireAuthForUsername(req, res, username);
+  if (!auth) return;
+
+  const validPostId = validatePostId(postId);
+  const validCommentId = validatePostId(commentId);
+  if (!validPostId || !validCommentId) {
+    return res.status(400).json({ error: 'Valid postId and commentId are required' });
   }
   const collectionName = resolveCollection(req.body.collection);
   if (!collectionName) {
@@ -641,20 +656,20 @@ async function handleDeleteComment(req, res) {
 
   const commentRef = db
     .collection('post_comments')
-    .doc(postId)
+    .doc(validPostId)
     .collection('items')
-    .doc(commentId);
+    .doc(validCommentId);
   const commentDoc = await commentRef.get();
   if (!commentDoc.exists) {
     return res.status(404).json({ error: 'Comment not found' });
   }
-  if (commentDoc.data().username !== username) {
+  if (commentDoc.data().username !== auth.username) {
     return res.status(403).json({ error: 'You can only delete your own comments' });
   }
 
   await commentRef.delete();
 
-  const postRef = db.collection(collectionName).doc(postId);
+  const postRef = db.collection(collectionName).doc(validPostId);
   const postDoc = await postRef.get();
   let newCount = 0;
   if (postDoc.exists) {
@@ -672,33 +687,38 @@ async function handleAddComment(req, res) {
   if (req.method !== 'POST') return methodNotAllowed(res);
 
   const { username, postId, text } = req.body;
-  if (!username || !postId || !text || !text.trim()) {
-    return res.status(400).json({ error: 'username, postId and text are required' });
+  const auth = await requireAuthForUsername(req, res, username);
+  if (!auth) return;
+
+  const validPostId = validatePostId(postId);
+  const commentText = sanitizeCommentText(text);
+  if (!validPostId || !commentText) {
+    return res.status(400).json({ error: 'Valid postId and comment text are required' });
   }
   const collectionName = resolveCollection(req.body.collection);
   if (!collectionName) {
     return res.status(400).json({ error: 'Invalid collection' });
   }
 
-  const postRef = db.collection(collectionName).doc(postId);
+  const postRef = db.collection(collectionName).doc(validPostId);
   const postDoc = await postRef.get();
   if (!postDoc.exists) {
     return res.status(404).json({ error: 'Post not found' });
   }
 
-  const userDoc = await db.collection('users').doc(username).get();
+  const userDoc = await db.collection('users').doc(auth.username).get();
   const name = userDoc.exists ? userDoc.data().name || null : null;
 
   const commentRef = db
     .collection('post_comments')
-    .doc(postId)
+    .doc(validPostId)
     .collection('items')
     .doc();
 
   await commentRef.set({
-    username,
+    username: auth.username,
     name,
-    text: text.trim(),
+    text: commentText,
     timestamp: FieldValue.serverTimestamp(),
   });
   await postRef.set({ comments_count: FieldValue.increment(1) }, { merge: true });
@@ -706,7 +726,7 @@ async function handleAddComment(req, res) {
   const newCount = (postDoc.data().comments_count || 0) + 1;
   res.status(200).json({
     message: 'Comment added',
-    comment: { id: commentRef.id, username, name, text: text.trim(), timestamp: Date.now() },
+    comment: { id: commentRef.id, username: auth.username, name, text: commentText, timestamp: Date.now() },
     comments_count: newCount,
   });
 }
@@ -714,9 +734,9 @@ async function handleAddComment(req, res) {
 async function handleLikes(req, res) {
   if (req.method !== 'GET') return methodNotAllowed(res);
 
-  const { postId } = req.query;
+  const postId = validatePostId(req.query.postId);
   if (!postId) {
-    return res.status(400).json({ error: 'postId is required' });
+    return res.status(400).json({ error: 'Valid postId is required' });
   }
   const likes = await loadLikes(postId);
   res.status(200).json({ likes, likes_count: likes.length });
@@ -726,21 +746,25 @@ async function handleLike(req, res) {
   if (req.method !== 'POST') return methodNotAllowed(res);
 
   const { username, postId } = req.body;
-  if (!username || !postId) {
-    return res.status(400).json({ error: 'username and postId are required' });
+  const auth = await requireAuthForUsername(req, res, username);
+  if (!auth) return;
+
+  const validPostId = validatePostId(postId);
+  if (!validPostId) {
+    return res.status(400).json({ error: 'Valid postId is required' });
   }
   const collectionName = resolveCollection(req.body.collection);
   if (!collectionName) {
     return res.status(400).json({ error: 'Invalid collection' });
   }
 
-  const postRef = db.collection(collectionName).doc(postId);
+  const postRef = db.collection(collectionName).doc(validPostId);
   const postDoc = await postRef.get();
   if (!postDoc.exists) {
     return res.status(404).json({ error: 'Post not found' });
   }
 
-  const likeRef = db.collection('post_likes').doc(postId).collection('users').doc(username);
+  const likeRef = db.collection('post_likes').doc(validPostId).collection('users').doc(auth.username);
   const existing = await likeRef.get();
   let count = postDoc.data().likes_count || 0;
   if (!existing.exists) {
@@ -758,11 +782,15 @@ async function handlePortfolioFavorites(req, res) {
   if (req.method !== 'POST') return methodNotAllowed(res);
 
   const { username, dishId } = req.body;
-  if (!username || !dishId) {
-    return res.status(400).json({ error: 'username and dishId are required' });
+  const auth = await requireAuthForUsername(req, res, username);
+  if (!auth) return;
+
+  const validDishId = validatePostId(dishId);
+  if (!validDishId) {
+    return res.status(400).json({ error: 'Valid dishId is required' });
   }
 
-  const userRef = db.collection('users').doc(username);
+  const userRef = db.collection('users').doc(auth.username);
   const userDoc = await userRef.get();
   if (!userDoc.exists) {
     return res.status(404).json({ error: 'User not found' });
@@ -770,13 +798,13 @@ async function handlePortfolioFavorites(req, res) {
 
   const data = userDoc.data() || {};
   let favorites = Array.isArray(data.portfolio_favorites) ? [...data.portfolio_favorites] : [];
-  const existingIndex = favorites.indexOf(dishId);
+  const existingIndex = favorites.indexOf(validDishId);
 
   if (existingIndex >= 0) {
     favorites.splice(existingIndex, 1);
   } else {
-    const logDoc = await db.collection('logs').doc(dishId).get();
-    if (!logDoc.exists || logDoc.data().username !== username) {
+    const logDoc = await db.collection('logs').doc(validDishId).get();
+    if (!logDoc.exists || logDoc.data().username !== auth.username) {
       return res.status(400).json({ error: 'Dish not found for this user' });
     }
     if (favorites.length >= PORTFOLIO_FAVORITES_MAX) {
@@ -785,7 +813,7 @@ async function handlePortfolioFavorites(req, res) {
         portfolio_favorites: favorites,
       });
     }
-    favorites.push(dishId);
+    favorites.push(validDishId);
   }
 
   await userRef.set({ portfolio_favorites: favorites }, { merge: true });
@@ -795,9 +823,9 @@ async function handlePortfolioFavorites(req, res) {
 async function handleUserLogs(req, res) {
   if (req.method !== 'GET') return methodNotAllowed(res);
 
-  const { username } = req.query;
+  const username = normalizeUsername(req.query.username);
   if (!username) {
-    return res.status(400).json({ error: 'Username is required' });
+    return res.status(400).json({ error: 'Valid username is required' });
   }
 
   let snapshot;
@@ -824,21 +852,25 @@ async function handleUnlike(req, res) {
   if (req.method !== 'POST') return methodNotAllowed(res);
 
   const { username, postId } = req.body;
-  if (!username || !postId) {
-    return res.status(400).json({ error: 'username and postId are required' });
+  const auth = await requireAuthForUsername(req, res, username);
+  if (!auth) return;
+
+  const validPostId = validatePostId(postId);
+  if (!validPostId) {
+    return res.status(400).json({ error: 'Valid postId is required' });
   }
   const collectionName = resolveCollection(req.body.collection);
   if (!collectionName) {
     return res.status(400).json({ error: 'Invalid collection' });
   }
 
-  const postRef = db.collection(collectionName).doc(postId);
+  const postRef = db.collection(collectionName).doc(validPostId);
   const postDoc = await postRef.get();
   if (!postDoc.exists) {
     return res.status(404).json({ error: 'Post not found' });
   }
 
-  const likeRef = db.collection('post_likes').doc(postId).collection('users').doc(username);
+  const likeRef = db.collection('post_likes').doc(validPostId).collection('users').doc(auth.username);
   const existing = await likeRef.get();
   let count = postDoc.data().likes_count || 0;
   if (existing.exists) {

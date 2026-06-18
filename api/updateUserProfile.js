@@ -1,5 +1,7 @@
 const { initializeApp, cert, getApps } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
+const { requireAuthForUsername } = require('./verifyAuth');
+const { pickProfileUpdates } = require('./validateInput');
 const { capitalizeList } = require('../utils/titleCase');
 
 let db;
@@ -14,7 +16,6 @@ try {
   db = getFirestore();
 } catch (error) {
   console.error('Firebase initialization error:', error);
-  // db will be undefined, which will cause errors in the handler
 }
 
 module.exports = async (req, res) => {
@@ -22,13 +23,13 @@ module.exports = async (req, res) => {
     res.status(405).send('Method Not Allowed');
     return;
   }
-  
+
   if (!db) {
     res.status(500).json({ error: 'Database not initialized. Check Firebase credentials.' });
     return;
   }
-  
-  const normalizeProfileUpdates = updates => {
+
+  const normalizeProfileUpdates = (updates) => {
     const normalized = { ...updates };
     if (normalized.profile_photo_url !== undefined && normalized.profilePhotoUrl === undefined) {
       normalized.profilePhotoUrl = normalized.profile_photo_url;
@@ -55,35 +56,35 @@ module.exports = async (req, res) => {
     return normalized;
   };
 
+  const auth = await requireAuthForUsername(req, res, req.body.username);
+  if (!auth) return;
+
   const { username, ...rawUpdates } = req.body;
-  if (!username) {
-    res.status(400).json({ error: 'Username is required' });
+  const updates = pickProfileUpdates(normalizeProfileUpdates(rawUpdates));
+  if (!updates) {
+    res.status(400).json({ error: 'Invalid profile update fields' });
     return;
   }
-  
-  const updates = normalizeProfileUpdates(rawUpdates);
 
-  // Filter out undefined values before updating
-  Object.keys(updates).forEach(key => {
+  Object.keys(updates).forEach((key) => {
     if (updates[key] === undefined) {
       delete updates[key];
     }
   });
-  
+
   if (Object.keys(updates).length === 0) {
     res.status(400).json({ error: 'No valid fields to update' });
     return;
   }
-  
+
   try {
-    const userRef = db.collection('users').doc(username);
+    const userRef = db.collection('users').doc(auth.username);
     const userDoc = await userRef.get();
     if (!userDoc.exists) {
       res.status(404).json({ error: 'User not found' });
       return;
     }
 
-    // Deep-merge kitchen_personality so partial edits don't wipe other fields.
     if (updates.kitchen_personality) {
       const existing = userDoc.data().kitchen_personality || {};
       updates.kitchen_personality = { ...existing, ...updates.kitchen_personality };
@@ -105,7 +106,6 @@ module.exports = async (req, res) => {
       }
     }
 
-    // Manual personality edits set a flag so auto-refresh preserves user overrides.
     if (updates.kitchen_personality && updates.personality_edited_by_user !== false) {
       updates.personality_edited_by_user = true;
     }
@@ -114,9 +114,9 @@ module.exports = async (req, res) => {
     res.status(200).json({ message: 'User profile updated' });
   } catch (error) {
     console.error('Error updating user profile:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to update user profile',
-      details: error.message 
+      details: error.message,
     });
   }
 };

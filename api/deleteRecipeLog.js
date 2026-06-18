@@ -1,6 +1,8 @@
 const { initializeApp, cert, getApps } = require('firebase-admin/app');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { refreshUserPersonality } = require('./personalityHelper');
+const { requireAuthForUsername } = require('./verifyAuth');
+const { validatePostId } = require('./validateInput');
 
 let db;
 try {
@@ -14,37 +16,37 @@ try {
   db = getFirestore();
 } catch (error) {
   console.error('Firebase initialization error:', error);
-  // db will be undefined, which will cause errors in the handler
 }
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     return res.status(405).send('Method Not Allowed');
   }
-  
+
   if (!db) {
     return res.status(500).json({ error: 'Database not initialized. Check Firebase credentials.' });
   }
 
-  const { username, logId } = req.body;
+  const auth = await requireAuthForUsername(req, res, req.body.username);
+  if (!auth) return;
 
-  if (!username || !logId) {
-    return res.status(400).json({ error: 'username and logId are required' });
+  const logId = validatePostId(req.body.logId);
+  if (!logId) {
+    return res.status(400).json({ error: 'Valid logId is required' });
   }
 
   try {
     const logRef = db.collection('logs').doc(logId);
     const doc = await logRef.get();
 
-    if (!doc.exists || doc.data().username !== username) {
+    if (!doc.exists || doc.data().username !== auth.username) {
       return res.status(404).json({ error: 'Log not found or access denied' });
     }
 
     await logRef.delete();
 
-    // Remove from portfolio favorites if showcased.
     try {
-      const userRef = db.collection('users').doc(username);
+      const userRef = db.collection('users').doc(auth.username);
       const userDoc = await userRef.get();
       if (userDoc.exists) {
         const favorites = userDoc.data().portfolio_favorites || [];
@@ -58,11 +60,10 @@ module.exports = async (req, res) => {
       console.error('Failed to update portfolio favorites after delete:', favErr.message);
     }
 
-    // Best-effort counter decrement; getUserProfile recomputes from logs.
     try {
       await db
         .collection('users')
-        .doc(username)
+        .doc(auth.username)
         .set(
           { cookingStats: { total_recipes: FieldValue.increment(-1) } },
           { merge: true }
@@ -72,7 +73,7 @@ module.exports = async (req, res) => {
     }
 
     try {
-      await refreshUserPersonality(db, username);
+      await refreshUserPersonality(db, auth.username);
     } catch (personalityErr) {
       console.error('Failed to refresh kitchen personality:', personalityErr.message);
     }
@@ -80,9 +81,9 @@ module.exports = async (req, res) => {
     return res.status(200).json({ message: 'Recipe log deleted' });
   } catch (error) {
     console.error('Error deleting log:', error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       error: 'Failed to delete recipe log',
-      details: error.message 
+      details: error.message,
     });
   }
 };

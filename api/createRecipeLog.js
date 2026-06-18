@@ -1,6 +1,8 @@
 const { initializeApp, cert, getApps } = require('firebase-admin/app');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { refreshUserPersonality } = require('./personalityHelper');
+const { requireAuthForUsername } = require('./verifyAuth');
+const { sanitizeRecipeLogFields } = require('./validateInput');
 
 let db;
 try {
@@ -14,7 +16,6 @@ try {
   db = getFirestore();
 } catch (error) {
   console.error('Firebase initialization error:', error);
-  // db will be undefined, which will cause errors in the handler
 }
 
 module.exports = async (req, res) => {
@@ -22,116 +23,65 @@ module.exports = async (req, res) => {
     res.status(405).send('Method Not Allowed');
     return;
   }
-  
+
   if (!db) {
     res.status(500).json({ error: 'Database not initialized. Check Firebase credentials.' });
     return;
   }
-  
-  const {
-    username,
-    title,
-    photoUrl,
-    ingredients,
-    recipeLink,
-    recipeInstructions,
-    notes,
-    rating,
-    difficulty,
-    time,
-    cookedWith,
-  } = req.body;
 
-  if (!username) {
-    res.status(400).json({ error: 'Username is required' });
-    return;
-  }
-  
-  if (!title || !String(title).trim()) {
+  const auth = await requireAuthForUsername(req, res, req.body.username);
+  if (!auth) return;
+
+  const fields = sanitizeRecipeLogFields(req.body);
+
+  if (!fields.title) {
     res.status(400).json({ error: 'Title (name of the dish) is required' });
     return;
   }
-
-  const isNonEmptyString = (value) =>
-    typeof value === 'string' && value.trim().length > 0;
-
-  if (!isNonEmptyString(ingredients)) {
+  if (!fields.ingredients) {
     res.status(400).json({ error: 'Ingredients are required' });
     return;
   }
-
-  if (!isNonEmptyString(recipeInstructions) && !isNonEmptyString(recipeLink)) {
+  if (!fields.recipeInstructions && !fields.recipeLink) {
     res.status(400).json({ error: 'Recipe steps or link is required' });
     return;
   }
-
-  if (rating == null || rating === '') {
+  if (fields.rating == null) {
     res.status(400).json({ error: 'Rating is required' });
     return;
   }
-
-  if (!isNonEmptyString(difficulty)) {
+  if (!fields.difficulty) {
     res.status(400).json({ error: 'Difficulty is required' });
     return;
   }
-
-  if (!isNonEmptyString(time)) {
+  if (!fields.time) {
     res.status(400).json({ error: 'Time is required' });
     return;
   }
 
-  const normalizeCookedWith = (value) => {
-    const raw = Array.isArray(value)
-      ? value
-      : typeof value === 'string'
-        ? value.split(',')
-        : [];
-    return [...new Set(
-      raw
-        .map((entry) => String(entry || '').trim().replace(/^@/, '').toLowerCase())
-        .filter(Boolean)
-    )];
-  };
-
-  const cookedWithList = normalizeCookedWith(cookedWith);
-
   try {
-    // Filter out undefined values before saving to Firestore
     const logData = {
-      username,
-      title,
-      photoUrl,
-      ingredients,
-      recipeLink,
-      recipeInstructions,
-      notes,
-      rating,
-      difficulty,
-      time,
-      createdAt: FieldValue.serverTimestamp()
+      username: auth.username,
+      title: fields.title,
+      ingredients: fields.ingredients,
+      recipeInstructions: fields.recipeInstructions,
+      rating: fields.rating,
+      difficulty: fields.difficulty,
+      time: fields.time,
+      createdAt: FieldValue.serverTimestamp(),
     };
 
-    if (cookedWithList.length > 0) {
-      logData.cookedWith = cookedWithList;
-    }
-    
-    // Remove undefined values
-    Object.keys(logData).forEach(key => {
-      if (logData[key] === undefined) {
-        delete logData[key];
-      }
-    });
-    
+    if (fields.photoUrl !== undefined) logData.photoUrl = fields.photoUrl;
+    if (fields.recipeLink !== undefined) logData.recipeLink = fields.recipeLink;
+    if (fields.notes) logData.notes = fields.notes;
+    if (fields.cookedWith.length > 0) logData.cookedWith = fields.cookedWith;
+
     const docRef = await db.collection('logs').add(logData);
 
-    // Keep a denormalized recipe counter on the user doc so the profile's
-    // "Recipes Cooked" metric updates immediately. getUserProfile recomputes
-    // the authoritative count from the `logs` collection, so this counter is a
-    // best-effort fast path and a drift here is self-healing on next profile load.
     try {
       await db
         .collection('users')
-        .doc(username)
+        .doc(auth.username)
         .set(
           {
             cookingStats: { total_recipes: FieldValue.increment(1) },
@@ -139,13 +89,11 @@ module.exports = async (req, res) => {
           { merge: true }
         );
     } catch (counterErr) {
-      // Non-fatal: the log was still created and the count is recomputed on read.
       console.error('Failed to increment user recipe counter:', counterErr.message);
     }
 
-    // Refresh kitchen personality from the user's full log history.
     try {
-      await refreshUserPersonality(db, username);
+      await refreshUserPersonality(db, auth.username);
     } catch (personalityErr) {
       console.error('Failed to refresh kitchen personality:', personalityErr.message);
     }
@@ -153,9 +101,9 @@ module.exports = async (req, res) => {
     res.status(201).json({ message: 'Recipe log created', logId: docRef.id });
   } catch (error) {
     console.error('Error creating recipe log:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to create recipe log',
-      details: error.message 
+      details: error.message,
     });
   }
 };

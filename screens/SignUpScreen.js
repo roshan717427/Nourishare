@@ -16,6 +16,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { API_URL } from '../config/api';
 import { colors, radii } from '../constants/theme';
+import { withAuthHeaders } from '../utils/apiAuth';
+import {
+  PASSWORD_HINT,
+  validatePassword,
+  validatePersonName,
+} from '../utils/signupValidation';
 
 export default function SignUpScreen({ navigation, route }) {
   const { signUp } = useAuth();
@@ -32,12 +38,15 @@ export default function SignUpScreen({ navigation, route }) {
     const trimmedLastName = lastName.trim();
     const trimmedUsername = username.trim();
     const trimmedEmail = email.trim();
-    if (!trimmedFirstName) {
-      Alert.alert('Missing information', 'Please enter your first name.');
+
+    const firstNameError = validatePersonName(trimmedFirstName, 'First name');
+    if (firstNameError) {
+      Alert.alert('Invalid first name', firstNameError);
       return;
     }
-    if (!trimmedLastName) {
-      Alert.alert('Missing information', 'Please enter your last name.');
+    const lastNameError = validatePersonName(trimmedLastName, 'Last name');
+    if (lastNameError) {
+      Alert.alert('Invalid last name', lastNameError);
       return;
     }
     if (!trimmedEmail) {
@@ -48,14 +57,15 @@ export default function SignUpScreen({ navigation, route }) {
       Alert.alert('Missing information', 'Please choose a username.');
       return;
     }
-    if (!password.trim()) {
-      Alert.alert('Missing information', 'Please choose a password for your account.');
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      Alert.alert('Invalid password', passwordError);
       return;
     }
 
     setIsSubmitting(true);
 
-    const fullName = `${trimmedFirstName} ${trimmedLastName}`.trim();
+    const fullName = `${trimmedFirstName} ${trimmedLastName}`;
     const profile = {
       username: trimmedUsername,
       name: fullName,
@@ -72,9 +82,10 @@ export default function SignUpScreen({ navigation, route }) {
       });
 
       try {
+        const headers = await withAuthHeaders();
         await fetch(`${API_URL}/createUserProfile`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify(profile),
         });
       } catch (apiErr) {
@@ -88,7 +99,7 @@ export default function SignUpScreen({ navigation, route }) {
       } else if (code === 'auth/invalid-email') {
         message = 'That email address is not valid.';
       } else if (code === 'auth/weak-password') {
-        message = 'Password should be at least 6 characters.';
+        message = `Password does not meet requirements. ${PASSWORD_HINT}`;
       }
       Alert.alert('Sign up failed', message);
     } finally {
@@ -180,7 +191,7 @@ export default function SignUpScreen({ navigation, route }) {
                 />
               </TouchableOpacity>
             </View>
-            <Text style={styles.helperText}>Choose a password for your account</Text>
+            <Text style={styles.helperText}>{PASSWORD_HINT}</Text>
 
             <TouchableOpacity
               style={[styles.signUpButton, isSubmitting && styles.signUpButtonDisabled]}
@@ -293,7 +304,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   helperText: {
-    fontSize: 13,
+    fontSize: 11,
     color: colors.textMuted,
     marginTop: -6,
     marginBottom: 16,

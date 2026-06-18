@@ -15,6 +15,8 @@ _spec.loader.exec_module(_suggestion_images)
 DEFAULT_FALLBACK_IMAGE = _suggestion_images.DEFAULT_FALLBACK_IMAGE
 title_matched_image = _suggestion_images.title_matched_image
 
+from validate_input import normalize_username, sanitize_pantry_ingredients, validate_limit
+
 # Import Firebase Admin SDK
 from firebase_admin import firestore
 import firebase_admin
@@ -1529,11 +1531,9 @@ class handler(BaseHTTPRequestHandler):
             body = self.rfile.read(content_length)
             data = json.loads(body.decode('utf-8'))
             
-            username = data.get('username')
-            limit = data.get('limit', 10)
-            pantry_ingredients = data.get('pantry_ingredients')
-            if pantry_ingredients is not None and not isinstance(pantry_ingredients, list):
-                pantry_ingredients = None
+            username = normalize_username(data.get('username'))
+            limit = validate_limit(data.get('limit', 10), default_limit=10, max_limit=50)
+            pantry_ingredients = sanitize_pantry_ingredients(data.get('pantry_ingredients'))
             
             if not username:
                 error_response = {

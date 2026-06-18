@@ -4,6 +4,8 @@ import sys
 import os
 from collections import Counter
 
+from validate_input import normalize_username
+
 # Add the functions directory to Python path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'functions'))
 
@@ -372,8 +374,7 @@ class handler(BaseHTTPRequestHandler):
             post_data = self.rfile.read(content_length)
             request_data = json.loads(post_data.decode('utf-8'))
             
-            # Extract user ID from request
-            user_id = request_data.get('user_id')
+            user_id = normalize_username(request_data.get('user_id'))
             if not user_id:
                 response = {
                     'status': 'error',

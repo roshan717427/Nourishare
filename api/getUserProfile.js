@@ -2,6 +2,7 @@ const { initializeApp, cert, getApps } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 const { refreshUserPersonality, isPersonalityStale } = require('./personalityHelper');
 const { capitalizeList } = require('../utils/titleCase');
+const { normalizeUsername } = require('./validateInput');
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -64,9 +65,9 @@ module.exports = async (req, res) => {
     return;
   }
   
-  const { username } = req.query;
+  const username = normalizeUsername(req.query.username);
   if (!username) {
-    res.status(400).json({ error: 'Username is required' });
+    res.status(400).json({ error: 'Valid username is required' });
     return;
   }
   try {
