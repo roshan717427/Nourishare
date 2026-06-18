@@ -59,10 +59,12 @@ function RootNavigator() {
 }
 
 function AppShell() {
+  const { user, initializing } = useAuth();
+
   return (
     <OnboardingProvider totalSteps={ONBOARDING_STEPS.length}>
       <RootNavigator />
-      <OnboardingTour />
+      {!initializing && user ? <OnboardingTour /> : null}
     </OnboardingProvider>
   );
 }

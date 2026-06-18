@@ -71,7 +71,7 @@ export const ONBOARDING_STEPS = [
   {
     id: 'next-up',
     icon: 'list',
-    title: 'Cook Next Portfolio.',
+    title: 'Cook Next Portfolio',
     description:
       'Your private Cook Next portfolio saves recipes you want to try. Only you can see it.',
     tabLabel: 'Profile',
@@ -117,15 +117,16 @@ export default function OnboardingTour() {
   const { visible, currentStep, totalSteps, nextStep, prevStep, skipTour } = useOnboarding();
 
   const step = ONBOARDING_STEPS[currentStep];
-  const isFirstStep = currentStep === 0;
-  const isLastStep = currentStep >= totalSteps - 1;
-
-  if (!visible || !step) {
+  if (!step) {
     return null;
   }
 
+  const isFirstStep = currentStep === 0;
+  const isLastStep = currentStep >= totalSteps - 1;
+  const modalVisible = visible && !!step;
+
   return (
-    <Modal visible transparent animationType="fade" statusBarTranslucent>
+    <Modal visible={modalVisible} transparent animationType="fade" statusBarTranslucent>
       <View style={[styles.overlay, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <Pressable style={styles.backdrop} onPress={skipTour} accessibilityLabel="Skip tour" />
 

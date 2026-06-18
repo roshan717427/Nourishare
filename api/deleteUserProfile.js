@@ -1,7 +1,9 @@
 const { initializeApp, cert, getApps } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
+const { getAuth } = require('firebase-admin/auth');
 
 let db;
+let adminAuth;
 try {
   if (!getApps().length) {
     if (!process.env.GOOGLE_SERVICE_ACCOUNT) {
@@ -11,9 +13,10 @@ try {
     initializeApp({ credential: cert(serviceAccount) });
   }
   db = getFirestore();
+  adminAuth = getAuth();
 } catch (error) {
   console.error('Firebase initialization error:', error);
-  // db will be undefined, which will cause errors in the handler
+  // db/adminAuth will be undefined, which will cause errors in the handler
 }
 
 module.exports = async (req, res) => {
@@ -22,18 +25,46 @@ module.exports = async (req, res) => {
     return;
   }
   
-  if (!db) {
+  if (!db || !adminAuth) {
     res.status(500).json({ error: 'Database not initialized. Check Firebase credentials.' });
     return;
   }
   
-  const { username } = req.body;
+  const { username, uid } = req.body;
   if (!username) {
     res.status(400).json({ error: 'Username is required' });
     return;
   }
+
   try {
-    await db.collection('users').doc(username).delete();
+    const userRef = db.collection('users').doc(username);
+    const userDoc = await userRef.get();
+    const profileEmail = userDoc.exists ? userDoc.data()?.email : null;
+
+    await userRef.delete();
+
+    let authUid = uid;
+    if (!authUid && profileEmail) {
+      try {
+        const authUser = await adminAuth.getUserByEmail(profileEmail);
+        authUid = authUser.uid;
+      } catch (lookupError) {
+        if (lookupError.code !== 'auth/user-not-found') {
+          throw lookupError;
+        }
+      }
+    }
+
+    if (authUid) {
+      try {
+        await adminAuth.deleteUser(authUid);
+      } catch (deleteError) {
+        if (deleteError.code !== 'auth/user-not-found') {
+          throw deleteError;
+        }
+      }
+    }
+
     res.status(200).json({ message: 'User profile deleted' });
   } catch (error) {
     console.error('Error deleting user profile:', error);

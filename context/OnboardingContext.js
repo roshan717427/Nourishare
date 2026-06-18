@@ -20,10 +20,11 @@ const OnboardingContext = createContext({
 
 export function OnboardingProvider({ children, totalSteps }) {
   const { user, initializing } = useAuth();
-  const [visible, setVisible] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
-  const [ready, setReady] = useState(false);
-  const checkedUserRef = useRef(null);
+  const [tourActive, setTourActive] = useState(false);
+  const checkedUsernameRef = useRef(null);
+  const sessionDismissedRef = useRef(false);
+  const checkGenerationRef = useRef(0);
 
   useEffect(() => {
     if (initializing) {
@@ -31,34 +32,46 @@ export function OnboardingProvider({ children, totalSteps }) {
     }
 
     if (!user?.username) {
-      setVisible(false);
+      checkedUsernameRef.current = null;
+      sessionDismissedRef.current = false;
+      setTourActive(false);
       setCurrentStep(0);
-      setReady(false);
-      checkedUserRef.current = null;
       return;
     }
 
-    let cancelled = false;
-    const isNewUser = checkedUserRef.current !== user.username;
-    if (isNewUser) {
-      setReady(false);
+    if (sessionDismissedRef.current) {
+      setTourActive(false);
+      return;
     }
+
+    const username = user.username;
+
+    // Already resolved for this user in this session — avoid ready/visible flicker
+    // when auth re-renders with the same username.
+    if (checkedUsernameRef.current === username) {
+      return;
+    }
+
+    const generation = ++checkGenerationRef.current;
+    let cancelled = false;
 
     (async () => {
       try {
-        const key = getOnboardingStorageKey(user.username);
-        const completed = await AsyncStorage.getItem(key);
-        if (cancelled) return;
-        checkedUserRef.current = user.username;
-        setVisible(completed !== 'true');
-        setCurrentStep(0);
-        setReady(true);
+        const completed = await AsyncStorage.getItem(getOnboardingStorageKey(username));
+        if (cancelled || generation !== checkGenerationRef.current) return;
+        if (sessionDismissedRef.current) return;
+
+        checkedUsernameRef.current = username;
+        const shouldShow = completed !== 'true';
+        setTourActive(shouldShow);
+        if (shouldShow) {
+          setCurrentStep(0);
+        }
       } catch {
         // Fail open — don't block the app if storage is unavailable.
-        if (!cancelled) {
-          checkedUserRef.current = user.username;
-          setVisible(false);
-          setReady(true);
+        if (!cancelled && generation === checkGenerationRef.current && !sessionDismissedRef.current) {
+          checkedUsernameRef.current = username;
+          setTourActive(false);
         }
       }
     })();
@@ -77,34 +90,39 @@ export function OnboardingProvider({ children, totalSteps }) {
     }
   }, [user?.username]);
 
-  const completeTour = useCallback(async () => {
-    setVisible(false);
+  const dismissTour = useCallback(async () => {
+    sessionDismissedRef.current = true;
+    setTourActive(false);
     setCurrentStep(0);
     await persistCompletion();
   }, [persistCompletion]);
 
+  const completeTour = useCallback(() => {
+    dismissTour();
+  }, [dismissTour]);
+
   const skipTour = useCallback(() => {
-    completeTour();
-  }, [completeTour]);
+    dismissTour();
+  }, [dismissTour]);
 
   const nextStep = useCallback(() => {
     if (currentStep >= totalSteps - 1) {
-      completeTour();
+      dismissTour();
       return;
     }
     setCurrentStep((prev) => prev + 1);
-  }, [currentStep, totalSteps, completeTour]);
+  }, [currentStep, totalSteps, dismissTour]);
 
   const prevStep = useCallback(() => {
     setCurrentStep((prev) => Math.max(0, prev - 1));
   }, []);
 
-  const showTour = visible && ready && !!user;
+  const visible = tourActive && !!user?.username && !sessionDismissedRef.current;
 
   return (
     <OnboardingContext.Provider
       value={{
-        visible: showTour,
+        visible,
         currentStep,
         totalSteps,
         nextStep,

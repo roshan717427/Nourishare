@@ -565,7 +565,7 @@ export default function ProfileScreen({ navigation, route }) {
               const response = await fetch(`${API_URL}/deleteUserProfile`, {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: user.username }),
+                body: JSON.stringify({ username: user.username, uid: user.uid }),
               });
               const data = await response.json().catch(() => ({}));
               if (!response.ok) {
