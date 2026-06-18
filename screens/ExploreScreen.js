@@ -19,6 +19,7 @@ import { colors, spacing, radii } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
 import { hasProfileData } from '../utils/recommendFollows';
 import { API_URL } from '../config/api';
+import { withAuthHeaders } from '../utils/apiAuth';
 
 function UserRow({ user, onPress }) {
   return (
@@ -213,11 +214,13 @@ export default function ExploreScreen({ navigation }) {
     }
 
     const action = alreadyFollowing ? 'unfollow' : 'follow';
-    fetch(`${API_URL}/social?action=${action}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: follower, targetUsername }),
-    }).catch((err) => {
+    withAuthHeaders().then((headers) =>
+      fetch(`${API_URL}/social?action=${action}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ username: follower, targetUsername }),
+      })
+    ).catch((err) => {
       console.log(`${action} request error:`, err.message);
     });
   };

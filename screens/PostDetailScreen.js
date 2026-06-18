@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { useNextUp } from '../context/NextUpContext';
 import { API_URL } from '../config/api';
+import { withAuthHeaders } from '../utils/apiAuth';
 import { colors, radii, shadows } from '../constants/theme';
 import { toIngredientList } from '../utils/recipeParsing';
 import RecipeSection, { hasRecipeContent } from '../components/RecipeSection';
@@ -112,7 +113,7 @@ export default function PostDetailScreen({ navigation, route }) {
     try {
       const res = await fetch(`${API_URL}/social?action=${willLike ? 'like' : 'unlike'}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await withAuthHeaders(),
         body: JSON.stringify({ username, postId, collection }),
       });
       if (res.ok) {
@@ -135,7 +136,7 @@ export default function PostDetailScreen({ navigation, route }) {
     try {
       const res = await fetch(`${API_URL}/social?action=addComment`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await withAuthHeaders(),
         body: JSON.stringify({ username, postId, collection, text }),
       });
       if (res.ok) {
@@ -170,7 +171,7 @@ export default function PostDetailScreen({ navigation, route }) {
             try {
               const res = await fetch(`${API_URL}/social?action=deleteComment`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: await withAuthHeaders(),
                 body: JSON.stringify({ username, postId, commentId, collection }),
               });
               const data = await res.json().catch(() => ({}));
@@ -231,7 +232,7 @@ export default function PostDetailScreen({ navigation, route }) {
             try {
               const res = await fetch(`${API_URL}/deleteRecipeLog`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: await withAuthHeaders(),
                 body: JSON.stringify({ username, logId: postId }),
               });
               const data = await res.json().catch(() => ({}));

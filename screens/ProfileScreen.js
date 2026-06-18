@@ -26,6 +26,7 @@ import { clearOnboardingStorage } from '../context/OnboardingContext';
 import { useNextUp } from '../context/NextUpContext';
 import PortfolioGalleryModal from '../components/PortfolioGalleryModal';
 import { API_URL } from '../config/api';
+import { withAuthHeaders } from '../utils/apiAuth';
 import { colors, radii, spacing } from '../constants/theme';
 import { buildPersonalityDescriptionParts, getTraitCompoundLabel } from '../utils/personalityCopy';
 import { capitalizeList } from '../utils/titleCase';
@@ -339,11 +340,13 @@ export default function ProfileScreen({ navigation, route }) {
     if (!follower || !target) return;
 
     const action = willFollow ? 'follow' : 'unfollow';
-    fetch(`${API_URL}/social?action=${action}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: follower, targetUsername: target }),
-    }).catch((err) => {
+    withAuthHeaders().then((headers) =>
+      fetch(`${API_URL}/social?action=${action}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ username: follower, targetUsername: target }),
+      })
+    ).catch((err) => {
       console.log(`${action} request error:`, err.message);
     });
   };
@@ -421,7 +424,7 @@ export default function ProfileScreen({ navigation, route }) {
     try {
       const response = await fetch(`${API_URL}/social?action=portfolioFavorites`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await withAuthHeaders(),
         body: JSON.stringify({ username: user.username, dishId }),
       });
       const data = await response.json();
@@ -513,7 +516,7 @@ export default function ProfileScreen({ navigation, route }) {
 
       const response = await fetch(`${API_URL}/updateUserProfile`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await withAuthHeaders(),
         body: JSON.stringify(payload),
       });
       if (!response.ok) {
@@ -565,8 +568,8 @@ export default function ProfileScreen({ navigation, route }) {
             try {
               const response = await fetch(`${API_URL}/deleteUserProfile`, {
                 method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: user.username, uid: user.uid }),
+                headers: await withAuthHeaders(),
+                body: JSON.stringify({ username: user.username }),
               });
               const data = await response.json().catch(() => ({}));
               if (!response.ok) {
@@ -598,7 +601,7 @@ export default function ProfileScreen({ navigation, route }) {
             try {
               const response = await fetch(`${API_URL}/deleteRecipeLog`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: await withAuthHeaders(),
                 body: JSON.stringify({ username: user.username, logId: dish.id }),
               });
               const data = await response.json().catch(() => ({}));

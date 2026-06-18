@@ -20,6 +20,7 @@ import BottomNavigation from '../components/BottomNavigation';
 import { colors } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
 import { API_URL } from '../config/api';
+import { withAuthHeaders } from '../utils/apiAuth';
 
 const HOUR_OPTIONS = Array.from({ length: 13 }, (_, i) => i);
 const MINUTE_OPTIONS = Array.from({ length: 12 }, (_, i) => i * 5);
@@ -199,9 +200,7 @@ export default function LogMealScreen({ navigation }) {
       // Call API
       const response = await fetch(`${API_URL}/createRecipeLog`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: await withAuthHeaders(),
         body: JSON.stringify(logData),
       });
 
