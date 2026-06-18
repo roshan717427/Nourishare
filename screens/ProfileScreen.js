@@ -54,6 +54,39 @@ function computeCookingFrequencyFromLogs(logs, year = new Date().getFullYear()) 
   return result;
 }
 
+function toLocalDateKey(ms) {
+  const d = new Date(ms);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/** Consecutive calendar days with at least one log, ending today or yesterday. */
+function computeCookingStreakFromLogs(logs) {
+  const activeDays = new Set();
+  for (const log of logs) {
+    const ms = log.created_at_ms || 0;
+    if (!ms) continue;
+    activeDays.add(toLocalDateKey(ms));
+  }
+  if (activeDays.size === 0) return 0;
+
+  const cursor = new Date();
+  cursor.setHours(0, 0, 0, 0);
+  if (!activeDays.has(toLocalDateKey(cursor.getTime()))) {
+    cursor.setDate(cursor.getDate() - 1);
+    if (!activeDays.has(toLocalDateKey(cursor.getTime()))) return 0;
+  }
+
+  let streak = 0;
+  while (activeDays.has(toLocalDateKey(cursor.getTime()))) {
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
+}
+
 function parseCommaList(text) {
   return String(text || '')
     .split(',')
@@ -383,6 +416,11 @@ export default function ProfileScreen({ navigation, route }) {
   }, [profile?.cookingFrequency, dishes, isOwnProfile, cookingFrequencyYear]);
 
   const showCookingFrequency = isOwnProfile && !!cookingFrequencyData;
+
+  const cookingStreak = useMemo(() => {
+    if (profile?.cookingStreak != null) return profile.cookingStreak;
+    return computeCookingStreakFromLogs(dishes);
+  }, [profile?.cookingStreak, dishes]);
 
   const togglePortfolioFavorite = async (dishId) => {
     if (!isOwnProfile || !user?.username) return;
@@ -836,6 +874,11 @@ export default function ProfileScreen({ navigation, route }) {
               label="Average Rating"
               value={stats.avg_rating ? Number(stats.avg_rating).toFixed(1) : '0.0'}
               color={colors.accent}
+            />
+            <StatsCard
+              label="Day Streak"
+              value={`🔥 ${cookingStreak}`}
+              color={colors.chipAmberText}
             />
           </View>
           <View style={[styles.statsContainer, styles.statsRowSpacing]}>
