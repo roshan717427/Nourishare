@@ -114,13 +114,41 @@ function validateUrl(raw) {
   }
 }
 
+// Accepts http(s) URLs and data:image/...;base64,... URIs (from mobile photo pickers).
+const MAX_DATA_URI_LENGTH = 900000;
+
+function normalizeHttpUrl(raw) {
+  if (raw == null || raw === '') return undefined;
+  let value = String(raw).trim();
+  if (!value || value.length > 2048) return undefined;
+  if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value)) {
+    value = `https://${value}`;
+  }
+  return validateUrl(value);
+}
+
+function validatePhotoUrl(raw) {
+  if (raw == null || raw === '') return undefined;
+  const value = String(raw).trim();
+  if (!value) return undefined;
+  if (value.startsWith('data:image/')) {
+    if (value.length > MAX_DATA_URI_LENGTH) return undefined;
+    if (!/^data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+$/.test(value)) return undefined;
+    return value;
+  }
+  return normalizeHttpUrl(value);
+}
+
 function sanitizeRecipeLogFields(body) {
   return {
     title: sanitizeText(body.title, MAX_TITLE),
-    photoUrl: validateUrl(body.photoUrl),
+    photoUrl: validatePhotoUrl(body.photoUrl ?? body.photo_url),
     ingredients: sanitizeText(body.ingredients, MAX_TEXT),
-    recipeLink: validateUrl(body.recipeLink),
-    recipeInstructions: sanitizeText(body.recipeInstructions, MAX_TEXT),
+    recipeLink: normalizeHttpUrl(body.recipeLink ?? body.recipe_link),
+    recipeInstructions: sanitizeText(
+      body.recipeInstructions ?? body.recipe_instructions,
+      MAX_TEXT
+    ),
     notes: sanitizeText(body.notes, MAX_TEXT),
     rating: validateRating(body.rating),
     difficulty: sanitizeText(body.difficulty, 50),
@@ -190,7 +218,7 @@ function pickProfileUpdates(rawUpdates) {
   if (out.name !== undefined) out.name = sanitizeText(out.name, 100);
   if (out.bio !== undefined) out.bio = sanitizeText(out.bio, 500);
   if (out.profilePhotoUrl !== undefined) {
-    const url = validateUrl(out.profilePhotoUrl);
+    const url = validatePhotoUrl(out.profilePhotoUrl);
     if (out.profilePhotoUrl && url === undefined) return null;
     if (url !== undefined) out.profilePhotoUrl = url;
     else delete out.profilePhotoUrl;
@@ -231,6 +259,8 @@ module.exports = {
   validateSearchQuery,
   validateRating,
   validateUrl,
+  normalizeHttpUrl,
+  validatePhotoUrl,
   sanitizeRecipeLogFields,
   sanitizeLogUpdates,
   pickProfileUpdates,

@@ -32,6 +32,14 @@ function formatCookTime(hours, minutes) {
   return `${minutes} min`;
 }
 
+function assetToPhotoUri(asset) {
+  const mime = asset.mimeType || 'image/jpeg';
+  if (asset.base64) {
+    return `data:${mime};base64,${asset.base64}`;
+  }
+  return asset.uri;
+}
+
 function TimePickerModal({ visible, title, options, selected, onSelect, onClose, formatLabel }) {
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -104,11 +112,12 @@ export default function LogMealScreen({ navigation }) {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [4, 3],
-      quality: 0.8,
+      quality: 0.5,
+      base64: true,
     });
 
     if (!result.canceled && result.assets[0]) {
-      setPhoto(result.assets[0].uri);
+      setPhoto(assetToPhotoUri(result.assets[0]));
     }
   };
 
@@ -124,11 +133,12 @@ export default function LogMealScreen({ navigation }) {
     const result = await ImagePicker.launchCameraAsync({
       allowsEditing: true,
       aspect: [4, 3],
-      quality: 0.8,
+      quality: 0.5,
+      base64: true,
     });
 
     if (!result.canceled && result.assets[0]) {
-      setPhoto(result.assets[0].uri);
+      setPhoto(assetToPhotoUri(result.assets[0]));
     }
   };
 
@@ -176,15 +186,6 @@ export default function LogMealScreen({ navigation }) {
     }
 
     try {
-      // Convert photo to base64 if present
-      let photoBase64 = null;
-      if (photo) {
-        // In a real app, you'd upload to Firebase Storage or similar
-        // For now, we'll skip photo upload and handle it separately
-        photoBase64 = photo; // This should be converted to base64 or uploaded separately
-      }
-
-      // Prepare log data - matching API expectations
       const logData = {
         username: effectiveUsername,
         title: mealName.trim(),
