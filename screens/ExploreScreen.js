@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -42,7 +42,14 @@ function UserRow({ user, onPress }) {
   );
 }
 
-function RecommendCard({ user, following, onPressProfile, onToggleFollow }) {
+function RecommendCard({ user, followState, onPressProfile, onToggleFollow }) {
+  const label =
+    followState === 'following'
+      ? 'Following'
+      : followState === 'pending'
+        ? 'Requested'
+        : 'Follow';
+
   return (
     <View style={styles.recCard}>
       <TouchableOpacity
@@ -69,12 +76,20 @@ function RecommendCard({ user, following, onPressProfile, onToggleFollow }) {
         </View>
       </TouchableOpacity>
       <TouchableOpacity
-        style={[styles.recFollowBtn, following && styles.recFollowingBtn]}
+        style={[
+          styles.recFollowBtn,
+          (followState === 'following' || followState === 'pending') && styles.recFollowingBtn,
+        ]}
         onPress={onToggleFollow}
         activeOpacity={0.7}
       >
-        <Text style={[styles.recFollowText, following && styles.recFollowingText]}>
-          {following ? 'Following' : 'Follow'}
+        <Text
+          style={[
+            styles.recFollowText,
+            (followState === 'following' || followState === 'pending') && styles.recFollowingText,
+          ]}
+        >
+          {label}
         </Text>
       </TouchableOpacity>
     </View>
@@ -83,9 +98,14 @@ function RecommendCard({ user, following, onPressProfile, onToggleFollow }) {
 
 
 export default function ExploreScreen({ navigation }) {
-  const { user, following, follow, unfollow, isFollowing } = useAuth();
-  const followingRef = useRef(following);
-  followingRef.current = following;
+  const {
+    user,
+    unfollow,
+    requestFollow,
+    cancelFollowRequest,
+    isFollowing,
+    isPendingRequest,
+  } = useAuth();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [searched, setSearched] = useState(false);
@@ -202,18 +222,30 @@ export default function ExploreScreen({ navigation }) {
     }, [loadRecommendations])
   );
 
+  const getFollowState = (targetUsername) => {
+    if (isFollowing(targetUsername)) return 'following';
+    if (isPendingRequest(targetUsername)) return 'pending';
+    return 'none';
+  };
+
   const handleToggleFollow = (targetUsername) => {
     const follower = user?.username;
     if (!follower || !targetUsername) return;
 
-    const alreadyFollowing = isFollowing(targetUsername);
-    if (alreadyFollowing) {
+    const state = getFollowState(targetUsername);
+    let action = 'follow';
+
+    if (state === 'following') {
       unfollow(targetUsername);
+      action = 'unfollow';
+    } else if (state === 'pending') {
+      cancelFollowRequest(targetUsername);
+      action = 'unfollow';
     } else {
-      follow(targetUsername);
+      requestFollow(targetUsername);
+      action = 'follow';
     }
 
-    const action = alreadyFollowing ? 'unfollow' : 'follow';
     withAuthHeaders().then((headers) =>
       fetch(`${API_URL}/social?action=${action}`, {
         method: 'POST',
@@ -293,7 +325,7 @@ export default function ExploreScreen({ navigation }) {
                   <RecommendCard
                     key={rec.username}
                     user={rec}
-                    following={isFollowing(rec.username)}
+                    followState={getFollowState(rec.username)}
                     onPressProfile={() => openProfile(rec)}
                     onToggleFollow={() => handleToggleFollow(rec.username)}
                   />

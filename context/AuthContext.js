@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
@@ -9,24 +9,25 @@ import {
 import { auth } from '../config/firebase';
 import { API_URL } from '../config/api';
 import { normalizeUsername } from '../utils/apiAuth';
+import { withAuthHeaders } from '../utils/apiAuth';
 
 const AuthContext = createContext({
   user: null,
   initializing: true,
   following: [],
+  pendingRequests: [],
   signIn: () => {},
   signUp: () => {},
   signOut: () => {},
   follow: () => {},
   unfollow: () => {},
+  requestFollow: () => {},
+  cancelFollowRequest: () => {},
   isFollowing: () => false,
+  isPendingRequest: () => false,
+  refreshSocialState: () => {},
 });
 
-// Firebase auth keys off email, but the app's social features key off a public
-// `username`. We set the Firebase `displayName` to the chosen username at
-// sign-up, so we map it back here. We also keep a short-lived override keyed by
-// uid so the in-app `user` always has the right username even before
-// `onAuthStateChanged` re-reads the freshly-set displayName.
 function usernameKey(value) {
   return (value || '').toLowerCase();
 }
@@ -49,7 +50,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [initializing, setInitializing] = useState(true);
   const [following, setFollowing] = useState([]);
-  // uid -> username chosen at sign-up, applied while displayName propagates.
+  const [pendingRequests, setPendingRequests] = useState([]);
   const usernameOverrides = useRef({});
 
   useEffect(() => {
@@ -61,51 +62,60 @@ export function AuthProvider({ children }) {
     return unsubscribe;
   }, []);
 
-  // Hydrate the persisted following list whenever a username becomes available
-  // (login / session restore). The backend (GET /api/social?action=following)
-  // is the source of truth at startup; optimistic follow/unfollow updates
-  // happen on top of this for the rest of the session.
   const username = user?.username;
-  useEffect(() => {
-    if (!username) {
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      try {
-        const response = await fetch(
+
+  const refreshSocialState = useCallback(async () => {
+    if (!username) return;
+
+    try {
+      const headers = await withAuthHeaders();
+      const [followingRes, pendingRes] = await Promise.all([
+        fetch(
           `${API_URL}/social?action=following&username=${encodeURIComponent(username)}`,
           { method: 'GET', headers: { 'Content-Type': 'application/json' } }
-        );
-        if (!response.ok) return;
-        const data = await response.json();
-        if (!cancelled && data && Array.isArray(data.following)) {
+        ),
+        fetch(
+          `${API_URL}/social?action=sentFollowRequests&username=${encodeURIComponent(username)}`,
+          { method: 'GET', headers }
+        ),
+      ]);
+
+      if (followingRes.ok) {
+        const data = await followingRes.json();
+        if (data && Array.isArray(data.following)) {
           const fromServer = data.following
             .map((item) => (typeof item === 'string' ? item : item?.username))
             .filter(Boolean);
           setFollowing(fromServer);
         }
-      } catch (err) {
-        console.log('Could not load following list:', err.message);
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
+
+      if (pendingRes.ok) {
+        const data = await pendingRes.json();
+        if (data && Array.isArray(data.pending)) {
+          setPendingRequests(data.pending.map((item) => item.username).filter(Boolean));
+        }
+      }
+    } catch (err) {
+      console.log('Could not refresh social state:', err.message);
+    }
   }, [username]);
 
-  // Sign in with email + password. Throws on failure so the calling screen can
-  // surface the error via Alert. `user` is updated by onAuthStateChanged.
+  useEffect(() => {
+    if (!username) {
+      setFollowing([]);
+      setPendingRequests([]);
+      return;
+    }
+    refreshSocialState();
+  }, [username, refreshSocialState]);
+
   const signIn = async (email, password) => {
     return signInWithEmailAndPassword(auth, email, password);
   };
 
-  // Create an account with email + password and set the Firebase displayName to
-  // the chosen username. Throws on failure so the screen can Alert. The
-  // Firestore profile is created separately by SignUpScreen via the existing
-  // POST /api/createUserProfile call.
-  const signUp = async ({ email, password, username }) => {
-    const normalized = normalizeUsername(username);
+  const signUp = async ({ email, password, username: chosenUsername }) => {
+    const normalized = normalizeUsername(chosenUsername);
     if (!normalized) {
       const err = new Error('Invalid username');
       err.code = 'auth/invalid-username';
@@ -116,7 +126,6 @@ export function AuthProvider({ children }) {
     usernameOverrides.current[credential.user.uid] = normalized;
     await updateProfile(credential.user, { displayName: normalized });
     await credential.user.reload();
-    // Force-refresh so API token claims include the new displayName immediately.
     await credential.user.getIdToken(true);
     setUser(mapFirebaseUser(credential.user, normalized));
     return credential;
@@ -126,10 +135,9 @@ export function AuthProvider({ children }) {
     try {
       await firebaseSignOut(auth);
     } finally {
-      // onAuthStateChanged will clear `user`, but clear here too for immediacy
-      // and reset social state exactly as before.
       setUser(null);
       setFollowing([]);
+      setPendingRequests([]);
     }
   };
 
@@ -139,6 +147,7 @@ export function AuthProvider({ children }) {
     setFollowing((prev) =>
       prev.some((u) => usernameKey(u) === key) ? prev : [...prev, targetUsername]
     );
+    setPendingRequests((prev) => prev.filter((u) => usernameKey(u) !== key));
   };
 
   const unfollow = (targetUsername) => {
@@ -146,12 +155,43 @@ export function AuthProvider({ children }) {
     setFollowing((prev) => prev.filter((u) => usernameKey(u) !== key));
   };
 
+  const requestFollow = (targetUsername) => {
+    if (!targetUsername) return;
+    const key = usernameKey(targetUsername);
+    setPendingRequests((prev) =>
+      prev.some((u) => usernameKey(u) === key) ? prev : [...prev, targetUsername]
+    );
+  };
+
+  const cancelFollowRequest = (targetUsername) => {
+    const key = usernameKey(targetUsername);
+    setPendingRequests((prev) => prev.filter((u) => usernameKey(u) !== key));
+  };
+
   const isFollowing = (targetUsername) =>
     following.some((u) => usernameKey(u) === usernameKey(targetUsername));
 
+  const isPendingRequest = (targetUsername) =>
+    pendingRequests.some((u) => usernameKey(u) === usernameKey(targetUsername));
+
   return (
     <AuthContext.Provider
-      value={{ user, initializing, following, signIn, signUp, signOut, follow, unfollow, isFollowing }}
+      value={{
+        user,
+        initializing,
+        following,
+        pendingRequests,
+        signIn,
+        signUp,
+        signOut,
+        follow,
+        unfollow,
+        requestFollow,
+        cancelFollowRequest,
+        isFollowing,
+        isPendingRequest,
+        refreshSocialState,
+      }}
     >
       {children}
     </AuthContext.Provider>

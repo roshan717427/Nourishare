@@ -6,7 +6,14 @@
  *
  * Firestore data model (STANDARD for the whole app — top-level collections):
  *   following/{username}/user_following/{targetUsername} -> { timestamp }
+ *     (only written after a follow request is accepted)
  *   followers/{username}/user_followers/{followerUsername} -> { timestamp }
+ *   follow_requests/{targetUsername}/requests/{fromUsername}
+ *     -> { status: pending|accepted|declined, createdAt, acceptedAt? }
+ *   follow_requests_outgoing/{fromUsername}/pending/{targetUsername}
+ *     -> { createdAt }  (mirror so we can list sent pending requests without a collection-group index)
+ *   notifications/{username}/items/{fromUsername}
+ *     -> { type: follow_request, fromUsername, fromName, read, createdAt, requestId, status }
  * (The now-deleted standalone followUser/unfollowUser/getFollowing endpoints
  *  used users/{u}/following + users/{u}/followers subcollections; we
  *  standardized on this top-level model because `feed` also depends on it.)
@@ -14,7 +21,18 @@
  * Actions:
  *   - follow        POST  ?action=follow
  *                   body  { username, targetUsername }  (target_username also accepted)
+ *                   Creates a pending follow request + notification (does NOT follow immediately).
+ *                   resp  { message, status: 'pending' }
+ *   - acceptFollowRequest  POST  ?action=acceptFollowRequest
+ *                   body  { username, fromUsername }  (username = person accepting)
+ *                   resp  { message, fromUsername }
+ *   - declineFollowRequest POST  ?action=declineFollowRequest
+ *                   body  { username, fromUsername }
  *                   resp  { message }
+ *   - notifications GET   ?action=notifications&username=<u>
+ *                   resp  { notifications: [...], unreadCount }
+ *   - sentFollowRequests GET ?action=sentFollowRequests&username=<u>
+ *                   resp  { pending: [{ username, createdAt }] }
  *   - unfollow      POST  ?action=unfollow
  *                   body  { username, targetUsername }
  *                   resp  { message }
@@ -120,6 +138,52 @@ function methodNotAllowed(res) {
   res.status(405).send('Method Not Allowed');
 }
 
+async function establishFollowRelationship(followerUsername, targetUsername) {
+  const timestamp = FieldValue.serverTimestamp();
+  await Promise.all([
+    db
+      .collection('following')
+      .doc(followerUsername)
+      .collection('user_following')
+      .doc(targetUsername)
+      .set({ timestamp }),
+    db
+      .collection('followers')
+      .doc(targetUsername)
+      .collection('user_followers')
+      .doc(followerUsername)
+      .set({ timestamp }),
+  ]);
+}
+
+function followRequestRefs(fromUsername, targetUsername) {
+  return {
+    requestRef: db
+      .collection('follow_requests')
+      .doc(targetUsername)
+      .collection('requests')
+      .doc(fromUsername),
+    outgoingRef: db
+      .collection('follow_requests_outgoing')
+      .doc(fromUsername)
+      .collection('pending')
+      .doc(targetUsername),
+    notificationRef: db
+      .collection('notifications')
+      .doc(targetUsername)
+      .collection('items')
+      .doc(fromUsername),
+  };
+}
+
+async function removeFollowRequest(fromUsername, targetUsername) {
+  const { requestRef, outgoingRef, notificationRef } = followRequestRefs(
+    fromUsername,
+    targetUsername
+  );
+  await Promise.all([requestRef.delete(), outgoingRef.delete(), notificationRef.delete()]);
+}
+
 async function handleFollow(req, res) {
   if (req.method !== 'POST') return methodNotAllowed(res);
 
@@ -147,24 +211,43 @@ async function handleFollow(req, res) {
     .doc(auth.username)
     .collection('user_following')
     .doc(targetUser);
-  const followersRef = db
-    .collection('followers')
-    .doc(targetUser)
-    .collection('user_followers')
-    .doc(auth.username);
+  const { requestRef, outgoingRef, notificationRef } = followRequestRefs(
+    auth.username,
+    targetUser
+  );
 
-  const existing = await followingRef.get();
-  if (existing.exists) {
+  const [existingFollow, existingRequest] = await Promise.all([
+    followingRef.get(),
+    requestRef.get(),
+  ]);
+  if (existingFollow.exists) {
     return res.status(400).json({ error: 'Already following this user' });
+  }
+  if (existingRequest.exists && existingRequest.data().status === 'pending') {
+    return res.status(400).json({ error: 'Follow request already pending' });
   }
 
   const timestamp = FieldValue.serverTimestamp();
+  const fromName = userDoc.data().name || auth.username;
+
   await Promise.all([
-    followingRef.set({ timestamp }),
-    followersRef.set({ timestamp })
+    requestRef.set({ status: 'pending', createdAt: timestamp }),
+    outgoingRef.set({ createdAt: timestamp }),
+    notificationRef.set({
+      type: 'follow_request',
+      fromUsername: auth.username,
+      fromName,
+      read: false,
+      createdAt: timestamp,
+      requestId: auth.username,
+      status: 'pending',
+    }),
   ]);
 
-  res.status(200).json({ message: `Now following ${targetUser}` });
+  res.status(200).json({
+    message: `Follow request sent to ${targetUser}`,
+    status: 'pending',
+  });
 }
 
 async function handleUnfollow(req, res) {
@@ -196,14 +279,24 @@ async function handleUnfollow(req, res) {
     .doc(targetUser)
     .collection('user_followers')
     .doc(auth.username);
+  const { requestRef } = followRequestRefs(auth.username, targetUser);
 
-  const existing = await followingRef.get();
-  if (!existing.exists) {
-    return res.status(400).json({ error: 'Not following this user' });
+  const [existingFollow, existingRequest] = await Promise.all([
+    followingRef.get(),
+    requestRef.get(),
+  ]);
+
+  if (existingFollow.exists) {
+    await Promise.all([followingRef.delete(), followersRef.delete()]);
+    return res.status(200).json({ message: `Unfollowed ${targetUser}` });
   }
 
-  await Promise.all([followingRef.delete(), followersRef.delete()]);
-  res.status(200).json({ message: `Unfollowed ${targetUser}` });
+  if (existingRequest.exists && existingRequest.data().status === 'pending') {
+    await removeFollowRequest(auth.username, targetUser);
+    return res.status(200).json({ message: 'Follow request cancelled', status: 'cancelled' });
+  }
+
+  return res.status(400).json({ error: 'Not following this user' });
 }
 
 async function handleFollowers(req, res) {
@@ -884,6 +977,149 @@ async function handleUnlike(req, res) {
   res.status(200).json({ message: 'Unliked', likes_count: count });
 }
 
+async function handleAcceptFollowRequest(req, res) {
+  if (req.method !== 'POST') return methodNotAllowed(res);
+
+  const { username, fromUsername, from_username } = req.body;
+  const auth = await requireAuthForUsername(req, res, username);
+  if (!auth) return;
+
+  const fromUser = normalizeUsername(fromUsername || from_username);
+  if (!fromUser) {
+    return res.status(400).json({ error: 'Valid fromUsername is required' });
+  }
+
+  const { requestRef, outgoingRef, notificationRef } = followRequestRefs(fromUser, auth.username);
+  const requestDoc = await requestRef.get();
+  if (!requestDoc.exists || requestDoc.data().status !== 'pending') {
+    return res.status(404).json({ error: 'Follow request not found' });
+  }
+
+  const followingRef = db
+    .collection('following')
+    .doc(fromUser)
+    .collection('user_following')
+    .doc(auth.username);
+  const existingFollow = await followingRef.get();
+  if (!existingFollow.exists) {
+    await establishFollowRelationship(fromUser, auth.username);
+  }
+
+  const timestamp = FieldValue.serverTimestamp();
+  await Promise.all([
+    requestRef.set({ status: 'accepted', acceptedAt: timestamp }, { merge: true }),
+    outgoingRef.delete(),
+    notificationRef.set({ status: 'accepted', read: true, acceptedAt: timestamp }, { merge: true }),
+  ]);
+
+  res.status(200).json({ message: 'Follow request accepted', fromUsername: fromUser });
+}
+
+async function handleDeclineFollowRequest(req, res) {
+  if (req.method !== 'POST') return methodNotAllowed(res);
+
+  const { username, fromUsername, from_username } = req.body;
+  const auth = await requireAuthForUsername(req, res, username);
+  if (!auth) return;
+
+  const fromUser = normalizeUsername(fromUsername || from_username);
+  if (!fromUser) {
+    return res.status(400).json({ error: 'Valid fromUsername is required' });
+  }
+
+  const { requestRef, notificationRef } = followRequestRefs(fromUser, auth.username);
+  const requestDoc = await requestRef.get();
+  if (!requestDoc.exists || requestDoc.data().status !== 'pending') {
+    return res.status(404).json({ error: 'Follow request not found' });
+  }
+
+  const timestamp = FieldValue.serverTimestamp();
+  const { outgoingRef } = followRequestRefs(fromUser, auth.username);
+  await Promise.all([
+    requestRef.delete(),
+    outgoingRef.delete(),
+    notificationRef.set(
+      { status: 'declined', read: true, declinedAt: timestamp },
+      { merge: true }
+    ),
+  ]);
+
+  res.status(200).json({ message: 'Follow request declined' });
+}
+
+async function handleNotifications(req, res) {
+  if (req.method !== 'GET') return methodNotAllowed(res);
+
+  const username = normalizeUsername(req.query.username);
+  if (!username) {
+    return res.status(400).json({ error: 'Valid username is required' });
+  }
+
+  const auth = await requireAuthForUsername(req, res, username);
+  if (!auth) return;
+
+  let snapshot;
+  try {
+    snapshot = await db
+      .collection('notifications')
+      .doc(username)
+      .collection('items')
+      .orderBy('createdAt', 'desc')
+      .limit(50)
+      .get();
+  } catch (orderErr) {
+    console.log('notifications orderBy unavailable, falling back:', orderErr.message);
+    snapshot = await db.collection('notifications').doc(username).collection('items').limit(50).get();
+  }
+
+  const notifications = [];
+  let unreadCount = 0;
+  for (const doc of snapshot.docs) {
+    const data = doc.data() || {};
+    const createdAt = toMillis(data.createdAt);
+    if (!data.read) unreadCount += 1;
+    notifications.push({
+      id: doc.id,
+      type: data.type || 'follow_request',
+      fromUsername: data.fromUsername || doc.id,
+      fromName: data.fromName || data.fromUsername || doc.id,
+      read: !!data.read,
+      status: data.status || 'pending',
+      createdAt,
+      requestId: data.requestId || doc.id,
+    });
+  }
+
+  notifications.sort((a, b) => b.createdAt - a.createdAt);
+
+  res.status(200).json({ notifications, unreadCount });
+}
+
+async function handleSentFollowRequests(req, res) {
+  if (req.method !== 'GET') return methodNotAllowed(res);
+
+  const username = normalizeUsername(req.query.username);
+  if (!username) {
+    return res.status(400).json({ error: 'Valid username is required' });
+  }
+
+  const auth = await requireAuthForUsername(req, res, username);
+  if (!auth) return;
+
+  const snapshot = await db
+    .collection('follow_requests_outgoing')
+    .doc(username)
+    .collection('pending')
+    .get();
+
+  const pending = snapshot.docs.map((doc) => ({
+    username: doc.id,
+    createdAt: toMillis(doc.data().createdAt) || null,
+  }));
+
+  res.status(200).json({ pending });
+}
+
 const handlers = {
   follow: handleFollow,
   unfollow: handleUnfollow,
@@ -903,6 +1139,10 @@ const handlers = {
   unlike: handleUnlike,
   userlogs: handleUserLogs,
   portfoliofavorites: handlePortfolioFavorites,
+  acceptfollowrequest: handleAcceptFollowRequest,
+  declinefollowrequest: handleDeclineFollowRequest,
+  notifications: handleNotifications,
+  sentfollowrequests: handleSentFollowRequests,
 };
 
 module.exports = async (req, res) => {

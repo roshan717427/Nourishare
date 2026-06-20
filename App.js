@@ -11,6 +11,7 @@ import LogMealScreen from './screens/LogMealScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import AISuggestionsScreen from './screens/AISuggestionsScreen';
 import ExploreScreen from './screens/ExploreScreen';
+import NotificationsScreen from './screens/NotificationsScreen';
 import PostDetailScreen from './screens/PostDetailScreen';
 import RecipeDetailScreen from './screens/RecipeDetailScreen';
 import OnboardingTour, { ONBOARDING_STEPS } from './components/OnboardingTour';
@@ -42,6 +43,7 @@ function RootNavigator() {
             <Stack.Screen name="Explore" component={ExploreScreen} />
             <Stack.Screen name="LogMeal" component={LogMealScreen} />
             <Stack.Screen name="Profile" component={ProfileScreen} />
+            <Stack.Screen name="Notifications" component={NotificationsScreen} />
             <Stack.Screen name="AISuggestions" component={AISuggestionsScreen} />
             <Stack.Screen name="PostDetail" component={PostDetailScreen} />
             <Stack.Screen name="RecipeDetail" component={RecipeDetailScreen} />

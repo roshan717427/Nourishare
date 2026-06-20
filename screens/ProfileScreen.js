@@ -275,7 +275,15 @@ function DishCard({ dish, onPress, isFavorited, onToggleFavorite, showFavorite, 
 }
 
 export default function ProfileScreen({ navigation, route }) {
-  const { user, isFollowing, follow, unfollow, signOut } = useAuth();
+  const {
+    user,
+    isFollowing,
+    isPendingRequest,
+    unfollow,
+    requestFollow,
+    cancelFollowRequest,
+    signOut,
+  } = useAuth();
   const { items: nextUpItems, loading: nextUpLoading, removeFromNextUp } = useNextUp();
   const [profile, setProfile] = useState(null);
   const [dishes, setDishes] = useState([]);
@@ -298,7 +306,9 @@ export default function ProfileScreen({ navigation, route }) {
   const isOwnProfile =
     !route?.params?.username ||
     normalizeUsername(route.params.username) === normalizeUsername(user?.username);
-  const following = isFollowing(username);
+  const followingUser = isFollowing(username);
+  const pendingFollow = isPendingRequest(username);
+  const followLabel = followingUser ? 'Following' : pendingFollow ? 'Requested' : 'Follow';
 
   const fetchDishes = useCallback(async () => {
     setDishesLoading(true);
@@ -337,17 +347,18 @@ export default function ProfileScreen({ navigation, route }) {
   const handleToggleFollow = () => {
     const follower = user?.username;
     const target = profile?.username || username;
-    const willFollow = !following;
 
-    if (willFollow) {
-      follow(username);
-    } else {
+    if (followingUser) {
       unfollow(username);
+    } else if (pendingFollow) {
+      cancelFollowRequest(username);
+    } else {
+      requestFollow(username);
     }
 
     if (!follower || !target) return;
 
-    const action = willFollow ? 'follow' : 'unfollow';
+    const action = followingUser || pendingFollow ? 'unfollow' : 'follow';
     withAuthHeaders().then((headers) =>
       fetch(`${API_URL}/social?action=${action}`, {
         method: 'POST',
@@ -747,12 +758,20 @@ export default function ProfileScreen({ navigation, route }) {
 
           {!isOwnProfile && (
             <TouchableOpacity
-              style={[styles.followButton, following && styles.followingButton]}
+              style={[
+                styles.followButton,
+                (followingUser || pendingFollow) && styles.followingButton,
+              ]}
               onPress={handleToggleFollow}
               activeOpacity={0.85}
             >
-              <Text style={[styles.followButtonText, following && styles.followingButtonText]}>
-                {following ? 'Following' : 'Follow'}
+              <Text
+                style={[
+                  styles.followButtonText,
+                  (followingUser || pendingFollow) && styles.followingButtonText,
+                ]}
+              >
+                {followLabel}
               </Text>
             </TouchableOpacity>
           )}

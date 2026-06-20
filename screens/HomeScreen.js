@@ -18,6 +18,7 @@ import BottomNavigation from '../components/BottomNavigation';
 import MunchableHeader from '../components/MunchableHeader';
 import { useAuth } from '../context/AuthContext';
 import { API_URL } from '../config/api';
+import { withAuthHeaders } from '../utils/apiAuth';
 import CookedWithTags from '../components/CookedWithTags';
 import { colors, radii } from '../constants/theme';
 
@@ -134,13 +135,14 @@ function EmptyFeed() {
 }
 
 export default function HomeScreen({ navigation }) {
-  const { user, following } = useAuth();
+  const { user, following, refreshSocialState } = useAuth();
   const username = user?.username;
 
   const [feed, setFeed] = useState([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedStoryUsername, setSelectedStoryUsername] = useState(null);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
 
   const feedScrollRef = useRef(null);
   const postOffsetsRef = useRef({});
@@ -180,7 +182,27 @@ export default function HomeScreen({ navigation }) {
   useFocusEffect(
     useCallback(() => {
       loadFeed();
-    }, [loadFeed])
+      refreshSocialState();
+      if (!username) {
+        setUnreadNotifications(0);
+        return;
+      }
+      (async () => {
+        try {
+          const headers = await withAuthHeaders();
+          const res = await fetch(
+            `${API_URL}/social?action=notifications&username=${encodeURIComponent(username)}`,
+            { method: 'GET', headers }
+          );
+          if (res.ok) {
+            const data = await res.json();
+            setUnreadNotifications(data.unreadCount || 0);
+          }
+        } catch (err) {
+          console.log('Could not load notification count:', err.message);
+        }
+      })();
+    }, [loadFeed, refreshSocialState, username])
   );
 
   const openPost = (item) => {
@@ -275,6 +297,22 @@ export default function HomeScreen({ navigation }) {
       <StatusBar style="dark" />
 
       <MunchableHeader
+        leftAction={
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Notifications')}
+            activeOpacity={0.7}
+            style={styles.bellButton}
+          >
+            <Ionicons name="notifications-outline" size={24} color="#fff" />
+            {unreadNotifications > 0 ? (
+              <View style={styles.bellBadge}>
+                <Text style={styles.bellBadgeText}>
+                  {unreadNotifications > 9 ? '9+' : unreadNotifications}
+                </Text>
+              </View>
+            ) : null}
+          </TouchableOpacity>
+        }
         rightAction={
           <TouchableOpacity
             onPress={() => navigation.navigate('LogMeal')}
@@ -367,6 +405,32 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  bellButton: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  bellBadge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: colors.like,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+    borderWidth: 1.5,
+    borderColor: colors.gradientStart,
+  },
+  bellBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#fff',
   },
   feedContainer: {
     flex: 1,
