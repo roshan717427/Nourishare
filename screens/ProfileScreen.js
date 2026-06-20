@@ -28,7 +28,7 @@ import PortfolioGalleryModal from '../components/PortfolioGalleryModal';
 import { API_URL } from '../config/api';
 import { authFetch, withAuthHeaders, normalizeUsername } from '../utils/apiAuth';
 import { colors, radii, spacing } from '../constants/theme';
-import { buildPersonalityDescriptionParts, getTraitCompoundLabel } from '../utils/personalityCopy';
+import { buildPersonalityDescription, getTraitCompoundLabel } from '../utils/personalityCopy';
 import { capitalizeList } from '../utils/titleCase';
 
 const PORTFOLIO_FAVORITES_MAX = 2;
@@ -714,13 +714,14 @@ export default function ProfileScreen({ navigation, route }) {
     favorite_ingredients: favoriteIngredients,
   };
 
-  const personalityDescriptionParts = buildPersonalityDescriptionParts(
+  const primaryTrait = personality?.primary_trait?.trim();
+  const showTraitBadge = Boolean(primaryTrait) && primaryTrait !== 'Kitchen Newcomer';
+  const primaryTraitLabel = getTraitCompoundLabel(primaryTrait);
+  const personalityText = buildPersonalityDescription(
     profile?.displayName || profile?.name,
     personalityForCopy,
-    { isOwnProfile }
+    { isOwnProfile, omitCompoundLabel: showTraitBadge }
   );
-  const primaryTrait = personality?.primary_trait?.trim();
-  const primaryTraitLabel = getTraitCompoundLabel(primaryTrait);
 
   return (
     <View style={styles.container}>
@@ -888,15 +889,12 @@ export default function ProfileScreen({ navigation, route }) {
                 {isOwnProfile ? 'Your kitchen vibe' : 'In their kitchen'}
               </Text>
             </View>
-            {primaryTrait && primaryTrait !== 'Kitchen Newcomer' ? (
+            {showTraitBadge ? (
               <View style={styles.personalityTraitBadge}>
                 <Text style={styles.personalityTraitBadgeText}>{primaryTraitLabel}</Text>
               </View>
             ) : null}
-            <Text style={styles.personalityDescription}>{personalityDescriptionParts.lead}</Text>
-            {personalityDescriptionParts.followUp ? (
-              <Text style={styles.personalityFollowUp}>{personalityDescriptionParts.followUp}</Text>
-            ) : null}
+            <Text style={styles.personalityDescription}>{personalityText}</Text>
           </View>
         </View>
 
@@ -1387,12 +1385,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     lineHeight: 26,
     fontWeight: '500',
-  },
-  personalityFollowUp: {
-    fontSize: 15,
-    color: colors.textSecondary,
-    lineHeight: 24,
-    paddingTop: 2,
   },
   bulletList: {
     gap: 6,

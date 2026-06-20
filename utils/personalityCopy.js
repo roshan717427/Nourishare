@@ -262,12 +262,31 @@ function buildNewcomerSentence(isOwnProfile, firstName) {
   return `${who} is a kitchen newcomer still finding their footing.`;
 }
 
-function buildFollowUpSentence(hint, isOwnProfile, firstName) {
+function buildMainSentence(trait, isOwnProfile, firstName, detailClauses, omitCompoundLabel) {
+  const verb = trait.verbPhrase;
+  if (omitCompoundLabel) {
+    if (isOwnProfile) {
+      return `You ${verb}${detailClauses}.`;
+    }
+    const who = firstName || 'This cook';
+    return `${who} ${verb}${detailClauses}.`;
+  }
+
+  const article = articleBefore(trait.compoundLabel);
   if (isOwnProfile) {
-    return `You ${hint}.`;
+    return `You're ${article} ${trait.compoundLabel} who ${verb}${detailClauses}.`;
   }
   const who = firstName || 'This cook';
-  return `${who} ${hint}.`;
+  return `${who} is ${article} ${trait.compoundLabel} who ${verb}${detailClauses}.`;
+}
+
+function combineMainAndHint(main, hint, isOwnProfile, omitCompoundLabel) {
+  if (!hint) return main;
+  const mainTrimmed = main.replace(/\.$/, '');
+  if (isOwnProfile && !omitCompoundLabel) {
+    return `${mainTrimmed}, and you ${hint}.`;
+  }
+  return `${mainTrimmed}, and ${hint}.`;
 }
 
 function hasPersonalitySelections(personality = {}) {
@@ -298,63 +317,49 @@ function buildSelectionOnlySentence(personality, isOwnProfile, firstName) {
  * @returns {string}
  */
 export function buildPersonalityDescription(name, personality = {}, options = {}) {
-  const { lead, followUp } = buildPersonalityDescriptionParts(name, personality, options);
-  return followUp ? `${lead} ${followUp}` : lead;
+  return buildPersonalityDescriptionParts(name, personality, options).text;
 }
 
 /**
  * @param {string} name
  * @param {object} personality
- * @param {{ isOwnProfile?: boolean, displayName?: string }} [options]
- * @returns {{ lead: string, followUp: string }}
+ * @param {{ isOwnProfile?: boolean, displayName?: string, omitCompoundLabel?: boolean }} [options]
+ * @returns {{ text: string }}
  */
 export function buildPersonalityDescriptionParts(name, personality = {}, options = {}) {
-  const { isOwnProfile = false, displayName } = options;
+  const { isOwnProfile = false, displayName, omitCompoundLabel = false } = options;
   const firstName = extractFirstName(name || displayName);
 
   if (!hasPersonalitySelections(personality)) {
-    const sentence = buildNewcomerSentence(isOwnProfile, firstName);
-    return { lead: sentence, followUp: '' };
+    return { text: buildNewcomerSentence(isOwnProfile, firstName) };
   }
 
   const primary = personality.primary_trait;
   if (!hasMeaningfulPrimary(primary)) {
-    return { lead: buildSelectionOnlySentence(personality, isOwnProfile, firstName), followUp: '' };
+    return { text: buildSelectionOnlySentence(personality, isOwnProfile, firstName) };
   }
 
   const trait = resolveTraitCopy(primary);
   if (!trait) {
-    return { lead: buildSelectionOnlySentence(personality, isOwnProfile, firstName), followUp: '' };
+    return { text: buildSelectionOnlySentence(personality, isOwnProfile, firstName) };
   }
 
-  return buildTraitDescriptionParts(personality, trait, isOwnProfile, firstName);
+  return buildTraitDescriptionParts(personality, trait, isOwnProfile, firstName, omitCompoundLabel);
 }
 
-function buildTraitDescriptionParts(personality, trait, isOwnProfile, firstName) {
-  const verb = trait.verbPhrase;
-  const article = articleBefore(trait.compoundLabel);
+function buildTraitDescriptionParts(personality, trait, isOwnProfile, firstName, omitCompoundLabel) {
   const detailClauses = buildDetailClauses(
     personality.top_cuisines,
     personality.favorite_ingredients
   );
 
-  let main;
-  if (isOwnProfile) {
-    main = `You're ${article} ${trait.compoundLabel} who ${verb}${detailClauses}.`;
-  } else {
-    const who = firstName || 'This cook';
-    main = `${who} is ${article} ${trait.compoundLabel} who ${verb}${detailClauses}.`;
-  }
-
+  const main = buildMainSentence(trait, isOwnProfile, firstName, detailClauses, omitCompoundLabel);
   const secondaryHint = pickSecondaryHint(personality.secondary_traits, isOwnProfile);
   if (secondaryHint && !detailClauses) {
-    return {
-      lead: main,
-      followUp: buildFollowUpSentence(secondaryHint, isOwnProfile, firstName),
-    };
+    return { text: combineMainAndHint(main, secondaryHint, isOwnProfile, omitCompoundLabel) };
   }
 
-  return { lead: main, followUp: '' };
+  return { text: main };
 }
 
 export default buildPersonalityDescription;
