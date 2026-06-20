@@ -1,6 +1,6 @@
 import re
 
-USERNAME_RE = re.compile(r'^[a-z0-9_]{3,30}$')
+USERNAME_RE = re.compile(r'^[a-z0-9_.]{3,30}$')
 MAX_PANTRY_ITEMS = 50
 MAX_LIMIT = 50
 

@@ -136,11 +136,11 @@ export default function SignUpScreen({ navigation, route }) {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.logoRow}>
-            <Ionicons name="restaurant" size={28} color="#fff" />
+            <Ionicons name="restaurant" size={48} color="#fff" />
             <Text style={styles.brand}>Munchable</Text>
           </View>
           <Text style={styles.title}>Create account</Text>
-          <Text style={styles.subtitle}>Join the community and start logging your meals</Text>
+          <Text style={styles.subtitle}>Join the community & start logging!</Text>
 
           <View style={styles.formCard}>
             <TextInput
@@ -245,24 +245,24 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     paddingHorizontal: 24,
-    paddingVertical: 32,
+    paddingVertical: 40,
   },
   logoRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
-    gap: 10,
+    marginBottom: 16,
+    gap: 12,
   },
   brand: {
-    fontSize: 26,
+    fontSize: 42,
     fontWeight: '800',
     color: '#fff',
   },
   title: {
-    fontSize: 30,
-    fontWeight: '800',
-    color: '#fff',
+    fontSize: 20,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.9)',
     textAlign: 'center',
     marginBottom: 8,
   },

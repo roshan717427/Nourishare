@@ -99,7 +99,7 @@ export default function LoginScreen({ navigation }) {
             <Ionicons name="restaurant" size={48} color="#fff" />
             <Text style={styles.brand}>Munchable</Text>
           </View>
-          <Text style={styles.title}>Welcome back</Text>
+          <Text style={styles.title}>Welcome back!</Text>
 
           <View style={styles.formCard}>
             <TextInput

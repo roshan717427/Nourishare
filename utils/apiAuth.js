@@ -1,6 +1,6 @@
 import { auth } from '../config/firebase';
 
-const USERNAME_RE = /^[a-z0-9_]{3,30}$/;
+const USERNAME_RE = /^[a-z0-9_.]{3,30}$/;
 
 export class AuthError extends Error {
   constructor(message) {

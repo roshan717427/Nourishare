@@ -1,9 +1,9 @@
 const PERSON_NAME_RE = /^[A-Za-z]+$/;
 const PASSWORD_SPECIAL_RE = /[!@#$%^&*]/;
-const USERNAME_RE = /^[a-z0-9_]{3,30}$/;
+const USERNAME_RE = /^[a-z0-9_.]{3,30}$/;
 
 export const PASSWORD_HINT = '8+ chars, upper, lower, !@#$%^&*';
-export const USERNAME_HINT = '3–30 chars: lowercase letters, numbers, underscores';
+export const USERNAME_HINT = '3-30 chars: letters, nums, periods, and/or underscores';
 
 export function validatePersonName(name, fieldLabel = 'Name') {
   const trimmed = (name || '').trim();
