@@ -8,8 +8,7 @@ import {
 } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import { API_URL } from '../config/api';
-import { normalizeUsername } from '../utils/apiAuth';
-import { withAuthHeaders } from '../utils/apiAuth';
+import { normalizeUsername, withAuthHeaders, authFetch } from '../utils/apiAuth';
 
 const AuthContext = createContext({
   user: null,
@@ -61,6 +60,32 @@ export function AuthProvider({ children }) {
     });
     return unsubscribe;
   }, []);
+
+  // Resolve username from the server when Firebase displayName is missing or invalid
+  // (e.g. legacy accounts or email-as-displayName). Meal logging already works via
+  // server-side uid/email lookup; profile needs the same identity on the client.
+  useEffect(() => {
+    if (initializing || !user?.uid || user?.username) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await authFetch(`${API_URL}/getUserProfile?me=1`);
+        if (cancelled || !response.ok) return;
+        const profile = await response.json();
+        const resolved = normalizeUsername(profile?.username);
+        if (!resolved || !auth.currentUser) return;
+        usernameOverrides.current[auth.currentUser.uid] = resolved;
+        setUser(mapFirebaseUser(auth.currentUser, resolved));
+      } catch (err) {
+        console.log('Could not resolve username from profile:', err.message);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.uid, user?.username, initializing]);
 
   const username = user?.username;
 

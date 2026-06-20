@@ -3,6 +3,42 @@ const { getFirestore } = require('firebase-admin/firestore');
 const { refreshUserPersonality, isPersonalityStale } = require('./_helpers/personalityHelper');
 const { capitalizeList } = require('../utils/titleCase');
 const { normalizeUsername } = require('./_helpers/validateInput');
+const { verifyAuth } = require('./_helpers/verifyAuth');
+
+function deriveDisplayName(data, username, tokenName) {
+  const fromFields = [data.name, [data.firstName, data.lastName].filter(Boolean).join(' ').trim()]
+    .map((value) => String(value || '').trim())
+    .find(Boolean);
+  if (fromFields) return fromFields;
+  const fromToken = String(tokenName || '').trim();
+  if (fromToken && !fromToken.includes('@')) return fromToken;
+  return username;
+}
+
+async function repairOwnProfile(db, username, auth, data) {
+  const patches = {};
+  if (!data.uid && auth.uid) patches.uid = auth.uid;
+  if (!data.email && auth.decoded.email) patches.email = auth.decoded.email;
+  if (!data.username) patches.username = username;
+  if (!data.name) {
+    patches.name = deriveDisplayName(data, username, auth.decoded.name);
+  }
+  if (Object.keys(patches).length === 0) return data;
+  await db.collection('users').doc(username).set(patches, { merge: true });
+  return { ...data, ...patches };
+}
+
+async function ensureOwnProfileDoc(db, username, auth) {
+  const minimal = {
+    username,
+    uid: auth.uid,
+    name: deriveDisplayName({}, username, auth.decoded.name),
+    createdAt: new Date().toISOString(),
+  };
+  if (auth.decoded.email) minimal.email = auth.decoded.email;
+  await db.collection('users').doc(username).set(minimal);
+  return minimal;
+}
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -65,19 +101,51 @@ module.exports = async (req, res) => {
     return;
   }
   
-  const username = normalizeUsername(req.query.username);
+  const wantsOwnProfile = req.query.me === '1' || req.query.me === 'true';
+  let auth = null;
+
+  if (wantsOwnProfile) {
+    auth = await verifyAuth(req);
+    if (auth.error) {
+      const message =
+        auth.error === 'authentication_required'
+          ? 'Authentication required'
+          : 'Invalid or expired token';
+      res.status(auth.status).json({ error: message });
+      return;
+    }
+  }
+
+  let username = wantsOwnProfile ? auth.username : normalizeUsername(req.query.username);
   if (!username) {
     res.status(400).json({ error: 'Valid username is required' });
     return;
   }
+
+  if (!auth) {
+    const optionalAuth = await verifyAuth(req);
+    if (!optionalAuth.error) auth = optionalAuth;
+  }
+
+  const isOwnRequest = auth && auth.username === username;
+
   try {
     const doc = await db.collection('users').doc(username).get();
-    if (!doc.exists) {
-      res.status(404).json({ error: 'User not found' });
-      return;
-    }
+    let data;
 
-    const data = doc.data() || {};
+    if (!doc.exists) {
+      if (isOwnRequest) {
+        data = await ensureOwnProfileDoc(db, username, auth);
+      } else {
+        res.status(404).json({ error: 'User not found' });
+        return;
+      }
+    } else {
+      data = doc.data() || {};
+      if (isOwnRequest) {
+        data = await repairOwnProfile(db, username, auth, data);
+      }
+    }
 
     // Compute live stats so the profile reflects real activity:
     //  - total_recipes / avg_rating from the `logs` collection (source of truth;
@@ -151,6 +219,8 @@ module.exports = async (req, res) => {
 
     const response = {
       ...data,
+      username,
+      name: deriveDisplayName(data, username, isOwnRequest ? auth.decoded.name : null),
       kitchen_personality: kitchenPersonality,
       // Live counts (override stored values). ProfileScreen renders both.
       followers: followersCount,

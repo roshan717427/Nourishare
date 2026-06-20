@@ -26,7 +26,7 @@ import { clearOnboardingStorage } from '../context/OnboardingContext';
 import { useNextUp } from '../context/NextUpContext';
 import PortfolioGalleryModal from '../components/PortfolioGalleryModal';
 import { API_URL } from '../config/api';
-import { withAuthHeaders, normalizeUsername } from '../utils/apiAuth';
+import { authFetch, withAuthHeaders, normalizeUsername } from '../utils/apiAuth';
 import { colors, radii, spacing } from '../constants/theme';
 import { buildPersonalityDescriptionParts, getTraitCompoundLabel } from '../utils/personalityCopy';
 import { capitalizeList } from '../utils/titleCase';
@@ -375,30 +375,42 @@ export default function ProfileScreen({ navigation, route }) {
       setLoading(true);
       setError(null);
 
-      const profileUsername = normalizeUsername(username);
-      if (!profileUsername) {
-        setProfile(null);
-        setError('Invalid username. Please sign out and sign in again.');
-        return;
+      let response;
+      if (isOwnProfile) {
+        response = await authFetch(`${API_URL}/getUserProfile?me=1`, {
+          method: 'GET',
+        });
+      } else {
+        const profileUsername = normalizeUsername(username);
+        if (!profileUsername) {
+          setProfile(null);
+          setError('Invalid username. Please sign out and sign in again.');
+          return;
+        }
+
+        response = await fetch(
+          `${API_URL}/getUserProfile?username=${encodeURIComponent(profileUsername)}`,
+          {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' },
+          }
+        );
       }
 
-      const response = await fetch(
-        `${API_URL}/getUserProfile?username=${encodeURIComponent(profileUsername)}`,
-        {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-        }
-      );
+      const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
         setProfile(null);
-        setError(data.error || 'Could not load profile');
+        const apiError = data.error || 'Could not load profile';
+        const detail = data.details ? `: ${data.details}` : '';
+        if (__DEV__) {
+          console.warn('[Profile] fetch failed', response.status, data);
+        }
+        setError(__DEV__ ? `${apiError}${detail}` : apiError);
         return;
       }
 
-      const data = await response.json();
-      if (!data || (!data.name && !data.username)) {
+      if (!data?.username) {
         setProfile(null);
         setError('Profile not found');
         return;
@@ -409,7 +421,7 @@ export default function ProfileScreen({ navigation, route }) {
     } catch (err) {
       console.log('Error fetching profile:', err.message);
       setProfile(null);
-      setError(err.message || 'Could not load profile');
+      setError(__DEV__ ? err.message : err.message || 'Could not load profile');
     } finally {
       setLoading(false);
     }
