@@ -46,6 +46,7 @@ module.exports = async (req, res) => {
 
   const userData = {
     username: auth.username,
+    uid: auth.uid,
     name: `${firstName} ${lastName}`,
     firstName,
     lastName,

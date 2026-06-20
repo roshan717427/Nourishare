@@ -8,6 +8,7 @@ import {
 } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import { API_URL } from '../config/api';
+import { normalizeUsername } from '../utils/apiAuth';
 
 const AuthContext = createContext({
   user: null,
@@ -26,18 +27,21 @@ const AuthContext = createContext({
 // sign-up, so we map it back here. We also keep a short-lived override keyed by
 // uid so the in-app `user` always has the right username even before
 // `onAuthStateChanged` re-reads the freshly-set displayName.
-function normalizeUsername(value) {
+function usernameKey(value) {
   return (value || '').toLowerCase();
 }
 
 function mapFirebaseUser(fbUser, usernameOverride) {
   if (!fbUser) return null;
-  const username = usernameOverride || fbUser.displayName || fbUser.email;
+  const username =
+    normalizeUsername(usernameOverride) ||
+    normalizeUsername(fbUser.displayName) ||
+    null;
   return {
     uid: fbUser.uid,
     email: fbUser.email,
     username,
-    name: fbUser.displayName || username,
+    name: fbUser.displayName || username || fbUser.email,
   };
 }
 
@@ -101,13 +105,20 @@ export function AuthProvider({ children }) {
   // Firestore profile is created separately by SignUpScreen via the existing
   // POST /api/createUserProfile call.
   const signUp = async ({ email, password, username }) => {
-    const credential = await createUserWithEmailAndPassword(auth, email, password);
-    if (username) {
-      usernameOverrides.current[credential.user.uid] = username;
-      await updateProfile(credential.user, { displayName: username });
-      // Reflect the username immediately rather than waiting for a re-auth.
-      setUser(mapFirebaseUser(credential.user, username));
+    const normalized = normalizeUsername(username);
+    if (!normalized) {
+      const err = new Error('Invalid username');
+      err.code = 'auth/invalid-username';
+      throw err;
     }
+
+    const credential = await createUserWithEmailAndPassword(auth, email, password);
+    usernameOverrides.current[credential.user.uid] = normalized;
+    await updateProfile(credential.user, { displayName: normalized });
+    await credential.user.reload();
+    // Force-refresh so API token claims include the new displayName immediately.
+    await credential.user.getIdToken(true);
+    setUser(mapFirebaseUser(credential.user, normalized));
     return credential;
   };
 
@@ -124,19 +135,19 @@ export function AuthProvider({ children }) {
 
   const follow = (targetUsername) => {
     if (!targetUsername) return;
-    const key = normalizeUsername(targetUsername);
+    const key = usernameKey(targetUsername);
     setFollowing((prev) =>
-      prev.some((u) => normalizeUsername(u) === key) ? prev : [...prev, targetUsername]
+      prev.some((u) => usernameKey(u) === key) ? prev : [...prev, targetUsername]
     );
   };
 
   const unfollow = (targetUsername) => {
-    const key = normalizeUsername(targetUsername);
-    setFollowing((prev) => prev.filter((u) => normalizeUsername(u) !== key));
+    const key = usernameKey(targetUsername);
+    setFollowing((prev) => prev.filter((u) => usernameKey(u) !== key));
   };
 
   const isFollowing = (targetUsername) =>
-    following.some((u) => normalizeUsername(u) === normalizeUsername(targetUsername));
+    following.some((u) => usernameKey(u) === usernameKey(targetUsername));
 
   return (
     <AuthContext.Provider

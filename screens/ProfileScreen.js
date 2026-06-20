@@ -26,7 +26,7 @@ import { clearOnboardingStorage } from '../context/OnboardingContext';
 import { useNextUp } from '../context/NextUpContext';
 import PortfolioGalleryModal from '../components/PortfolioGalleryModal';
 import { API_URL } from '../config/api';
-import { withAuthHeaders } from '../utils/apiAuth';
+import { withAuthHeaders, normalizeUsername } from '../utils/apiAuth';
 import { colors, radii, spacing } from '../constants/theme';
 import { buildPersonalityDescriptionParts, getTraitCompoundLabel } from '../utils/personalityCopy';
 import { capitalizeList } from '../utils/titleCase';
@@ -293,15 +293,23 @@ export default function ProfileScreen({ navigation, route }) {
   const [editTopCuisines, setEditTopCuisines] = useState('');
   const [editFavoriteIngredients, setEditFavoriteIngredients] = useState('');
 
-  const username = route?.params?.username || user?.username || 'current_user';
-  const isOwnProfile = !route?.params?.username || route.params.username === user?.username;
+  const rawUsername = route?.params?.username || user?.username;
+  const username = normalizeUsername(rawUsername) || rawUsername;
+  const isOwnProfile =
+    !route?.params?.username ||
+    normalizeUsername(route.params.username) === normalizeUsername(user?.username);
   const following = isFollowing(username);
 
   const fetchDishes = useCallback(async () => {
     setDishesLoading(true);
     try {
+      const profileUsername = normalizeUsername(username);
+      if (!profileUsername) {
+        setDishes([]);
+        return;
+      }
       const response = await fetch(
-        `${API_URL}/social?action=userLogs&username=${encodeURIComponent(username)}`,
+        `${API_URL}/social?action=userLogs&username=${encodeURIComponent(profileUsername)}`,
         { method: 'GET', headers: { 'Content-Type': 'application/json' } }
       );
       if (response.ok) {
@@ -356,14 +364,25 @@ export default function ProfileScreen({ navigation, route }) {
       setLoading(true);
       setError(null);
 
-      const response = await fetch(`${API_URL}/getUserProfile?username=${username}`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-      });
+      const profileUsername = normalizeUsername(username);
+      if (!profileUsername) {
+        setProfile(null);
+        setError('Invalid username. Please sign out and sign in again.');
+        return;
+      }
+
+      const response = await fetch(
+        `${API_URL}/getUserProfile?username=${encodeURIComponent(profileUsername)}`,
+        {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
 
       if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
         setProfile(null);
-        setError('Could not load profile');
+        setError(data.error || 'Could not load profile');
         return;
       }
 

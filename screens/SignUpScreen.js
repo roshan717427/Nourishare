@@ -19,8 +19,10 @@ import { colors, radii } from '../constants/theme';
 import { withAuthHeaders } from '../utils/apiAuth';
 import {
   PASSWORD_HINT,
+  USERNAME_HINT,
   validatePassword,
   validatePersonName,
+  validateUsername,
 } from '../utils/signupValidation';
 
 export default function SignUpScreen({ navigation, route }) {
@@ -36,7 +38,7 @@ export default function SignUpScreen({ navigation, route }) {
   const handleSignUp = async () => {
     const trimmedFirstName = firstName.trim();
     const trimmedLastName = lastName.trim();
-    const trimmedUsername = username.trim();
+    const trimmedUsername = username.trim().toLowerCase();
     const trimmedEmail = email.trim();
 
     const firstNameError = validatePersonName(trimmedFirstName, 'First name');
@@ -53,8 +55,9 @@ export default function SignUpScreen({ navigation, route }) {
       Alert.alert('Missing information', 'Please enter your email.');
       return;
     }
-    if (!trimmedUsername) {
-      Alert.alert('Missing information', 'Please choose a username.');
+    const usernameError = validateUsername(trimmedUsername);
+    if (usernameError) {
+      Alert.alert('Invalid username', usernameError);
       return;
     }
     const passwordError = validatePassword(password);
@@ -82,14 +85,22 @@ export default function SignUpScreen({ navigation, route }) {
       });
 
       try {
-        const headers = await withAuthHeaders();
-        await fetch(`${API_URL}/createUserProfile`, {
+        const headers = await withAuthHeaders({}, { forceRefresh: true });
+        const profileResponse = await fetch(`${API_URL}/createUserProfile`, {
           method: 'POST',
           headers,
           body: JSON.stringify(profile),
         });
+        if (!profileResponse.ok) {
+          const data = await profileResponse.json().catch(() => ({}));
+          throw new Error(data.error || 'Failed to create profile');
+        }
       } catch (apiErr) {
-        console.log('Profile API call failed, continuing:', apiErr.message);
+        console.log('Profile API call failed:', apiErr.message);
+        Alert.alert(
+          'Profile setup issue',
+          'Your account was created but we could not finish setting up your profile. Please sign in and try again, or contact support if this keeps happening.'
+        );
       }
     } catch (err) {
       const code = err?.code || '';
@@ -100,6 +111,8 @@ export default function SignUpScreen({ navigation, route }) {
         message = 'That email address is not valid.';
       } else if (code === 'auth/weak-password') {
         message = `Password does not meet requirements. ${PASSWORD_HINT}`;
+      } else if (code === 'auth/invalid-username') {
+        message = `Username is not valid. ${USERNAME_HINT}`;
       }
       Alert.alert('Sign up failed', message);
     } finally {
@@ -162,10 +175,11 @@ export default function SignUpScreen({ navigation, route }) {
               placeholder="Username"
               placeholderTextColor={colors.textMuted}
               value={username}
-              onChangeText={setUsername}
+              onChangeText={(text) => setUsername(text.toLowerCase())}
               autoCapitalize="none"
               autoCorrect={false}
             />
+            <Text style={styles.helperText}>{USERNAME_HINT}</Text>
 
             <View style={styles.passwordRow}>
               <TextInput

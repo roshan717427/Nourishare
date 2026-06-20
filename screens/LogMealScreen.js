@@ -16,11 +16,12 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomNavigation from '../components/BottomNavigation';
 import { colors } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
 import { API_URL } from '../config/api';
-import { withAuthHeaders } from '../utils/apiAuth';
+import { authFetch, AuthError, normalizeUsername } from '../utils/apiAuth';
 
 const HOUR_OPTIONS = Array.from({ length: 13 }, (_, i) => i);
 const MINUTE_OPTIONS = Array.from({ length: 12 }, (_, i) => i * 5);
@@ -69,6 +70,7 @@ function TimePickerModal({ visible, title, options, selected, onSelect, onClose,
 
 export default function LogMealScreen({ navigation }) {
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const [mealName, setMealName] = useState('');
   const [photo, setPhoto] = useState(null);
   const [ingredients, setIngredients] = useState('');
@@ -163,6 +165,16 @@ export default function LogMealScreen({ navigation }) {
 
     setIsSubmitting(true);
 
+    const effectiveUsername = normalizeUsername(user?.username);
+    if (!effectiveUsername) {
+      Alert.alert(
+        'Session error',
+        'We could not verify your username. Please sign out and sign in again.'
+      );
+      setIsSubmitting(false);
+      return;
+    }
+
     try {
       // Convert photo to base64 if present
       let photoBase64 = null;
@@ -174,7 +186,7 @@ export default function LogMealScreen({ navigation }) {
 
       // Prepare log data - matching API expectations
       const logData = {
-        username: user?.username || 'current_user',
+        username: effectiveUsername,
         title: mealName.trim(),
         ingredients: ingredients.trim(),
         rating,
@@ -198,9 +210,8 @@ export default function LogMealScreen({ navigation }) {
       });
 
       // Call API
-      const response = await fetch(`${API_URL}/createRecipeLog`, {
+      const response = await authFetch(`${API_URL}/createRecipeLog`, {
         method: 'POST',
-        headers: await withAuthHeaders(),
         body: JSON.stringify(logData),
       });
 
@@ -232,23 +243,31 @@ export default function LogMealScreen({ navigation }) {
       }
     } catch (error) {
       console.error('Error logging meal:', error);
-      Alert.alert('Error', error.message || 'Failed to log meal. Please try again.');
+      if (error instanceof AuthError) {
+        Alert.alert('Session expired', error.message);
+      } else {
+        Alert.alert('Error', error.message || 'Failed to log meal. Please try again.');
+      }
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
+    <View style={styles.container}>
       <StatusBar style="dark" />
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
       >
+        <ScrollView
+          style={styles.flex}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+        >
         <View style={styles.header}>
           <TouchableOpacity
             onPress={() => navigation.goBack()}
@@ -456,11 +475,11 @@ export default function LogMealScreen({ navigation }) {
             {isSubmitting ? 'Logging...' : 'Log meal'}
           </Text>
         </TouchableOpacity>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
-      {/* Bottom Navigation */}
       <BottomNavigation navigation={navigation} activeTab="Post" />
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -469,7 +488,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.card,
   },
-  scrollView: {
+  flex: {
     flex: 1,
   },
   scrollContent: {

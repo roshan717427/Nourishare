@@ -6,9 +6,22 @@ async function resolveUsernameFromToken(decoded) {
   const fromDisplayName = normalizeUsername(decoded.name);
   if (fromDisplayName) return fromDisplayName;
 
+  const db = getFirestore();
+
+  if (decoded.uid) {
+    const uidSnapshot = await db
+      .collection('users')
+      .where('uid', '==', decoded.uid)
+      .limit(1)
+      .get();
+    if (!uidSnapshot.empty) {
+      const doc = uidSnapshot.docs[0];
+      return normalizeUsername(doc.id) || normalizeUsername(doc.data().username);
+    }
+  }
+
   if (!decoded.email) return null;
 
-  const db = getFirestore();
   const snapshot = await db
     .collection('users')
     .where('email', '==', decoded.email)

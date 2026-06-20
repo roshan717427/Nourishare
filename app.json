@@ -2,7 +2,7 @@
   "expo": {
     "name": "Munchable",
     "slug": "munchable",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "sdkVersion": "54.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -17,6 +17,7 @@
     ],
     "ios": {
       "appleTeamID": "862RFB9H5Y",
+      "buildNumber": "2",
       "supportsTablet": true,
       "bundleIdentifier": "com.roshanpaul.munchable",
       "infoPlist": {
@@ -40,7 +41,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "The app accesses your photos to let you share them with your meals."
+          "photosPermission": "The app accesses your photos to let you share them with your meals.",
+          "cameraPermission": "The app accesses your camera to let you take photos of your meals."
         }
       ],
       "expo-asset"
