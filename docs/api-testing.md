@@ -26,7 +26,7 @@ that value must match the username resolved from the token — otherwise the API
 returns `403 Forbidden`.
 
 **Public (no token required):** `GET /api/getUserProfile?username=...`,
-`POST /api/social?action=login`, `GET /api/social?action=followers|following|feed|...`
+`POST /api/social?action=login`, `GET /api/social?action=followers`, etc.
 (read-only social queries that do not list private data).
 
 **Token required:** profile create/update/delete, recipe log mutations, social
@@ -47,7 +47,7 @@ curl -X POST https://munchable-v4.vercel.app/api/createUserProfile \
   -d '{
     "username": "roshan",
     "firstName": "Roshan",
-    "lastName": "Patel",
+    "lastName": "Paul",
     "email": "roshan@email.com",
     "bio": "Food enthusiast and home cook",
     "kitchenPersona": "Experimental chef",

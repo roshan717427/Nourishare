@@ -1,18 +1,35 @@
 const { initializeApp, cert, getApps } = require('firebase-admin/app');
+const { getAuth } = require('firebase-admin/auth');
 const { getFirestore } = require('firebase-admin/firestore');
 const { refreshUserPersonality, isPersonalityStale } = require('./_helpers/personalityHelper');
 const { capitalizeList } = require('../utils/titleCase');
 const { normalizeUsername } = require('./_helpers/validateInput');
 const { verifyAuth } = require('./_helpers/verifyAuth');
 
-function deriveDisplayName(data, username, tokenName) {
-  const fromFields = [data.name, [data.firstName, data.lastName].filter(Boolean).join(' ').trim()]
+function capitalizeName(value) {
+  return String(value || '')
+    .trim()
+    .replace(/(^|[ '-])([a-z])/g, (match, sep, letter) => sep + letter.toUpperCase());
+}
+
+function deriveDisplayName(data, tokenName) {
+  const fromFields = [[data.firstName, data.lastName].filter(Boolean).join(' ').trim(), String(data.name || '').trim()]
     .map((value) => String(value || '').trim())
     .find(Boolean);
-  if (fromFields) return fromFields;
+  if (fromFields) return capitalizeName(fromFields);
   const fromToken = String(tokenName || '').trim();
-  if (fromToken && !fromToken.includes('@')) return fromToken;
-  return username;
+  if (fromToken && !fromToken.includes('@')) return capitalizeName(fromToken);
+  // Last resort: never return undefined. UI layers fall back to 'User'/'This cook'
+  // on an empty name, which is safer than leaking the username as a display name.
+  return '';
+}
+
+function isBadName(name, username) {
+  const value = String(name || '').trim();
+  if (!value) return true;                          // missing
+  if (value.includes('@')) return true;             // email leaked in
+  if (value.toLowerCase() === String(username || '').toLowerCase()) return true; // it's the username
+  return false;
 }
 
 async function repairOwnProfile(db, username, auth, data) {
@@ -20,8 +37,23 @@ async function repairOwnProfile(db, username, auth, data) {
   if (!data.uid && auth.uid) patches.uid = auth.uid;
   if (!data.email && auth.decoded.email) patches.email = auth.decoded.email;
   if (!data.username) patches.username = username;
-  if (!data.name) {
-    patches.name = deriveDisplayName(data, username, auth.decoded.name);
+
+  const hasRealNameParts = data.firstName || data.lastName;
+  if (isBadName(data.name, username) && hasRealNameParts) {
+    patches.name = deriveDisplayName(data, auth.decoded.name);
+  } else if (!data.name) {
+    patches.name = deriveDisplayName(data, auth.decoded.name);
+  }
+
+  if (!data.createdAt && auth.uid) {
+    try {
+      const userRecord = await getAuth().getUser(auth.uid);
+      if (userRecord.metadata?.creationTime) {
+        patches.createdAt = userRecord.metadata.creationTime;
+      }
+    } catch (err) {
+      console.warn('Could not backfill createdAt from auth:', err.message);
+    }
   }
   if (Object.keys(patches).length === 0) return data;
   await db.collection('users').doc(username).set(patches, { merge: true });
@@ -32,7 +64,7 @@ async function ensureOwnProfileDoc(db, username, auth) {
   const minimal = {
     username,
     uid: auth.uid,
-    name: deriveDisplayName({}, username, auth.decoded.name),
+    name: deriveDisplayName({}, auth.decoded.name),
     createdAt: new Date().toISOString(),
   };
   if (auth.decoded.email) minimal.email = auth.decoded.email;
@@ -49,6 +81,12 @@ function toMillis(value) {
   if (typeof value === 'number') return value;
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function formatJoinedYear(data) {
+  const ms = toMillis(data.createdAt || data.created_at);
+  if (!ms) return null;
+  return String(new Date(ms).getFullYear());
 }
 
 /** Count logs per calendar month Jan–Dec for the given year. */
@@ -220,7 +258,7 @@ module.exports = async (req, res) => {
     const response = {
       ...data,
       username,
-      name: deriveDisplayName(data, username, isOwnRequest ? auth.decoded.name : null),
+      name: deriveDisplayName(data, isOwnRequest ? auth.decoded.name : null),
       kitchen_personality: kitchenPersonality,
       // Live counts (override stored values). ProfileScreen renders both.
       followers: followersCount,
@@ -228,6 +266,7 @@ module.exports = async (req, res) => {
       // Always derive from logs so bars reflect real activity (zeros when no logs).
       cookingFrequencyYear: new Date().getFullYear(),
       cookingFrequency: computeCookingFrequency(logsSnap),
+      joinedDate: formatJoinedYear(data),
     };
 
     res.status(200).json(response);

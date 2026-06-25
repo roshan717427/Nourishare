@@ -139,7 +139,7 @@ export function AuthProvider({ children }) {
     return signInWithEmailAndPassword(auth, email, password);
   };
 
-  const signUp = async ({ email, password, username: chosenUsername }) => {
+  const signUp = async ({ email, password, username: chosenUsername, firstName, lastName }) => {
     const normalized = normalizeUsername(chosenUsername);
     if (!normalized) {
       const err = new Error('Invalid username');
@@ -149,7 +149,7 @@ export function AuthProvider({ children }) {
 
     const credential = await createUserWithEmailAndPassword(auth, email, password);
     usernameOverrides.current[credential.user.uid] = normalized;
-    await updateProfile(credential.user, { displayName: normalized });
+    await updateProfile(credential.user, { displayName: firstName + ' ' + lastName});
     await credential.user.reload();
     await credential.user.getIdToken(true);
     setUser(mapFirebaseUser(credential.user, normalized));

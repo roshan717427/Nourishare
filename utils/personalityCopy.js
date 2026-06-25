@@ -6,10 +6,11 @@
 import { formatIngredientList, formatList } from './formatList';
 import { toTitleCase } from './titleCase';
 
-const TRAIT_COPY = {
+const TRAIT_COPY = { /* first trait */
   'Kitchen Enthusiast': {
     compoundLabel: 'curious recipe explorer',
-    verbPhrase: 'loves trying new recipes',
+    third: 'loves trying new recipes',
+    own: 'love trying trying new recipes',
   },
   'Global Explorer': {
     compoundLabel: 'globe-trotting experimentalist',
@@ -57,7 +58,7 @@ const TRAIT_COPY = {
   },
 };
 
-const SECONDARY_HINT = {
+const SECONDARY_HINT = { /* second trait */
   'Ingredient Adventurer': {
     third: 'often reaches for ingredients most people skip',
     own: 'often reach for ingredients most people skip',
@@ -100,11 +101,11 @@ const SECONDARY_HINT = {
   },
 };
 
-function articleBefore(word) {
+function articleBefore(word) { /* grammar rules */
   return /^[aeiou]/i.test(String(word || '').trim()) ? 'an' : 'a';
 }
 
-/**
+/** function info
  * @param {string} displayName
  * @returns {string}
  */
@@ -113,6 +114,9 @@ export function extractFirstName(displayName) {
   if (!raw) return '';
   const token = raw.split(/\s+/)[0];
   if (!token) return '';
+
+  // Preserve initials like "CJ" or "JP"
+  if (token.length <= 3 && token === token.toUpperCase()) return token;
   return token.charAt(0).toUpperCase() + token.slice(1).toLowerCase();
 }
 

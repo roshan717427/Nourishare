@@ -11,6 +11,8 @@
 # followers|following|feed|login).
 
 BASE_URL="${BASE_URL:-https://munchable-v4.vercel.app}"
+# Firebase ID token required for protected endpoints (create/update/delete profile, etc.)
+ID_TOKEN="${ID_TOKEN:-YOUR_ID_TOKEN}"
 
 echo "=========================================="
 echo "Munchable v4 API Test"
@@ -28,15 +30,17 @@ echo ""
 echo "1.1 Create User Profile (roshan)"
 curl -X POST "${BASE_URL}/api/createUserProfile" \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer ${ID_TOKEN}" \
   -d '{
     "username": "roshan",
-    "name": "Roshan",
+    "firstName": "Roshan",
+    "lastName": "Paul",
     "email": "roshan@email.com",
     "bio": "Food enthusiast and home cook",
     "kitchenPersona": "Experimental chef",
     "topDishes": ["Pasta", "Curry", "Ramen"],
     "favoriteIngredients": ["Garlic", "Ginger", "Chili"],
-    "cookingStats": {"total_meals": 15, "streak": 5, "favorite_cuisine": "Italian"}
+    "cookingStats": {"total_meals": 15, "streak": 5}
   }'
 
 echo ""
@@ -44,15 +48,17 @@ echo ""
 echo "1.2 Create User Profile (emily)"
 curl -X POST "${BASE_URL}/api/createUserProfile" \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer ${ID_TOKEN}" \
   -d '{
     "username": "emily",
-    "name": "Emily",
+    "firstName": "Emily",
+    "lastName": "Chen",
     "email": "emily@email.com",
     "bio": "Home cook and noodle lover",
     "kitchenPersona": "Sweet-toothed experimentalist",
     "topDishes": ["Pasta", "Pho", "Ramen"],
     "favoriteIngredients": ["Basil", "Chocolate", "Garlic"],
-    "cookingStats": {"total_meals": 27, "streak": 3, "favorite_cuisine": "Italian"}
+    "cookingStats": {"total_meals": 27, "streak": 3}
   }'
 
 echo ""
@@ -79,10 +85,13 @@ echo ""
 echo "1.6 Update User Profile (roshan)"
 curl -X PATCH "${BASE_URL}/api/updateUserProfile" \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer ${ID_TOKEN}" \
   -d '{
     "username": "roshan",
     "bio": "Updated bio: Food enthusiast and experimental chef",
-    "cookingStats": {"total_meals": 20, "streak": 8, "favorite_cuisine": "Italian"}
+    "kitchen_personality": {
+      "top_cuisines": ["Mediterranean", "Italian", "Chinese"]
+    }
   }'
 
 echo ""

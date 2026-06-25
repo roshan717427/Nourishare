@@ -161,7 +161,7 @@ function PortfolioPreview({ favoriteDishes, totalCount, onDishPress, onViewAll }
   );
 }
 
-function NextUpCard({ recipe, onPress, onRemove }) {
+function NextUpCard({ recipe, onPress, onRemove }) { /* fix name later - not urgent */
   const hasPantry =
     (Array.isArray(recipe.ingredientsHave) && recipe.ingredientsHave.length > 0) ||
     (Array.isArray(recipe.ingredientsNeed) && recipe.ingredientsNeed.length > 0);
@@ -459,6 +459,15 @@ export default function ProfileScreen({ navigation, route }) {
     if (profile?.cookingStreak != null) return profile.cookingStreak;
     return computeCookingStreakFromLogs(dishes);
   }, [profile?.cookingStreak, dishes]);
+
+  const joinedYear = useMemo(() => {
+    if (profile?.joinedDate) return profile.joinedDate;
+    const raw = profile?.createdAt ?? profile?.created_at;
+    if (!raw) return null;
+    const ms = typeof raw === 'number' ? raw : Date.parse(String(raw));
+    if (Number.isNaN(ms) || !ms) return null;
+    return String(new Date(ms).getFullYear());
+  }, [profile?.joinedDate, profile?.createdAt, profile?.created_at]);
 
   const togglePortfolioFavorite = async (dishId) => {
     if (!isOwnProfile || !user?.username) return;
@@ -767,7 +776,9 @@ export default function ProfileScreen({ navigation, route }) {
           </View>
           <Text style={styles.userName}>{profile?.name || 'User'}</Text>
           <Text style={styles.username}>@{profile?.username || 'username'}</Text>
-          <Text style={styles.joinedDate}>Joined {profile?.joinedDate || '2024'}</Text>
+          {joinedYear ? (
+            <Text style={styles.joinedDate}>Joined {joinedYear}</Text>
+          ) : null}
 
           {!isOwnProfile && (
             <TouchableOpacity

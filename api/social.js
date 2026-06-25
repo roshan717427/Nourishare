@@ -62,6 +62,10 @@
  *                   Used by Forgot Password to decide reset-vs-signup. We do NOT
  *                   use Firebase fetchSignInMethodsForEmail because email
  *                   enumeration protection makes it return an empty list.
+ *   - checkUsername GET   ?action=checkUsername&username=<u>
+ *                   resp  { exists: bool }
+ *                   Checks whether a username doc already exists in `users`.
+ *                   Used by SignUp to block duplicate usernames before account creation.
  *   - postDetail    GET   ?action=postDetail&postId=<id>&collection=<c>&username=<u>
  *                   collection is 'logs' (default) or 'recipe_posts'.
  *                   resp  { post: <normalized>, comments: [...], likes: [{username,name}], likedByMe }
@@ -636,6 +640,18 @@ async function handleCheckEmail(req, res) {
   res.status(200).json({ exists: true, username: data.username || doc.id });
 }
 
+async function handleCheckUsername(req, res) {
+  if (req.method !== 'GET') return methodNotAllowed(res);
+
+  const username = validateUsername(req.query.username);
+  if (!username) {
+    return res.status(400).json({ error: 'This username already exists' });
+  }
+
+  const doc = await db.collection('users').doc(username).get();
+  res.status(200).json({ exists: doc.exists });
+}
+
 // Validate + resolve the post's collection. Returns the collection name or
 // null (caller should 400). Defaults to 'logs' (where createRecipeLog writes).
 
@@ -1130,6 +1146,7 @@ const handlers = {
   searchusers: handleSearchUsers,
   recommendedfollows: handleRecommendedFollows,
   checkemail: handleCheckEmail,
+  checkUsername: handleCheckUsername,
   postdetail: handlePostDetail,
   comments: handleComments,
   addcomment: handleAddComment,

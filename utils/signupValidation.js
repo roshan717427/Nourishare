@@ -1,4 +1,4 @@
-const PERSON_NAME_RE = /^[A-Za-z]+$/;
+const PERSON_NAME_RE = /^[A-Za-z]+(?:[ '-][A-Za-z]+)*$/;
 const PASSWORD_SPECIAL_RE = /[!@#$%^&*]/;
 const USERNAME_RE = /^[a-z0-9_.]{3,30}$/;
 

@@ -17,6 +17,8 @@ import { useAuth } from '../context/AuthContext';
 import { API_URL } from '../config/api';
 import { colors, radii } from '../constants/theme';
 import { withAuthHeaders } from '../utils/apiAuth';
+import { deleteUser } from 'firebase/auth';
+import { auth } from '../config/firebase';
 import {
   PASSWORD_HINT,
   USERNAME_HINT,
@@ -76,12 +78,27 @@ export default function SignUpScreen({ navigation, route }) {
       lastName: trimmedLastName,
       email: trimmedEmail,
     };
-
+    
     try {
+      const usernameRes = await fetch(
+        `${API_URL}/social?action=checkUsername&username=${encodeURIComponent(trimmedUsername)}`,
+        { method: 'GET', headers: { 'Content-Type': 'application/json' } }
+      );
+      
+      if (usernameRes.ok) {
+        const { exists } = await usernameRes.json();
+        if (exists) {
+          const err = new Error('Username already taken');
+          err.code = 'auth/username-already-exists';
+          throw err;
+        }
+      }
       await signUp({
         email: trimmedEmail,
         password,
         username: trimmedUsername,
+        firstName: trimmedFirstName,
+        lastName: trimmedLastName,
       });
 
       try {
@@ -93,9 +110,30 @@ export default function SignUpScreen({ navigation, route }) {
         });
         if (!profileResponse.ok) {
           const data = await profileResponse.json().catch(() => ({}));
+
+          // Race condition: pre-check passed but someone else took the username first
+          if (
+            profileResponse.status === 409 &&
+            data.error === 'User profile already exists'
+          ) {
+            try {
+              if (auth.currentUser) {
+                await deleteUser(auth.currentUser);
+              }
+            } catch (rollbackErr) {
+              console.log('Could not roll back auth user:', rollbackErr.message);
+            }
+            const err = new Error('Username already taken');
+            err.code = 'auth/username-already-exists';
+            throw err; // bubbles to outer catch → your line 126 message
+          }
+
           throw new Error(data.error || 'Failed to create profile');
         }
       } catch (apiErr) {
+        if (apiErr?.code === 'auth/username-already-exists') {
+          throw apiErr;
+        }
         console.log('Profile API call failed:', apiErr.message);
         Alert.alert(
           'Profile setup issue',
@@ -107,6 +145,10 @@ export default function SignUpScreen({ navigation, route }) {
       let message = 'Could not create your account. Please try again.';
       if (code === 'auth/email-already-in-use') {
         message = 'An account already exists for that email.';
+      
+      } else if (code === 'auth/username-already-exists') {
+        message = 'That username is already taken.';
+      
       } else if (code === 'auth/invalid-email') {
         message = 'That email address is not valid.';
       } else if (code === 'auth/weak-password') {

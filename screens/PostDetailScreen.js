@@ -208,12 +208,12 @@ export default function PostDetailScreen({ navigation, route }) {
 
   const handleRecook = () => {
     if (isInNextUp(nextUpRecipe.id)) {
-      Alert.alert('Already in Next Up', `"${nextUpRecipe.name}" is already on your list.`);
+      Alert.alert('Already in Cook Next', `"${nextUpRecipe.name}" is already on your list.`);
       return;
     }
     const added = addToNextUp(nextUpRecipe);
     if (added) {
-      Alert.alert('Saved to Next Up', `"${nextUpRecipe.name}" is on your private cooking queue.`);
+      Alert.alert('Saved to Cook Next', `"${nextUpRecipe.name}" is on your private cooking queue.`);
     }
   };
 
@@ -333,7 +333,7 @@ export default function PostDetailScreen({ navigation, route }) {
               onPress={handleRecook}
               activeOpacity={0.85}
               accessibilityRole="button"
-              accessibilityLabel={inNextUp ? 'Already in Next Up' : 'Re-cook, add to Next Up'}
+              accessibilityLabel={inNextUp ? 'Already in Cook Next' : 'Re-cook, add to Cook Next'}
             >
               <Ionicons
                 name={inNextUp ? 'checkmark-circle' : 'flame-outline'}
@@ -342,7 +342,7 @@ export default function PostDetailScreen({ navigation, route }) {
               />
               <View style={styles.recookButtonTextWrap}>
                 <Text style={[styles.recookButtonLabel, inNextUp && styles.recookButtonLabelActive]}>
-                  {inNextUp ? 'In Next Up' : 'Re-cook'}
+                  {inNextUp ? 'In Cook Next' : 'Re-cook'}
                 </Text>
                 {!inNextUp ? (
                   <Text style={styles.recookButtonHint}>Add to your private cooking queue</Text>

@@ -44,12 +44,21 @@ module.exports = async (req, res) => {
     return;
   }
 
+  function capitalizeFirst(value) {
+    const v = String(value || '').trim();
+    return v ? v.charAt(0).toUpperCase() + v.slice(1) : v;
+  }
+
+  const capitalFirst = capitalizeFirst(firstName);
+  const capitalLast = capitalizeFirst(lastName);
+
   const userData = {
     username: auth.username,
     uid: auth.uid,
-    name: `${firstName} ${lastName}`,
-    firstName,
-    lastName,
+    createdAt: new Date().toISOString(),
+    name: `${capitalFirst} ${capitalLast}`,
+    firstName: capitalFirst,
+    lastName: capitalLast,
     email,
     bio: sanitizeText(req.body.bio, 500) || undefined,
     profilePhotoUrl: validateUrl(req.body.profilePhotoUrl ?? req.body.profile_photo_url),
