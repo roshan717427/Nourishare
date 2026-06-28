@@ -28,7 +28,7 @@ import {
 } from '../utils/signupValidation';
 
 export default function SignUpScreen({ navigation, route }) {
-  const { signUp } = useAuth();
+  const { signUp, markProfileReady } = useAuth();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState(route?.params?.email || '');
@@ -130,6 +130,7 @@ export default function SignUpScreen({ navigation, route }) {
 
           throw new Error(data.error || 'Failed to create profile');
         }
+        markProfileReady(trimmedUsername);
       } catch (apiErr) {
         if (apiErr?.code === 'auth/username-already-exists') {
           throw apiErr;
@@ -137,7 +138,7 @@ export default function SignUpScreen({ navigation, route }) {
         console.log('Profile API call failed:', apiErr.message);
         Alert.alert(
           'Profile setup issue',
-          'Your account was created but we could not finish setting up your profile. Please sign in and try again, or contact support if this keeps happening.'
+          'Your account was created but we could not finish setting up your profile. Sign in with your email and password to complete setup.'
         );
       }
     } catch (err) {

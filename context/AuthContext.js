@@ -13,11 +13,14 @@ import { normalizeUsername, withAuthHeaders, authFetch } from '../utils/apiAuth'
 const AuthContext = createContext({
   user: null,
   initializing: true,
+  profileStatus: 'unknown',
   following: [],
   pendingRequests: [],
   signIn: () => {},
   signUp: () => {},
   signOut: () => {},
+  completeProfileSetup: () => {},
+  markProfileReady: () => {},
   follow: () => {},
   unfollow: () => {},
   requestFollow: () => {},
@@ -48,44 +51,91 @@ function mapFirebaseUser(fbUser, usernameOverride) {
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [initializing, setInitializing] = useState(true);
+  const [profileStatus, setProfileStatus] = useState('unknown');
   const [following, setFollowing] = useState([]);
   const [pendingRequests, setPendingRequests] = useState([]);
   const usernameOverrides = useRef({});
+  const profileReadyRef = useRef(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (fbUser) => {
       const override = fbUser ? usernameOverrides.current[fbUser.uid] : undefined;
       setUser(mapFirebaseUser(fbUser, override));
       setInitializing(false);
+      if (!fbUser) {
+        setProfileStatus('unknown');
+        profileReadyRef.current = false;
+      }
     });
     return unsubscribe;
   }, []);
 
-  // Resolve username from the server when Firebase displayName is missing or invalid
-  // (e.g. legacy accounts or email-as-displayName). Meal logging already works via
-  // server-side uid/email lookup; profile needs the same identity on the client.
+  // Confirm profile exists on the server (signed-in users only).
   useEffect(() => {
-    if (initializing || !user?.uid || user?.username) return;
+    if (initializing || !user?.uid) {
+      if (!user) setProfileStatus('unknown');
+      return;
+    }
 
     let cancelled = false;
+    profileReadyRef.current = false;
+    setProfileStatus('checking');
+
+    const applyReady = (profile) => {
+      const resolved = normalizeUsername(profile?.username);
+      if (resolved && auth.currentUser) {
+        usernameOverrides.current[auth.currentUser.uid] = resolved;
+        setUser(mapFirebaseUser(auth.currentUser, resolved));
+      }
+      profileReadyRef.current = true;
+      setProfileStatus('ready');
+    };
+
+    const applyNeedsSetup = () => {
+      if (profileReadyRef.current || cancelled) return;
+      setProfileStatus('needs_setup');
+    };
+
     (async () => {
       try {
         const response = await authFetch(`${API_URL}/getUserProfile?me=1`);
-        if (cancelled || !response.ok) return;
-        const profile = await response.json();
-        const resolved = normalizeUsername(profile?.username);
-        if (!resolved || !auth.currentUser) return;
-        usernameOverrides.current[auth.currentUser.uid] = resolved;
-        setUser(mapFirebaseUser(auth.currentUser, resolved));
+        if (cancelled) return;
+
+        if (response.ok) {
+          const profile = await response.json();
+          applyReady(profile);
+          return;
+        }
+
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 404 && data.needsSetup) {
+          // Signup may still be creating the profile; retry once before recovery UI.
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          if (cancelled || profileReadyRef.current) return;
+
+          const retryResponse = await authFetch(`${API_URL}/getUserProfile?me=1`);
+          if (cancelled || profileReadyRef.current) return;
+
+          if (retryResponse.ok) {
+            const profile = await retryResponse.json();
+            applyReady(profile);
+            return;
+          }
+
+          applyNeedsSetup();
+          return;
+        }
       } catch (err) {
-        console.log('Could not resolve username from profile:', err.message);
+        console.log('Could not check profile status:', err.message);
       }
+
+      applyNeedsSetup();
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [user?.uid, user?.username, initializing]);
+  }, [user?.uid, initializing]);
 
   const username = user?.username;
 
@@ -161,10 +211,95 @@ export function AuthProvider({ children }) {
       await firebaseSignOut(auth);
     } finally {
       setUser(null);
+      setProfileStatus('unknown');
       setFollowing([]);
       setPendingRequests([]);
     }
   };
+
+  const completeProfileSetup = async ({ username: chosenUsername, firstName, lastName }) => {
+    const normalized = normalizeUsername(chosenUsername);
+    if (!normalized) {
+      const err = new Error('Invalid username');
+      err.code = 'auth/invalid-username';
+      throw err;
+    }
+
+    const email = user?.email || auth.currentUser?.email;
+    if (!email) {
+      throw new Error('No email on account. Please sign out and sign in again.');
+    }
+
+    const usernameRes = await fetch(
+      `${API_URL}/social?action=checkUsername&username=${encodeURIComponent(normalized)}`,
+      { method: 'GET', headers: { 'Content-Type': 'application/json' } }
+    );
+    if (usernameRes.ok) {
+      const { exists } = await usernameRes.json();
+      if (exists) {
+        const err = new Error('Username already taken');
+        err.code = 'auth/username-already-exists';
+        throw err;
+      }
+    }
+
+    const profile = {
+      username: normalized,
+      name: `${firstName.trim()} ${lastName.trim()}`,
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      email: email.trim(),
+    };
+
+    const headers = await withAuthHeaders({}, { forceRefresh: true });
+    const profileResponse = await fetch(`${API_URL}/createUserProfile`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(profile),
+    });
+
+    if (!profileResponse.ok) {
+      const data = await profileResponse.json().catch(() => ({}));
+      if (
+        profileResponse.status === 409 &&
+        data.error === 'User profile already exists'
+      ) {
+        const refresh = await authFetch(`${API_URL}/getUserProfile?me=1`);
+        if (refresh.ok) {
+          const existing = await refresh.json();
+          const resolved = normalizeUsername(existing?.username);
+          if (resolved && auth.currentUser) {
+            usernameOverrides.current[auth.currentUser.uid] = resolved;
+            setUser(mapFirebaseUser(auth.currentUser, resolved));
+            setProfileStatus('ready');
+            profileReadyRef.current = true;
+            return;
+          }
+        }
+        const err = new Error('Username already taken');
+        err.code = 'auth/username-already-exists';
+        throw err;
+      }
+      throw new Error(data.error || 'Failed to create profile');
+    }
+
+    if (auth.currentUser) {
+      usernameOverrides.current[auth.currentUser.uid] = normalized;
+      setUser(mapFirebaseUser(auth.currentUser, normalized));
+    }
+    profileReadyRef.current = true;
+    setProfileStatus('ready');
+  };
+
+  const markProfileReady = useCallback((chosenUsername) => {
+    const normalized = normalizeUsername(chosenUsername);
+    if (normalized && auth.currentUser) {
+      usernameOverrides.current[auth.currentUser.uid] = normalized;
+      setUser(mapFirebaseUser(auth.currentUser, normalized));
+    }
+    profileReadyRef.current = true;
+    setProfileStatus('ready');
+  }, []);
 
   const follow = (targetUsername) => {
     if (!targetUsername) return;
@@ -204,11 +339,14 @@ export function AuthProvider({ children }) {
       value={{
         user,
         initializing,
+        profileStatus,
         following,
         pendingRequests,
         signIn,
         signUp,
         signOut,
+        completeProfileSetup,
+        markProfileReady,
         follow,
         unfollow,
         requestFollow,

@@ -4,7 +4,7 @@ const { getFirestore } = require('firebase-admin/firestore');
 const { refreshUserPersonality, isPersonalityStale } = require('./_helpers/personalityHelper');
 const { capitalizeList } = require('../utils/titleCase');
 const { normalizeUsername } = require('./_helpers/validateInput');
-const { verifyAuth } = require('./_helpers/verifyAuth');
+const { verifyAuth, verifyToken, resolveUsernameFromToken } = require('./_helpers/verifyAuth');
 
 function capitalizeName(value) {
   return String(value || '')
@@ -143,15 +143,27 @@ module.exports = async (req, res) => {
   let auth = null;
 
   if (wantsOwnProfile) {
-    auth = await verifyAuth(req);
-    if (auth.error) {
+    // Verify the token only (no username resolution). This lets accounts whose
+    // profile creation never finished — they have a valid session but no
+    // Firestore doc and no resolvable username — reach the needsSetup branch
+    // below instead of getting a misleading "Invalid or expired token" error.
+    const tokenAuth = await verifyToken(req);
+    if (tokenAuth.error) {
       const message =
-        auth.error === 'authentication_required'
+        tokenAuth.error === 'authentication_required'
           ? 'Authentication required'
           : 'Invalid or expired token';
-      res.status(auth.status).json({ error: message });
+      res.status(tokenAuth.status).json({ error: message });
       return;
     }
+
+    const resolvedUsername = await resolveUsernameFromToken(tokenAuth.decoded);
+    if (!resolvedUsername) {
+      res.status(404).json({ error: 'Profile not found', needsSetup: true });
+      return;
+    }
+
+    auth = { uid: tokenAuth.uid, username: resolvedUsername, decoded: tokenAuth.decoded };
   }
 
   let username = wantsOwnProfile ? auth.username : normalizeUsername(req.query.username);

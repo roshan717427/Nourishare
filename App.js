@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import LoginScreen from './screens/LoginScreen';
 import SignUpScreen from './screens/SignUpScreen';
 import ForgotPasswordScreen from './screens/ForgotPasswordScreen';
+import FinishProfileScreen from './screens/FinishProfileScreen';
 import HomeScreen from './screens/HomeScreen';
 import LogMealScreen from './screens/LogMealScreen';
 import ProfileScreen from './screens/ProfileScreen';
@@ -22,11 +23,9 @@ import { NextUpProvider } from './context/NextUpContext';
 const Stack = createStackNavigator();
 
 function RootNavigator() {
-  const { user, initializing } = useAuth();
+  const { user, initializing, profileStatus } = useAuth();
 
-  // While Firebase restores the persisted session, show a brief loading state
-  // so we don't flash the Login screen for already-signed-in users.
-  if (initializing) {
+  if (initializing || (user && profileStatus === 'checking')) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f7f8fa' }}>
         <ActivityIndicator size="large" color="#4f7df0" />
@@ -37,7 +36,9 @@ function RootNavigator() {
   return (
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
-        {user ? (
+        {user && profileStatus === 'needs_setup' ? (
+          <Stack.Screen name="FinishProfile" component={FinishProfileScreen} />
+        ) : user ? (
           <>
             <Stack.Screen name="Home" component={HomeScreen} />
             <Stack.Screen name="Explore" component={ExploreScreen} />
@@ -61,12 +62,12 @@ function RootNavigator() {
 }
 
 function AppShell() {
-  const { user, initializing } = useAuth();
+  const { user, initializing, profileStatus } = useAuth();
 
   return (
     <OnboardingProvider totalSteps={ONBOARDING_STEPS.length}>
       <RootNavigator />
-      {!initializing && user ? <OnboardingTour /> : null}
+      {!initializing && user && profileStatus === 'ready' ? <OnboardingTour /> : null}
     </OnboardingProvider>
   );
 }
