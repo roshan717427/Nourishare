@@ -9,8 +9,7 @@ import { toTitleCase } from './titleCase';
 const TRAIT_COPY = { /* first trait */
   'Kitchen Enthusiast': {
     compoundLabel: 'curious recipe explorer',
-    third: 'loves trying new recipes',
-    own: 'love trying trying new recipes',
+    verbPhrase: 'loves trying new recipes',
   },
   'Global Explorer': {
     compoundLabel: 'globe-trotting experimentalist',

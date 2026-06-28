@@ -470,7 +470,7 @@ async function handleFeed(req, res) {
   const userMap = {};
   userDocs.forEach(doc => {
     if (doc.exists) {
-      userMap[doc.id] = { username: doc.id, name: doc.data().name };
+      userMap[doc.id] = toPublicUser(doc);
     }
   });
 
@@ -1153,6 +1153,8 @@ const handlers = {
   deletecomment: handleDeleteComment,
   likes: handleLikes,
   like: handleLike,
+  likecomment: handleLikeComment,
+  unlikecomment: handleUnlikeComment,
   unlike: handleUnlike,
   userlogs: handleUserLogs,
   portfoliofavorites: handlePortfolioFavorites,

@@ -1,6 +1,5 @@
 const { initializeApp, cert, getApps } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
-const { requireAuthForUsername } = require('./_helpers/verifyAuth');
 const { normalizeUsername, sanitizeText, validateEmail, validatePersonName, validateUrl } = require('./_helpers/validateInput');
 
 let db;
@@ -28,12 +27,27 @@ module.exports = async (req, res) => {
     return;
   }
 
-  const auth = await requireAuthForUsername(req, res, req.body.username);
+  const { requireToken } = require('./_helpers/verifyAuth');
+
+  // 1. Verify token → uid (no username resolution)
+  const auth = await requireToken(req, res);
   if (!auth) return;
 
+  // 2. Validate claimed username from body
+  const username = normalizeUsername(req.body.username);
+  if (!username) {
+    res.status(400).json({ error: 'Invalid username' });
+    return;
+  }
+
+  // 3. Email must match token (prevents creating a profile on someone else's account)
   const email = validateEmail(req.body.email);
   if (!email) {
     res.status(400).json({ error: 'Valid email is required' });
+    return;
+  }
+  if (auth.email && email !== auth.email.toLowerCase()) {
+    res.status(403).json({ error: 'Email does not match authenticated account' });
     return;
   }
 
@@ -53,7 +67,7 @@ module.exports = async (req, res) => {
   const capitalLast = capitalizeFirst(lastName);
 
   const userData = {
-    username: auth.username,
+    username,
     uid: auth.uid,
     createdAt: new Date().toISOString(),
     name: `${capitalFirst} ${capitalLast}`,
@@ -84,14 +98,24 @@ module.exports = async (req, res) => {
   });
 
   try {
-    const existing = await db.collection('users').doc(auth.username).get();
+    const uidSnapshot = await db
+      .collection('users')
+      .where('uid', '==', auth.uid)
+      .limit(1)
+      .get();
+
+    if (!uidSnapshot.empty) {
+      res.status(409).json({ error: 'User profile already exists' });
+      return;
+    }
+    const existing = await db.collection('users').doc(username).get();
     if (existing.exists) {
       res.status(409).json({ error: 'User profile already exists' });
       return;
     }
 
-    await db.collection('users').doc(auth.username).set(userData);
-    res.status(201).json({ message: 'User profile created', username: auth.username });
+    await db.collection('users').doc(username).set(userData);
+    res.status(201).json({ message: 'User profile created', username });
   } catch (error) {
     console.error('Error creating user profile:', error);
     res.status(500).json({

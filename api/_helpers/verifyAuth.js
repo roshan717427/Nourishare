@@ -33,6 +33,33 @@ async function resolveUsernameFromToken(decoded) {
   return normalizeUsername(doc.id) || normalizeUsername(doc.data().username);
 }
 
+async function verifyToken(req) {
+  const token = extractBearerToken(req);
+  if (!token) {
+    return { error: 'authentication_required', status: 401 };
+  }
+
+  try {
+    const decoded = await getAuth().verifyIdToken(token);
+    return { uid: decoded.uid, email: decoded.email, decoded };
+  } catch {
+    return { error: 'invalid_token', status: 401 };
+  }
+}
+
+async function requireToken(req, res) {
+  const result = await verifyToken(req);
+  if (result.error) {
+    const message =
+      result.error === 'authentication_required'
+        ? 'Authentication required'
+        : 'Invalid or expired token';
+    res.status(result.status).json({ error: message });
+    return null;
+  }
+  return result;
+}
+
 function extractBearerToken(req) {
   const header = req.headers.authorization || req.headers.Authorization || '';
   const match = header.match(/^Bearer\s+(\S+)$/i);
@@ -93,4 +120,6 @@ module.exports = {
   requireAuth,
   requireAuthForUsername,
   resolveUsernameFromToken,
+  verifyToken,
+  requireToken,
 };

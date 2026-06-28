@@ -48,3 +48,4 @@ coverage/
 .env.*.local
 venv copy/
 .vercel
+Troubleshooting/

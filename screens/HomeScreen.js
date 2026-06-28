@@ -72,6 +72,8 @@ function StoryAvatar({ name, avatar, index, selected, hasSelection, onPress }) {
 
 function FeedCard({ item, onPress, onPressUser, accentColor }) {
   const authorName = item.user?.name || item.user?.username || item.username || 'Someone';
+  const authorAvatar = item.user?.profilePhotoUrl;
+  const authorUsername = item.user?.username || item.username;
   const ratingText =
     item.rating != null && item.rating !== '' ? ` · rated ${item.rating}/5` : '';
   const description =
@@ -81,7 +83,24 @@ function FeedCard({ item, onPress, onPressUser, accentColor }) {
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85}>
       <View style={[styles.cardAccent, { backgroundColor: accentColor }]} />
       <View style={styles.cardText}>
-        <Text style={styles.cardTime}>{timeAgo(item.created_at_ms)}</Text>
+        <View style={styles.cardHeaderRow}>
+          <TouchableOpacity
+            onPress={() => onPressUser?.(authorUsername)}
+            activeOpacity={0.7}
+            disabled={!authorUsername}
+          >
+            {authorAvatar ? (
+              <Image source={{ uri: authorAvatar }} style={styles.cardAvatar} />
+            ) : (
+              <View style={[styles.cardAvatar, styles.cardAvatarPlaceholder]}>
+                <Text style={styles.cardAvatarText}>
+                  {(authorName || '?').charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          <Text style={styles.cardTime}>{timeAgo(item.created_at_ms)}</Text>
+        </View>
         <Text style={styles.cardTitle}>
           {authorName} cooked {item.title}
         </Text>
@@ -531,10 +550,31 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 14,
   },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  cardAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.borderLight,
+    marginRight: 8,
+  },
+  cardAvatarPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.chipCoral,
+  },
+  cardAvatarText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.primary,
+  },
   cardTime: {
     fontSize: 12,
     color: colors.textMuted,
-    marginBottom: 4,
     fontWeight: '500',
   },
   cardTitle: {
