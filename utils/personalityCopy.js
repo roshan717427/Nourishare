@@ -104,6 +104,32 @@ function articleBefore(word) { /* grammar rules */
   return /^[aeiou]/i.test(String(word || '').trim()) ? 'an' : 'a';
 }
 
+const IRREGULAR_SECOND_PERSON = {
+  is: 'are',
+  has: 'have',
+  does: 'do',
+  goes: 'go',
+};
+
+// Converts a third-person-singular verb phrase ("loves trying new recipes")
+// into its second-person form ("love trying new recipes") by adjusting the
+// leading verb, so copy reads correctly after "You ...".
+function toSecondPersonVerbPhrase(phrase) {
+  const text = String(phrase || '').trim();
+  if (!text) return text;
+
+  const spaceIndex = text.indexOf(' ');
+  const firstWord = spaceIndex === -1 ? text : text.slice(0, spaceIndex);
+  const rest = spaceIndex === -1 ? '' : text.slice(spaceIndex);
+  const lowerFirst = firstWord.toLowerCase();
+
+  let base = IRREGULAR_SECOND_PERSON[lowerFirst];
+  if (!base) {
+    base = lowerFirst.endsWith('s') ? lowerFirst.slice(0, -1) : lowerFirst;
+  }
+  return `${base}${rest}`;
+}
+
 /** function info
  * @param {string} displayName
  * @returns {string}
@@ -225,16 +251,16 @@ function formatIngredientNames(ingredients) {
   return formatIngredientList((ingredients || []).filter(Boolean).slice(0, 3));
 }
 
-function buildCuisinePhrase(cuisines) {
+function buildCuisinePhrase(cuisines, useSecondPerson = false) {
   const formatted = formatCuisineNames(cuisines);
   if (!formatted) return '';
-  return `enjoys ${formatted} cooking`;
+  return `${useSecondPerson ? 'enjoy' : 'enjoys'} ${formatted} cooking`;
 }
 
-function buildIngredientPhrase(ingredients) {
+function buildIngredientPhrase(ingredients, useSecondPerson = false) {
   const formatted = formatIngredientNames(ingredients);
   if (!formatted) return '';
-  return `often reaches for ${formatted}`;
+  return `often ${useSecondPerson ? 'reach' : 'reaches'} for ${formatted}`;
 }
 
 function joinDetailPhrases(phrases) {
@@ -243,9 +269,12 @@ function joinDetailPhrases(phrases) {
   return `, ${phrases.slice(0, -1).join(', ')}, and ${phrases[phrases.length - 1]}`;
 }
 
-function buildDetailClauses(cuisines, ingredients) {
+function buildDetailClauses(cuisines, ingredients, useSecondPerson = false) {
   return joinDetailPhrases(
-    [buildCuisinePhrase(cuisines), buildIngredientPhrase(ingredients)].filter(Boolean)
+    [
+      buildCuisinePhrase(cuisines, useSecondPerson),
+      buildIngredientPhrase(ingredients, useSecondPerson),
+    ].filter(Boolean)
   );
 }
 
@@ -269,7 +298,7 @@ function buildMainSentence(trait, isOwnProfile, firstName, detailClauses, omitCo
   const verb = trait.verbPhrase;
   if (omitCompoundLabel) {
     if (isOwnProfile) {
-      return `You ${verb}${detailClauses}.`;
+      return `You ${toSecondPersonVerbPhrase(verb)}${detailClauses}.`;
     }
     const who = firstName || 'This cook';
     return `${who} ${verb}${detailClauses}.`;
@@ -351,9 +380,11 @@ export function buildPersonalityDescriptionParts(name, personality = {}, options
 }
 
 function buildTraitDescriptionParts(personality, trait, isOwnProfile, firstName, omitCompoundLabel) {
+  const useSecondPerson = isOwnProfile && omitCompoundLabel;
   const detailClauses = buildDetailClauses(
     personality.top_cuisines,
-    personality.favorite_ingredients
+    personality.favorite_ingredients,
+    useSecondPerson
   );
 
   const main = buildMainSentence(trait, isOwnProfile, firstName, detailClauses, omitCompoundLabel);

@@ -309,6 +309,7 @@ export default function ProfileScreen({ navigation, route }) {
   const followingUser = isFollowing(username);
   const pendingFollow = isPendingRequest(username);
   const followLabel = followingUser ? 'Following' : pendingFollow ? 'Requested' : 'Follow';
+  const canViewPosts = isOwnProfile || followingUser;
 
   const fetchDishes = useCallback(async () => {
     setDishesLoading(true);
@@ -428,6 +429,7 @@ export default function ProfileScreen({ navigation, route }) {
   };
 
   const openDish = (dish) => {
+    if (!canViewPosts) return;
     navigation.navigate('PostDetail', {
       postId: dish.id,
       collection: dish.postSource || 'logs',
@@ -437,6 +439,14 @@ export default function ProfileScreen({ navigation, route }) {
 
   const openNextUpRecipe = (recipe) => {
     navigation.navigate('RecipeDetail', { recipe });
+  };
+
+  const openFollowList = (mode) => {
+    navigation.navigate('FollowList', {
+      username: profile?.username || username,
+      mode,
+      name: profile?.name,
+    });
   };
 
   const portfolioDishes = useMemo(
@@ -491,8 +501,21 @@ export default function ProfileScreen({ navigation, route }) {
     }
   };
 
-  const handleSignOut = async () => {
-    await signOut();
+  const handleSignOut = () => {
+    Alert.alert(
+      'Sign out?',
+      'You will need to sign in again to access your account.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign out',
+          style: 'destructive',
+          onPress: async () => {
+            await signOut();
+          },
+        },
+      ]
+    );
   };
 
   const openEditProfile = () => {
@@ -824,6 +847,14 @@ export default function ProfileScreen({ navigation, route }) {
                 <Ionicons name="lock-closed" size={11} color={colors.textMuted} />
                 <Text style={styles.privateBadgeText}>Only you</Text>
               </View>
+              <TouchableOpacity
+                style={styles.planMealsButton}
+                onPress={() => navigation.navigate('MealPlan')}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="calendar-outline" size={14} color={colors.accent} />
+                <Text style={styles.planMealsButtonText}>Plan meals</Text>
+              </TouchableOpacity>
             </View>
             {nextUpLoading ? (
               <ActivityIndicator color={colors.accent} style={{ marginVertical: 16 }} />
@@ -884,6 +915,14 @@ export default function ProfileScreen({ navigation, route }) {
                 onDishPress={openDish}
                 onViewAll={() => setGalleryVisible(true)}
               />
+              {!canViewPosts ? (
+                <View style={styles.portfolioLockedNotice}>
+                  <Ionicons name="lock-closed" size={14} color={colors.textMuted} />
+                  <Text style={styles.portfolioLockedText}>
+                    Follow {profile?.name || 'this user'} to open posts and join the conversation.
+                  </Text>
+                </View>
+              ) : null}
             </>
           )}
         </View>
@@ -970,8 +1009,18 @@ export default function ProfileScreen({ navigation, route }) {
             />
           </View>
           <View style={[styles.statsContainer, styles.statsRowSpacing]}>
-            <StatsCard label="Followers" value={followers} color={colors.secondary} />
-            <StatsCard label="Following" value={followingCount} color={colors.chipAmberText} />
+            <StatsCard
+              label="Followers"
+              value={followers}
+              color={colors.secondary}
+              onPress={() => openFollowList('followers')}
+            />
+            <StatsCard
+              label="Following"
+              value={followingCount}
+              color={colors.chipAmberText}
+              onPress={() => openFollowList('following')}
+            />
           </View>
         </View>
 
@@ -1009,6 +1058,7 @@ export default function ProfileScreen({ navigation, route }) {
         ownerName={profile?.name}
         onClose={() => setGalleryVisible(false)}
         onDishPress={(dish) => {
+          if (!canViewPosts) return;
           setGalleryVisible(false);
           openDish(dish);
         }}
@@ -1344,6 +1394,21 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontWeight: '600',
   },
+  planMealsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.chipTeal,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radii.pill,
+    marginLeft: 8,
+  },
+  planMealsButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.chipTealText,
+  },
   sectionTitle: {
     flex: 1,
     flexShrink: 1,
@@ -1559,6 +1624,24 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textMuted,
     fontWeight: '600',
+  },
+  portfolioLockedNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  portfolioLockedText: {
+    flex: 1,
+    fontSize: 13,
+    color: colors.textMuted,
+    lineHeight: 18,
   },
   portfolioFavoriteBadge: {
     position: 'absolute',

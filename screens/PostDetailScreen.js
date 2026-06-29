@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
   Alert,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { useNextUp } from '../context/NextUpContext';
@@ -47,7 +48,7 @@ function postToNextUpRecipe(post, collection, postId) {
 }
 
 export default function PostDetailScreen({ navigation, route }) {
-  const { user } = useAuth();
+  const { user, isFollowing } = useAuth();
   const { addToNextUp, isInNextUp } = useNextUp();
   const username = user?.username;
 
@@ -64,6 +65,8 @@ export default function PostDetailScreen({ navigation, route }) {
   const [loading, setLoading] = useState(true);
   const [commentText, setCommentText] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [replyingTo, setReplyingTo] = useState(null);
+  const commentInputRef = useRef(null);
 
   const loadDetail = useCallback(async () => {
     if (!postId) {
@@ -75,7 +78,7 @@ export default function PostDetailScreen({ navigation, route }) {
         `${API_URL}/social?action=postDetail&postId=${encodeURIComponent(postId)}` +
         `&collection=${encodeURIComponent(collection)}` +
         (username ? `&username=${encodeURIComponent(username)}` : '');
-      const res = await fetch(url);
+      const res = await fetch(url, { headers: await withAuthHeaders() });
       if (res.ok) {
         const data = await res.json();
         if (data.post) setPost(data.post);
@@ -95,12 +98,14 @@ export default function PostDetailScreen({ navigation, route }) {
     }
   }, [postId, collection, username]);
 
-  useEffect(() => {
-    loadDetail();
-  }, [loadDetail]);
+  useFocusEffect(
+    useCallback(() => {
+      loadDetail();
+    }, [loadDetail])
+  );
 
   const toggleLike = async () => {
-    if (!username || !postId) return;
+    if (!username || !postId || !canInteract) return;
     const willLike = !liked;
     setLiked(willLike);
     setLikesCount((c) => Math.max(0, c + (willLike ? 1 : -1)));
@@ -125,6 +130,56 @@ export default function PostDetailScreen({ navigation, route }) {
     }
   };
 
+  const toggleCommentLike = async (commentId) => {
+    if (!username || !postId || !commentId || !canInteract) return;
+
+    let willLike = false;
+    setComments((prev) =>
+      prev.map((c) => {
+        if (c.id !== commentId) return c;
+        willLike = !c.likedByMe;
+        return {
+          ...c,
+          likedByMe: willLike,
+          likes_count: Math.max(0, (c.likes_count || 0) + (willLike ? 1 : -1)),
+        };
+      })
+    );
+
+    try {
+      const res = await fetch(
+        `${API_URL}/social?action=${willLike ? 'likeComment' : 'unlikeComment'}`,
+        {
+          method: 'POST',
+          headers: await withAuthHeaders(),
+          body: JSON.stringify({ username, postId, commentId }),
+        }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (typeof data.likes_count === 'number') {
+          setComments((prev) =>
+            prev.map((c) =>
+              c.id === commentId
+                ? { ...c, likes_count: data.likes_count, likedByMe: !!data.likedByMe }
+                : c
+            )
+          );
+        }
+      }
+    } catch (err) {
+      console.log('Comment like request failed:', err.message);
+    }
+  };
+
+  const startReply = (comment) => {
+    if (!canInteract) return;
+    setReplyingTo({ id: comment.id, name: comment.name || comment.username });
+    commentInputRef.current?.focus();
+  };
+
+  const cancelReply = () => setReplyingTo(null);
+
   const submitComment = async () => {
     const text = commentText.trim();
     if (!text) return;
@@ -132,19 +187,30 @@ export default function PostDetailScreen({ navigation, route }) {
       Alert.alert('Sign in required', 'You need to be logged in to comment.');
       return;
     }
+    if (!canInteract) return;
+    const parentId = replyingTo?.id || null;
     setSubmitting(true);
     try {
       const res = await fetch(`${API_URL}/social?action=addComment`, {
         method: 'POST',
         headers: await withAuthHeaders(),
-        body: JSON.stringify({ username, postId, collection, text }),
+        body: JSON.stringify({ username, postId, collection, text, parentId }),
       });
       if (res.ok) {
         const data = await res.json();
         const newComment =
-          data.comment || { id: `${Date.now()}`, username, name: user?.name, text };
+          data.comment || {
+            id: `${Date.now()}`,
+            username,
+            name: user?.name,
+            text,
+            parentId,
+            likes_count: 0,
+            likedByMe: false,
+          };
         setComments((prev) => [...prev, newComment]);
         setCommentText('');
+        setReplyingTo(null);
       } else {
         throw new Error('Failed to add comment');
       }
@@ -188,13 +254,41 @@ export default function PostDetailScreen({ navigation, route }) {
     );
   };
 
+  const threadedComments = useMemo(() => {
+    const repliesByParent = {};
+    const topLevel = [];
+    comments.forEach((c) => {
+      if (c.parentId) {
+        (repliesByParent[c.parentId] = repliesByParent[c.parentId] || []).push(c);
+      } else {
+        topLevel.push(c);
+      }
+    });
+    const byTime = (a, b) => (a.timestamp || 0) - (b.timestamp || 0);
+    topLevel.sort(byTime);
+    return topLevel.map((c) => ({
+      ...c,
+      replies: (repliesByParent[c.id] || []).sort(byTime),
+    }));
+  }, [comments]);
+
   const authorUsername = post.user?.username || post.username || null;
   const authorName = post.user?.name || post.username || 'Someone';
   const isOwnPost = !!username && authorUsername === username && collection === 'logs';
+  const canInteract =
+    isOwnPost || (!!username && !!authorUsername && isFollowing(authorUsername));
   const ratingText =
     post.rating != null && post.rating !== '' ? `${post.rating}/5` : null;
 
   const metaChips = [
+    post.dishType
+      ? {
+          icon: 'restaurant-outline',
+          text: post.dishType.charAt(0).toUpperCase() + post.dishType.slice(1),
+          tint: colors.chipBlue,
+          textColor: colors.chipBlueText,
+        }
+      : null,
     post.difficulty ? { icon: 'speedometer-outline', text: post.difficulty, tint: colors.chipTeal, textColor: colors.chipTealText } : null,
     post.time ? { icon: 'time-outline', text: post.time, tint: colors.chipAmber, textColor: colors.chipAmberText } : null,
     ratingText ? { icon: 'star', text: ratingText, tint: colors.chipCoral, textColor: colors.chipCoralText } : null,
@@ -214,7 +308,30 @@ export default function PostDetailScreen({ navigation, route }) {
     const added = addToNextUp(nextUpRecipe);
     if (added) {
       Alert.alert('Saved to Cook Next', `"${nextUpRecipe.name}" is on your private cooking queue.`);
+      // Best-effort: let the recipe's author know it was re-cooked. Never block
+      // or fail the recook itself on this notification request.
+      if (username && postId && !isOwnPost) {
+        (async () => {
+          try {
+            await fetch(`${API_URL}/social?action=recook`, {
+              method: 'POST',
+              headers: await withAuthHeaders(),
+              body: JSON.stringify({ username, postId, collection }),
+            });
+          } catch (err) {
+            console.log('Recook notify failed:', err.message);
+          }
+        })();
+      }
     }
+  };
+
+  const handleEditPost = () => {
+    if (!isOwnPost || !postId) return;
+    navigation.navigate('LogMeal', {
+      editPostId: postId,
+      editPost: post,
+    });
   };
 
   const handleDeletePost = () => {
@@ -249,6 +366,65 @@ export default function PostDetailScreen({ navigation, route }) {
     );
   };
 
+  const renderComment = (c, isReply = false) => (
+    <View key={c.id} style={[styles.comment, isReply && styles.replyComment]}>
+      <View style={[styles.commentAvatar, isReply && styles.replyAvatar]}>
+        <Text style={[styles.commentAvatarText, isReply && styles.replyAvatarText]}>
+          {(c.name || c.username || '?').charAt(0).toUpperCase()}
+        </Text>
+      </View>
+      <View style={styles.commentMain}>
+        <View style={styles.commentBubble}>
+          <View style={styles.commentHeader}>
+            <Text style={styles.commentAuthor}>{c.name || c.username}</Text>
+            {username && c.username === username ? (
+              <TouchableOpacity
+                onPress={() => handleDeleteComment(c.id)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityLabel="Delete comment"
+              >
+                <Ionicons name="trash-outline" size={16} color={colors.error} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          <Text style={styles.commentText}>{c.text}</Text>
+        </View>
+        {canInteract ? (
+          <View style={styles.commentActions}>
+            <TouchableOpacity
+              style={styles.commentActionButton}
+              onPress={() => toggleCommentLike(c.id)}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              activeOpacity={0.7}
+              accessibilityLabel={c.likedByMe ? 'Unlike comment' : 'Like comment'}
+            >
+              <Ionicons
+                name={c.likedByMe ? 'heart' : 'heart-outline'}
+                size={16}
+                color={c.likedByMe ? colors.like : colors.textMuted}
+              />
+              {c.likes_count > 0 ? (
+                <Text style={[styles.commentActionText, c.likedByMe && styles.commentActionTextActive]}>
+                  {c.likes_count}
+                </Text>
+              ) : null}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.commentActionButton}
+              onPress={() => startReply(c)}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              activeOpacity={0.7}
+              accessibilityLabel="Reply to comment"
+            >
+              <Ionicons name="arrow-undo-outline" size={15} color={colors.textMuted} />
+              <Text style={styles.commentActionText}>Reply</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+      </View>
+    </View>
+  );
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -264,13 +440,22 @@ export default function PostDetailScreen({ navigation, route }) {
           {post.title || 'Post'}
         </Text>
         {isOwnPost ? (
-          <TouchableOpacity
-            onPress={handleDeletePost}
-            style={styles.backButton}
-            accessibilityLabel="Delete dish"
-          >
-            <Ionicons name="trash-outline" size={22} color={colors.error} />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              onPress={handleEditPost}
+              style={styles.backButton}
+              accessibilityLabel="Edit dish"
+            >
+              <Ionicons name="pencil-outline" size={22} color={colors.text} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleDeletePost}
+              style={styles.backButton}
+              accessibilityLabel="Delete dish"
+            >
+              <Ionicons name="trash-outline" size={22} color={colors.error} />
+            </TouchableOpacity>
+          </View>
         ) : (
           <View style={styles.backButton} />
         )}
@@ -366,7 +551,12 @@ export default function PostDetailScreen({ navigation, route }) {
           {hasRecipeContent(post) ? <RecipeSection recipe={post} /> : null}
 
           <View style={styles.actionsRow}>
-            <TouchableOpacity style={styles.likeButton} onPress={toggleLike} activeOpacity={0.7}>
+            <TouchableOpacity
+              style={styles.likeButton}
+              onPress={toggleLike}
+              activeOpacity={0.7}
+              disabled={!canInteract}
+            >
               <Ionicons
                 name={liked ? 'heart' : 'heart-outline'}
                 size={24}
@@ -403,55 +593,67 @@ export default function PostDetailScreen({ navigation, route }) {
           )}
 
           <Text style={styles.sectionTitle}>Comments</Text>
-          {comments.length === 0 ? (
+          {threadedComments.length === 0 ? (
             <Text style={styles.emptyText}>No comments yet. Start the conversation!</Text>
           ) : (
-            comments.map((c) => (
-              <View key={c.id} style={styles.comment}>
-                <View style={styles.commentAvatar}>
-                  <Text style={styles.commentAvatarText}>
-                    {(c.name || c.username || '?').charAt(0).toUpperCase()}
-                  </Text>
-                </View>
-                <View style={styles.commentBubble}>
-                  <View style={styles.commentHeader}>
-                    <Text style={styles.commentAuthor}>{c.name || c.username}</Text>
-                    {username && c.username === username ? (
-                      <TouchableOpacity
-                        onPress={() => handleDeleteComment(c.id)}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        accessibilityLabel="Delete comment"
-                      >
-                        <Ionicons name="trash-outline" size={16} color={colors.error} />
-                      </TouchableOpacity>
-                    ) : null}
+            threadedComments.map((c) => (
+              <View key={c.id}>
+                {renderComment(c, false)}
+                {c.replies.length > 0 ? (
+                  <View style={styles.replyThread}>
+                    {c.replies.map((r) => renderComment(r, true))}
                   </View>
-                  <Text style={styles.commentText}>{c.text}</Text>
-                </View>
+                ) : null}
               </View>
             ))
           )}
         </View>
       </ScrollView>
 
-      <View style={styles.commentBar}>
-        <TextInput
-          style={styles.commentInput}
-          placeholder="Add a comment..."
-          placeholderTextColor={colors.textMuted}
-          value={commentText}
-          onChangeText={setCommentText}
-          multiline
-        />
-        <TouchableOpacity
-          style={[styles.sendButton, (!commentText.trim() || submitting) && styles.sendButtonDisabled]}
-          onPress={submitComment}
-          disabled={!commentText.trim() || submitting}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="send" size={20} color="#fff" />
-        </TouchableOpacity>
-      </View>
+      {replyingTo ? (
+        <View style={styles.replyingBanner}>
+          <Ionicons name="arrow-undo-outline" size={15} color={colors.primary} />
+          <Text style={styles.replyingText} numberOfLines={1}>
+            Replying to <Text style={styles.replyingName}>{replyingTo.name}</Text>
+          </Text>
+          <TouchableOpacity
+            onPress={cancelReply}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel="Cancel reply"
+          >
+            <Ionicons name="close" size={18} color={colors.textMuted} />
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
+      {canInteract ? (
+        <View style={styles.commentBar}>
+          <TextInput
+            ref={commentInputRef}
+            style={styles.commentInput}
+            placeholder={replyingTo ? `Reply to ${replyingTo.name}...` : 'Add a comment...'}
+            placeholderTextColor={colors.textMuted}
+            value={commentText}
+            onChangeText={setCommentText}
+            multiline
+          />
+          <TouchableOpacity
+            style={[styles.sendButton, (!commentText.trim() || submitting) && styles.sendButtonDisabled]}
+            onPress={submitComment}
+            disabled={!commentText.trim() || submitting}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="send" size={20} color="#fff" />
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={styles.lockedCommentBar}>
+          <Ionicons name="lock-closed" size={16} color={colors.textMuted} />
+          <Text style={styles.lockedCommentText} numberOfLines={1}>
+            Follow {authorName} to like and comment.
+          </Text>
+        </View>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -477,6 +679,10 @@ const styles = StyleSheet.create({
     height: 32,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   headerTitle: {
     flex: 1,
@@ -692,13 +898,71 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.chipTealText,
   },
-  commentBubble: {
+  commentMain: {
     flex: 1,
+  },
+  commentBubble: {
     backgroundColor: colors.card,
     borderRadius: radii.md,
     padding: 12,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  commentActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+    marginLeft: 4,
+    gap: 18,
+  },
+  commentActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  commentActionText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textMuted,
+  },
+  commentActionTextActive: {
+    color: colors.like,
+  },
+  replyThread: {
+    marginLeft: 30,
+    paddingLeft: 12,
+    borderLeftWidth: 2,
+    borderLeftColor: colors.border,
+  },
+  replyComment: {
+    marginBottom: 12,
+  },
+  replyAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+  },
+  replyAvatarText: {
+    fontSize: 13,
+  },
+  replyingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: colors.inputBg,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  replyingText: {
+    flex: 1,
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  replyingName: {
+    fontWeight: '700',
+    color: colors.text,
   },
   commentHeader: {
     flexDirection: 'row',
@@ -726,6 +990,23 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
     backgroundColor: colors.card,
+  },
+  lockedCommentBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 14,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  lockedCommentText: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.textMuted,
+    fontWeight: '500',
   },
   commentInput: {
     flex: 1,

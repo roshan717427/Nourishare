@@ -37,9 +37,9 @@
  *                   body  { username, targetUsername }
  *                   resp  { message }
  *   - following     GET   ?action=following&username=<u>
- *                   resp  { following: [{ username, name, timestamp }] }
+ *                   resp  { following: [{ username, name, profilePhotoUrl, timestamp }] }
  *   - followers     GET   ?action=followers&username=<u>
- *                   resp  { followers: [{ username, name, timestamp }] }
+ *                   resp  { followers: [{ username, name, profilePhotoUrl, timestamp }] }
  *   - feed          GET   ?action=feed&username=<u>
  *                   resp  { recipe_posts: [<normalized post>...] }
  *                   Aggregates posts authored by the people <u> follows from BOTH
@@ -72,7 +72,10 @@
  *   - comments      GET   ?action=comments&postId=<id>
  *                   resp  { comments: [{ id, username, name, text, timestamp }] }
  *   - addComment    POST  ?action=addComment
- *                   body  { username, postId, collection, text }
+ *                   body  { username, postId, collection, text, parentId? }
+ *                   parentId (optional) threads the comment as a reply; replies
+ *                   are kept one level deep (a reply to a reply re-roots to the
+ *                   top-level parent).
  *                   resp  { message, comment, comments_count }
  *   - deleteComment POST  ?action=deleteComment
  *                   body  { username, postId, commentId, collection }
@@ -86,6 +89,12 @@
  *   - unlike        POST  ?action=unlike
  *                   body  { username, postId, collection }
  *                   resp  { message, likes_count }
+ *   - likeComment   POST  ?action=likeComment
+ *                   body  { username, postId, commentId }
+ *                   resp  { message, likes_count, likedByMe }
+ *   - unlikeComment POST  ?action=unlikeComment
+ *                   body  { username, postId, commentId }
+ *                   resp  { message, likes_count, likedByMe }
  *   - userLogs      GET   ?action=userLogs&username=<u>
  *                   resp  { logs: [<normalized post from `logs` collection>...] }
  *                   Returns a user's own logged meals, newest-first.
@@ -99,7 +108,12 @@
  * which is a globally-unique Firestore auto-id so logs and recipe_posts never
  * collide):
  *   post_likes/{postId}/users/{username}      -> { timestamp }
- *   post_comments/{postId}/items/{autoId}     -> { username, name, text, timestamp }
+ *   post_comments/{postId}/items/{autoId}     -> { username, name, text, timestamp, likes_count, parentId? }
+ *     (parentId, when set, points at another item in the same post's thread,
+ *      marking this comment as a one-level-deep reply)
+ *   comment_likes/{commentId}/users/{username} -> { timestamp }
+ *     (commentId is the post_comments item auto-id, globally unique; a
+ *      denormalized likes_count is kept on the comment doc itself)
  * A denormalized `likes_count` / `comments_count` is also maintained on the post
  * document itself (in `logs` or `recipe_posts`) so the feed can show counts
  * without extra per-post reads.
@@ -107,7 +121,7 @@
 const { initializeApp, cert, getApps } = require('firebase-admin/app');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { hasProfileData, rankRecommendations } = require('../utils/recommendFollows');
-const { requireAuthForUsername } = require('./_helpers/verifyAuth');
+const { requireAuth, requireAuthForUsername } = require('./_helpers/verifyAuth');
 const {
   POST_COLLECTIONS,
   normalizeUsername,
@@ -117,6 +131,12 @@ const {
   validateSearchQuery,
   resolveCollection,
 } = require('./_helpers/validateInput');
+const {
+  storePushToken,
+  removePushToken,
+  resolveDisplayName,
+  sendInteractionNotification,
+} = require('./_helpers/notifications');
 
 const SEARCH_RESULT_LIMIT = 20;
 const RECOMMENDED_CANDIDATE_LIMIT = 50;
@@ -188,6 +208,36 @@ async function removeFollowRequest(fromUsername, targetUsername) {
   await Promise.all([requestRef.delete(), outgoingRef.delete(), notificationRef.delete()]);
 }
 
+// Privacy gate: only the post owner or someone who follows them may view,
+// like, or comment on a user's posts. Uses the standard
+// following/{viewer}/user_following/{author} relationship.
+async function userFollows(viewerUsername, authorUsername) {
+  if (!viewerUsername || !authorUsername) return false;
+  if (viewerUsername === authorUsername) return true;
+  const doc = await db
+    .collection('following')
+    .doc(viewerUsername)
+    .collection('user_following')
+    .doc(authorUsername)
+    .get();
+  return doc.exists;
+}
+
+// Resolve a post's author username. When the collection is known we read it
+// directly; otherwise we probe both post collections (postId is a globally
+// unique Firestore auto-id, so there is no collision risk).
+async function resolvePostAuthor(postId, collectionName = null) {
+  if (collectionName) {
+    const doc = await db.collection(collectionName).doc(postId).get();
+    return doc.exists ? doc.data().username || null : null;
+  }
+  for (const name of POST_COLLECTIONS) {
+    const doc = await db.collection(name).doc(postId).get();
+    if (doc.exists) return doc.data().username || null;
+  }
+  return null;
+}
+
 async function handleFollow(req, res) {
   if (req.method !== 'POST') return methodNotAllowed(res);
 
@@ -247,6 +297,14 @@ async function handleFollow(req, res) {
       status: 'pending',
     }),
   ]);
+
+  await sendInteractionNotification({
+    recipientUsername: targetUser,
+    actorUsername: auth.username,
+    title: 'New follow request',
+    body: `${fromName} wants to follow you`,
+    data: { type: 'follow_request', fromUsername: auth.username },
+  });
 
   res.status(200).json({
     message: `Follow request sent to ${targetUser}`,
@@ -330,6 +388,7 @@ async function handleFollowers(req, res) {
     followers.push({
       username: followerId,
       name: followerData.exists ? followerData.data().name : undefined,
+      profilePhotoUrl: followerData.exists ? followerData.data().profilePhotoUrl || null : null,
       timestamp: followerDoc.data().timestamp || null
     });
   }
@@ -364,6 +423,7 @@ async function handleFollowing(req, res) {
     following.push({
       username: followedId,
       name: followedData.exists ? followedData.data().name : undefined,
+      profilePhotoUrl: followedData.exists ? followedData.data().profilePhotoUrl || null : null,
       timestamp: followedDoc.data().timestamp || null
     });
   }
@@ -398,6 +458,7 @@ function normalizePost(doc, collectionName) {
     description: data.notes || data.cooking_notes || '',
     photoUrl: data.photoUrl || data.photo_url || data.image || null,
     rating: data.rating != null ? data.rating : null,
+    dishType: data.dishType || data.dish_type || null,
     difficulty: data.difficulty || data.difficulty_level || null,
     time: data.time || data.cooking_time || null,
     ingredients: data.ingredients || null,
@@ -655,7 +716,11 @@ async function handleCheckUsername(req, res) {
 // Validate + resolve the post's collection. Returns the collection name or
 // null (caller should 400). Defaults to 'logs' (where createRecipeLog writes).
 
-async function loadComments(postId) {
+function commentLikeRef(commentId, username) {
+  return db.collection('comment_likes').doc(commentId).collection('users').doc(username);
+}
+
+async function loadComments(postId, viewerUsername = null) {
   const snapshot = await db
     .collection('post_comments')
     .doc(postId)
@@ -673,6 +738,18 @@ async function loadComments(postId) {
     if (d.exists) nameMap[d.id] = d.data().name || null;
   });
 
+  // Only the viewer's own like state needs a per-comment read; the displayed
+  // count is denormalized on each comment doc.
+  const likedByMeMap = {};
+  if (viewerUsername) {
+    const likeDocs = await Promise.all(
+      snapshot.docs.map(d => commentLikeRef(d.id, viewerUsername).get())
+    );
+    likeDocs.forEach((likeDoc, i) => {
+      likedByMeMap[snapshot.docs[i].id] = likeDoc.exists;
+    });
+  }
+
   return snapshot.docs.map(d => {
     const data = d.data();
     return {
@@ -680,7 +757,10 @@ async function loadComments(postId) {
       username: data.username,
       name: data.name || nameMap[data.username] || null,
       text: data.text,
+      parentId: data.parentId || null,
       timestamp: toMillis(data.timestamp) || null,
+      likes_count: data.likes_count || 0,
+      likedByMe: likedByMeMap[d.id] || false,
     };
   });
 }
@@ -713,11 +793,19 @@ async function handlePostDetail(req, res) {
   if (!collectionName) {
     return res.status(400).json({ error: 'Invalid collection' });
   }
-  const viewerUsername = req.query.username ? normalizeUsername(req.query.username) : null;
+
+  const auth = await requireAuth(req, res);
+  if (!auth) return;
+  const viewerUsername = auth.username;
 
   const postDoc = await db.collection(collectionName).doc(postId).get();
   if (!postDoc.exists) {
     return res.status(404).json({ error: 'Post not found' });
+  }
+
+  const authorUsername = postDoc.data().username || null;
+  if (!(await userFollows(viewerUsername, authorUsername))) {
+    return res.status(403).json({ error: 'Follow this user to view their posts' });
   }
 
   const post = normalizePost(postDoc, collectionName);
@@ -729,7 +817,10 @@ async function handlePostDetail(req, res) {
       : { username: post.username };
   }
 
-  const [comments, likes] = await Promise.all([loadComments(postId), loadLikes(postId)]);
+  const [comments, likes] = await Promise.all([
+    loadComments(postId, viewerUsername),
+    loadLikes(postId),
+  ]);
   const likedByMe = viewerUsername ? likes.some(l => l.username === viewerUsername) : false;
 
   res.status(200).json({ post, comments, likes, likedByMe });
@@ -742,7 +833,8 @@ async function handleComments(req, res) {
   if (!postId) {
     return res.status(400).json({ error: 'Valid postId is required' });
   }
-  const comments = await loadComments(postId);
+  const viewerUsername = req.query.username ? normalizeUsername(req.query.username) : null;
+  const comments = await loadComments(postId, viewerUsername);
   res.status(200).json({ comments });
 }
 
@@ -778,6 +870,18 @@ async function handleDeleteComment(req, res) {
 
   await commentRef.delete();
 
+  // Best-effort cleanup of this comment's like docs so they don't orphan.
+  try {
+    const likeSnap = await db
+      .collection('comment_likes')
+      .doc(validCommentId)
+      .collection('users')
+      .get();
+    await Promise.all(likeSnap.docs.map((d) => d.ref.delete()));
+  } catch (cleanupErr) {
+    console.log('comment_likes cleanup failed:', cleanupErr.message);
+  }
+
   const postRef = db.collection(collectionName).doc(validPostId);
   const postDoc = await postRef.get();
   let newCount = 0;
@@ -809,33 +913,90 @@ async function handleAddComment(req, res) {
     return res.status(400).json({ error: 'Invalid collection' });
   }
 
+  // Optional parent for threaded replies. Threads are kept one level deep: a
+  // reply always attaches to a top-level comment, so if the client replies to
+  // an existing reply we re-root it to that reply's parent.
+  let parentId = null;
+  if (req.body.parentId != null && req.body.parentId !== '') {
+    parentId = validatePostId(req.body.parentId);
+    if (!parentId) {
+      return res.status(400).json({ error: 'Invalid parentId' });
+    }
+  }
+
   const postRef = db.collection(collectionName).doc(validPostId);
   const postDoc = await postRef.get();
   if (!postDoc.exists) {
     return res.status(404).json({ error: 'Post not found' });
   }
 
+  if (!(await userFollows(auth.username, postDoc.data().username || null))) {
+    return res.status(403).json({ error: 'Follow this user to comment on their posts' });
+  }
+
+  const itemsRef = db.collection('post_comments').doc(validPostId).collection('items');
+
+  // For a reply we notify the author of the comment that was replied to (the
+  // comment the user actually tapped "reply" on), even when the thread is
+  // re-rooted to the top-level parent below.
+  let replyToUsername = null;
+  if (parentId) {
+    const parentDoc = await itemsRef.doc(parentId).get();
+    if (!parentDoc.exists) {
+      return res.status(404).json({ error: 'Parent comment not found' });
+    }
+    replyToUsername = parentDoc.data().username || null;
+    const grandparentId = parentDoc.data().parentId;
+    if (grandparentId) parentId = grandparentId;
+  }
+
   const userDoc = await db.collection('users').doc(auth.username).get();
   const name = userDoc.exists ? userDoc.data().name || null : null;
 
-  const commentRef = db
-    .collection('post_comments')
-    .doc(validPostId)
-    .collection('items')
-    .doc();
+  const commentRef = itemsRef.doc();
 
   await commentRef.set({
     username: auth.username,
     name,
     text: commentText,
+    parentId: parentId || null,
     timestamp: FieldValue.serverTimestamp(),
   });
   await postRef.set({ comments_count: FieldValue.increment(1) }, { merge: true });
 
+  const actorName = name || (await resolveDisplayName(db, auth.username));
+  const snippet = commentText.length > 80 ? `${commentText.slice(0, 80)}…` : commentText;
+  if (replyToUsername) {
+    await sendInteractionNotification({
+      recipientUsername: replyToUsername,
+      actorUsername: auth.username,
+      title: 'New reply',
+      body: `${actorName} replied to your comment: ${snippet}`,
+      data: { type: 'reply', postId: validPostId, collection: collectionName },
+    });
+  } else {
+    await sendInteractionNotification({
+      recipientUsername: postDoc.data().username,
+      actorUsername: auth.username,
+      title: 'New comment',
+      body: `${actorName} commented: ${snippet}`,
+      data: { type: 'comment', postId: validPostId, collection: collectionName },
+    });
+  }
+
   const newCount = (postDoc.data().comments_count || 0) + 1;
   res.status(200).json({
     message: 'Comment added',
-    comment: { id: commentRef.id, username: auth.username, name, text: commentText, timestamp: Date.now() },
+    comment: {
+      id: commentRef.id,
+      username: auth.username,
+      name,
+      text: commentText,
+      parentId: parentId || null,
+      timestamp: Date.now(),
+      likes_count: 0,
+      likedByMe: false,
+    },
     comments_count: newCount,
   });
 }
@@ -873,6 +1034,10 @@ async function handleLike(req, res) {
     return res.status(404).json({ error: 'Post not found' });
   }
 
+  if (!(await userFollows(auth.username, postDoc.data().username || null))) {
+    return res.status(403).json({ error: 'Follow this user to interact with their posts' });
+  }
+
   const likeRef = db.collection('post_likes').doc(validPostId).collection('users').doc(auth.username);
   const existing = await likeRef.get();
   let count = postDoc.data().likes_count || 0;
@@ -880,6 +1045,15 @@ async function handleLike(req, res) {
     await likeRef.set({ timestamp: FieldValue.serverTimestamp() });
     await postRef.set({ likes_count: FieldValue.increment(1) }, { merge: true });
     count += 1;
+
+    const authorName = await resolveDisplayName(db, auth.username);
+    await sendInteractionNotification({
+      recipientUsername: postDoc.data().username,
+      actorUsername: auth.username,
+      title: 'New like',
+      body: `${authorName} liked your post`,
+      data: { type: 'like', postId: validPostId, collection: collectionName },
+    });
   }
   res.status(200).json({ message: 'Liked', likes_count: count });
 }
@@ -993,6 +1167,90 @@ async function handleUnlike(req, res) {
   res.status(200).json({ message: 'Unliked', likes_count: count });
 }
 
+async function handleLikeComment(req, res) {
+  if (req.method !== 'POST') return methodNotAllowed(res);
+
+  const { username, postId, commentId } = req.body;
+  const auth = await requireAuthForUsername(req, res, username);
+  if (!auth) return;
+
+  const validPostId = validatePostId(postId);
+  const validCommentId = validatePostId(commentId);
+  if (!validPostId || !validCommentId) {
+    return res.status(400).json({ error: 'Valid postId and commentId are required' });
+  }
+
+  const commentRef = db
+    .collection('post_comments')
+    .doc(validPostId)
+    .collection('items')
+    .doc(validCommentId);
+  const commentDoc = await commentRef.get();
+  if (!commentDoc.exists) {
+    return res.status(404).json({ error: 'Comment not found' });
+  }
+
+  if (!(await userFollows(auth.username, await resolvePostAuthor(validPostId)))) {
+    return res.status(403).json({ error: 'Follow this user to interact with their posts' });
+  }
+
+  const likeRef = commentLikeRef(validCommentId, auth.username);
+  const existing = await likeRef.get();
+  let count = commentDoc.data().likes_count || 0;
+  if (!existing.exists) {
+    await likeRef.set({ timestamp: FieldValue.serverTimestamp() });
+    await commentRef.set({ likes_count: FieldValue.increment(1) }, { merge: true });
+    count += 1;
+
+    const likerName = await resolveDisplayName(db, auth.username);
+    await sendInteractionNotification({
+      recipientUsername: commentDoc.data().username,
+      actorUsername: auth.username,
+      title: 'New like',
+      body: `${likerName} liked your comment`,
+      data: { type: 'commentLike', postId: validPostId },
+    });
+  }
+  res.status(200).json({ message: 'Liked', likes_count: count, likedByMe: true });
+}
+
+async function handleUnlikeComment(req, res) {
+  if (req.method !== 'POST') return methodNotAllowed(res);
+
+  const { username, postId, commentId } = req.body;
+  const auth = await requireAuthForUsername(req, res, username);
+  if (!auth) return;
+
+  const validPostId = validatePostId(postId);
+  const validCommentId = validatePostId(commentId);
+  if (!validPostId || !validCommentId) {
+    return res.status(400).json({ error: 'Valid postId and commentId are required' });
+  }
+
+  const commentRef = db
+    .collection('post_comments')
+    .doc(validPostId)
+    .collection('items')
+    .doc(validCommentId);
+  const commentDoc = await commentRef.get();
+  if (!commentDoc.exists) {
+    return res.status(404).json({ error: 'Comment not found' });
+  }
+
+  const likeRef = commentLikeRef(validCommentId, auth.username);
+  const existing = await likeRef.get();
+  let count = commentDoc.data().likes_count || 0;
+  if (existing.exists) {
+    await likeRef.delete();
+    // Guard against going negative if counters ever drift.
+    if (count > 0) {
+      await commentRef.set({ likes_count: FieldValue.increment(-1) }, { merge: true });
+      count -= 1;
+    }
+  }
+  res.status(200).json({ message: 'Unliked', likes_count: count, likedByMe: false });
+}
+
 async function handleAcceptFollowRequest(req, res) {
   if (req.method !== 'POST') return methodNotAllowed(res);
 
@@ -1027,6 +1285,15 @@ async function handleAcceptFollowRequest(req, res) {
     outgoingRef.delete(),
     notificationRef.set({ status: 'accepted', read: true, acceptedAt: timestamp }, { merge: true }),
   ]);
+
+  const accepterName = await resolveDisplayName(db, auth.username);
+  await sendInteractionNotification({
+    recipientUsername: fromUser,
+    actorUsername: auth.username,
+    title: 'Follow request accepted',
+    body: `${accepterName} accepted your follow request`,
+    data: { type: 'follow_accepted', fromUsername: auth.username },
+  });
 
   res.status(200).json({ message: 'Follow request accepted', fromUsername: fromUser });
 }
@@ -1136,6 +1403,77 @@ async function handleSentFollowRequests(req, res) {
   res.status(200).json({ pending });
 }
 
+async function handleRegisterPushToken(req, res) {
+  if (req.method !== 'POST') return methodNotAllowed(res);
+
+  const { username, token } = req.body;
+  const auth = await requireAuthForUsername(req, res, username);
+  if (!auth) return;
+
+  if (!token || typeof token !== 'string') {
+    return res.status(400).json({ error: 'Valid Expo push token is required' });
+  }
+
+  const stored = await storePushToken(db, auth.username, token);
+  if (!stored) {
+    return res.status(400).json({ error: 'Invalid Expo push token' });
+  }
+
+  res.status(200).json({ message: 'Push token registered' });
+}
+
+async function handleUnregisterPushToken(req, res) {
+  if (req.method !== 'POST') return methodNotAllowed(res);
+
+  const { username, token } = req.body;
+  const auth = await requireAuthForUsername(req, res, username);
+  if (!auth) return;
+
+  if (!token || typeof token !== 'string') {
+    return res.status(400).json({ error: 'Valid Expo push token is required' });
+  }
+
+  await removePushToken(db, auth.username, token);
+  res.status(200).json({ message: 'Push token removed' });
+}
+
+// "Recook" is a private, client-side action (the recipe is added to the
+// actor's local Cook Next queue). There is nothing to persist server-side; this
+// action exists solely to notify the post's author that someone re-cooked their
+// recipe. It is best-effort and never required for the recook itself to work.
+async function handleRecook(req, res) {
+  if (req.method !== 'POST') return methodNotAllowed(res);
+
+  const { username, postId } = req.body;
+  const auth = await requireAuthForUsername(req, res, username);
+  if (!auth) return;
+
+  const validPostId = validatePostId(postId);
+  if (!validPostId) {
+    return res.status(400).json({ error: 'Valid postId is required' });
+  }
+  const collectionName = resolveCollection(req.body.collection);
+  if (!collectionName) {
+    return res.status(400).json({ error: 'Invalid collection' });
+  }
+
+  const authorUsername = await resolvePostAuthor(validPostId, collectionName);
+  if (!authorUsername) {
+    return res.status(404).json({ error: 'Post not found' });
+  }
+
+  const actorName = await resolveDisplayName(db, auth.username);
+  await sendInteractionNotification({
+    recipientUsername: authorUsername,
+    actorUsername: auth.username,
+    title: 'Recipe re-cooked',
+    body: `${actorName} re-cooked your recipe`,
+    data: { type: 'recook', postId: validPostId, collection: collectionName },
+  });
+
+  res.status(200).json({ message: 'ok' });
+}
+
 const handlers = {
   follow: handleFollow,
   unfollow: handleUnfollow,
@@ -1162,6 +1500,9 @@ const handlers = {
   declinefollowrequest: handleDeclineFollowRequest,
   notifications: handleNotifications,
   sentfollowrequests: handleSentFollowRequests,
+  registerpushtoken: handleRegisterPushToken,
+  unregisterpushtoken: handleUnregisterPushToken,
+  recook: handleRecook,
 };
 
 module.exports = async (req, res) => {

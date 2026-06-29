@@ -9,6 +9,10 @@ import {
 import { auth } from '../config/firebase';
 import { API_URL } from '../config/api';
 import { normalizeUsername, withAuthHeaders, authFetch } from '../utils/apiAuth';
+import {
+  registerForPushNotificationsAsync,
+  addPushTokenListener,
+} from '../utils/pushNotifications';
 
 const AuthContext = createContext({
   user: null,
@@ -184,6 +188,41 @@ export function AuthProvider({ children }) {
     }
     refreshSocialState();
   }, [username, refreshSocialState]);
+
+  // Register this device's Expo push token with the backend once the user has a
+  // resolved username, and keep it current if Expo rotates the token. All
+  // failures are swallowed so push setup never blocks the signed-in experience.
+  useEffect(() => {
+    if (!username) return;
+
+    let cancelled = false;
+
+    const uploadToken = async (token) => {
+      if (!token || cancelled) return;
+      try {
+        await authFetch(`${API_URL}/social?action=registerPushToken`, {
+          method: 'POST',
+          body: JSON.stringify({ username, token }),
+        });
+      } catch (err) {
+        console.log('Could not register push token:', err.message);
+      }
+    };
+
+    (async () => {
+      const token = await registerForPushNotificationsAsync();
+      await uploadToken(token);
+    })();
+
+    const subscription = addPushTokenListener((token) => {
+      uploadToken(token);
+    });
+
+    return () => {
+      cancelled = true;
+      subscription?.remove?.();
+    };
+  }, [username]);
 
   const signIn = async (email, password) => {
     return signInWithEmailAndPassword(auth, email, password);

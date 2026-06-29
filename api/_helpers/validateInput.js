@@ -3,6 +3,18 @@ const PERSON_NAME_RE = /^[A-Za-z]+(?:[ '-][A-Za-z]+)*$/;
 const PASSWORD_SPECIAL_RE = /[!@#$%^&*]/;
 const POST_ID_RE = /^[a-zA-Z0-9_-]{1,128}$/;
 const POST_COLLECTIONS = ['logs', 'recipe_posts'];
+const DISH_TYPES = [
+  'breakfast',
+  'brunch',
+  'lunch',
+  'dinner',
+  'appetizer',
+  'snack',
+  'side',
+  'pastry',
+  'dessert',
+  'beverage',
+];
 
 const MAX_COMMENT = 2000;
 const MAX_TEXT = 10000;
@@ -95,6 +107,12 @@ function validateSearchQuery(raw) {
   return sanitizeText(raw, MAX_SEARCH);
 }
 
+function validateDishType(raw) {
+  if (raw == null || raw === '') return undefined;
+  const value = String(raw).trim().toLowerCase();
+  return DISH_TYPES.includes(value) ? value : undefined;
+}
+
 function validateRating(raw) {
   const num = typeof raw === 'number' ? raw : parseFloat(raw);
   if (Number.isNaN(num) || num < 1 || num > 5) return null;
@@ -153,6 +171,7 @@ function sanitizeRecipeLogFields(body) {
     rating: validateRating(body.rating),
     difficulty: sanitizeText(body.difficulty, 50),
     time: sanitizeText(body.time, 50),
+    dishType: validateDishType(body.dishType ?? body.dish_type),
     cookedWith: sanitizeCookedWith(body.cookedWith),
   };
 }
@@ -167,6 +186,7 @@ const ALLOWED_LOG_UPDATE_KEYS = new Set([
   'rating',
   'difficulty',
   'time',
+  'dishType',
   'cookedWith',
 ]);
 
@@ -176,6 +196,14 @@ function sanitizeLogUpdates(updates) {
   const out = {};
   for (const key of ALLOWED_LOG_UPDATE_KEYS) {
     if (updates[key] === undefined) continue;
+    if (key === 'dishType') {
+      if (updates[key] === null || updates[key] === '') {
+        out.dishType = null;
+        continue;
+      }
+      if (sanitized.dishType !== undefined) out.dishType = sanitized.dishType;
+      continue;
+    }
     if (key === 'cookedWith') {
       out.cookedWith = sanitized.cookedWith;
       continue;
@@ -193,6 +221,7 @@ function sanitizeLogUpdates(updates) {
       continue;
     }
     const value = sanitized[key];
+    if (value === undefined) continue;
     if (value === '' && key !== 'notes') continue;
     out[key] = value;
   }
@@ -245,8 +274,35 @@ function validateLimit(raw, defaultLimit, maxLimit) {
   return Math.min(num, maxLimit);
 }
 
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function validateDateString(raw) {
+  if (raw == null || raw === '') return null;
+  const value = String(raw).trim();
+  if (!DATE_RE.test(value)) return null;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+  return value;
+}
+
+function validateDateRange(startRaw, endRaw) {
+  const startDate = validateDateString(startRaw);
+  const endDate = validateDateString(endRaw);
+  if (!startDate || !endDate) return null;
+  if (startDate > endDate) return null;
+  return { startDate, endDate };
+}
+
 module.exports = {
   POST_COLLECTIONS,
+  DISH_TYPES,
   normalizeUsername,
   validatePostId,
   sanitizeText,
@@ -257,6 +313,7 @@ module.exports = {
   validatePersonName,
   validatePassword,
   validateSearchQuery,
+  validateDishType,
   validateRating,
   validateUrl,
   normalizeHttpUrl,
@@ -266,4 +323,6 @@ module.exports = {
   pickProfileUpdates,
   resolveCollection,
   validateLimit,
+  validateDateString,
+  validateDateRange,
 };

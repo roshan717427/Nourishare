@@ -26,10 +26,56 @@ import { authFetch, AuthError, normalizeUsername } from '../utils/apiAuth';
 const HOUR_OPTIONS = Array.from({ length: 13 }, (_, i) => i);
 const MINUTE_OPTIONS = Array.from({ length: 12 }, (_, i) => i * 5);
 
+const DISH_TYPES = [
+  'breakfast',
+  'brunch',
+  'lunch',
+  'dinner',
+  'appetizer',
+  'snack',
+  'side',
+  'pastry',
+  'dessert',
+  'beverage',
+];
+
+const DIFFICULTY_LEVELS = ['Easy', 'Medium', 'Hard'];
+
 function formatCookTime(hours, minutes) {
   if (hours > 0 && minutes > 0) return `${hours} hr ${minutes} min`;
   if (hours > 0) return `${hours} hr`;
   return `${minutes} min`;
+}
+
+function parseCookTime(text) {
+  const str = String(text || '');
+  const hrMatch = str.match(/(\d+)\s*hr/i);
+  const minMatch = str.match(/(\d+)\s*min/i);
+  return {
+    hours: hrMatch ? parseInt(hrMatch[1], 10) : 0,
+    minutes: minMatch ? parseInt(minMatch[1], 10) : 0,
+  };
+}
+
+function capitalize(value) {
+  if (!value) return '';
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function matchDifficulty(value) {
+  if (!value) return null;
+  const lower = String(value).toLowerCase();
+  return DIFFICULTY_LEVELS.find((level) => level.toLowerCase() === lower) || null;
+}
+
+function ingredientsToText(value) {
+  if (Array.isArray(value)) return value.filter(Boolean).join('\n');
+  return value ? String(value) : '';
+}
+
+function cookedWithToText(value) {
+  if (Array.isArray(value)) return value.filter(Boolean).map((u) => `@${u}`).join(', ');
+  return value ? String(value) : '';
 }
 
 function assetToPhotoUri(asset) {
@@ -76,21 +122,30 @@ function TimePickerModal({ visible, title, options, selected, onSelect, onClose,
   );
 }
 
-export default function LogMealScreen({ navigation }) {
+export default function LogMealScreen({ navigation, route }) {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
-  const [mealName, setMealName] = useState('');
-  const [photo, setPhoto] = useState(null);
-  const [ingredients, setIngredients] = useState('');
-  const [rating, setRating] = useState(null);
-  const [difficulty, setDifficulty] = useState(null);
-  const [cookHours, setCookHours] = useState(0);
-  const [cookMinutes, setCookMinutes] = useState(30);
+
+  const editPost = route?.params?.editPost || null;
+  const editPostId = route?.params?.editPostId || editPost?.id || null;
+  const isEditing = !!editPostId;
+  const initialTime = parseCookTime(editPost?.time);
+
+  const [mealName, setMealName] = useState(editPost?.title || '');
+  const [photo, setPhoto] = useState(editPost?.photoUrl || null);
+  const [ingredients, setIngredients] = useState(ingredientsToText(editPost?.ingredients));
+  const [rating, setRating] = useState(editPost?.rating != null ? editPost.rating : null);
+  const [difficulty, setDifficulty] = useState(matchDifficulty(editPost?.difficulty));
+  const [dishType, setDishType] = useState(editPost?.dishType || null);
+  const [cookHours, setCookHours] = useState(isEditing ? initialTime.hours : 0);
+  const [cookMinutes, setCookMinutes] = useState(isEditing ? initialTime.minutes : 30);
   const [hoursPickerVisible, setHoursPickerVisible] = useState(false);
   const [minutesPickerVisible, setMinutesPickerVisible] = useState(false);
-  const [recipeLink, setRecipeLink] = useState('');
-  const [recipeInstructions, setRecipeInstructions] = useState('');
-  const [cookedWith, setCookedWith] = useState('');
+  const [recipeLink, setRecipeLink] = useState(editPost?.recipeLink || '');
+  const [recipeInstructions, setRecipeInstructions] = useState(
+    editPost?.recipeInstructions || ''
+  );
+  const [cookedWith, setCookedWith] = useState(cookedWithToText(editPost?.cookedWith));
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const parseCookedWith = (text) =>
@@ -100,55 +155,65 @@ export default function LogMealScreen({ navigation }) {
       .filter(Boolean);
 
   const pickImage = async () => {
-    // Request permissions
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permission needed', 'Allow photo library access to add a photo.');
       return;
     }
 
-    // Launch image picker
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.5,
-      base64: true,
-    });
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.5,
+        base64: true,
+      });
 
-    if (!result.canceled && result.assets[0]) {
-      setPhoto(assetToPhotoUri(result.assets[0]));
+      if (!result.canceled && result.assets?.[0]) {
+        setPhoto(assetToPhotoUri(result.assets[0]));
+      }
+    } catch (err) {
+      console.error('Photo library error:', err);
+      Alert.alert('Could not open photos', 'Something went wrong opening your photo library. Please try again.');
     }
   };
 
   const takePhoto = async () => {
-    // Request permissions
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permission needed', 'Allow camera access to snap a photo.');
       return;
     }
 
-    // Launch camera
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.5,
-      base64: true,
-    });
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.5,
+        base64: true,
+      });
 
-    if (!result.canceled && result.assets[0]) {
-      setPhoto(assetToPhotoUri(result.assets[0]));
+      if (!result.canceled && result.assets?.[0]) {
+        setPhoto(assetToPhotoUri(result.assets[0]));
+      }
+    } catch (err) {
+      console.error('Camera error:', err);
+      Alert.alert('Could not open camera', 'Something went wrong opening the camera. Please try again.');
     }
   };
 
+  // launchCameraAsync / launchImageLibraryAsync present a native modal, which can
+  // fail to appear if invoked while an Alert is still dismissing. Defer the launch
+  // until after the action sheet has fully closed.
   const showImageOptions = () => {
     Alert.alert(
       'Add a photo',
       'Choose an option',
       [
-        { text: 'Camera', onPress: takePhoto },
-        { text: 'Photo Library', onPress: pickImage },
+        { text: 'Camera', onPress: () => setTimeout(takePhoto, 300) },
+        { text: 'Photo Library', onPress: () => setTimeout(pickImage, 300) },
         { text: 'Cancel', style: 'cancel' },
       ]
     );
@@ -185,7 +250,44 @@ export default function LogMealScreen({ navigation }) {
       return;
     }
 
+    const cookedWithList = parseCookedWith(cookedWith);
+
     try {
+      if (isEditing) {
+        const updates = {
+          title: mealName.trim(),
+          ingredients: ingredients.trim(),
+          rating,
+          difficulty: difficulty.toLowerCase(),
+          time: formatCookTime(cookHours, cookMinutes),
+          recipeLink: recipeLink.trim(),
+          recipeInstructions: recipeInstructions.trim(),
+          dishType: dishType,
+          cookedWith: cookedWithList,
+        };
+        if (photo) updates.photoUrl = photo;
+
+        const response = await authFetch(`${API_URL}/updateRecipeLog`, {
+          method: 'POST',
+          body: JSON.stringify({
+            username: effectiveUsername,
+            logId: editPostId,
+            updates,
+          }),
+        });
+
+        const result = await response.json();
+
+        if (response.ok && result.message) {
+          Alert.alert('Updated!', 'Your changes have been saved.', [
+            { text: 'OK', onPress: () => navigation.goBack() },
+          ]);
+        } else {
+          throw new Error(result.error || 'Failed to update meal');
+        }
+        return;
+      }
+
       const logData = {
         username: effectiveUsername,
         title: mealName.trim(),
@@ -193,12 +295,12 @@ export default function LogMealScreen({ navigation }) {
         rating,
         difficulty: difficulty.toLowerCase(),
         time: formatCookTime(cookHours, cookMinutes),
+        dishType: dishType || undefined,
         photoUrl: photo || undefined,
         recipeLink: recipeLink.trim() || undefined,
         recipeInstructions: recipeInstructions.trim() || undefined,
       };
 
-      const cookedWithList = parseCookedWith(cookedWith);
       if (cookedWithList.length > 0) {
         logData.cookedWith = cookedWithList;
       }
@@ -229,6 +331,7 @@ export default function LogMealScreen({ navigation }) {
               setIngredients('');
               setRating(null);
               setDifficulty(null);
+              setDishType(null);
               setCookHours(0);
               setCookMinutes(30);
               setRecipeLink('');
@@ -276,7 +379,7 @@ export default function LogMealScreen({ navigation }) {
           >
             <Ionicons name="close" size={26} color={colors.text} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Log a meal</Text>
+          <Text style={styles.headerTitle}>{isEditing ? 'Edit meal' : 'Log a meal'}</Text>
           <View style={styles.placeholder} />
         </View>
 
@@ -290,6 +393,33 @@ export default function LogMealScreen({ navigation }) {
             onChangeText={setMealName}
             placeholderTextColor="#999"
           />
+        </View>
+
+        {/* Dish Type */}
+        <View style={styles.section}>
+          <Text style={styles.label}>Dish type (optional)</Text>
+          <View style={styles.dishTypeWrap}>
+            {DISH_TYPES.map((type) => (
+              <TouchableOpacity
+                key={type}
+                style={[
+                  styles.dishTypeChip,
+                  dishType === type && styles.dishTypeChipSelected,
+                ]}
+                onPress={() => setDishType(dishType === type ? null : type)}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.dishTypeChipText,
+                    dishType === type && styles.dishTypeChipTextSelected,
+                  ]}
+                >
+                  {capitalize(type)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
 
         {/* Add Photo */}
@@ -473,7 +603,13 @@ export default function LogMealScreen({ navigation }) {
           disabled={isSubmitting}
         >
           <Text style={styles.submitButtonText}>
-            {isSubmitting ? 'Logging...' : 'Log meal'}
+            {isSubmitting
+              ? isEditing
+                ? 'Saving...'
+                : 'Logging...'
+              : isEditing
+                ? 'Save changes'
+                : 'Log meal'}
           </Text>
         </TouchableOpacity>
         </ScrollView>
@@ -625,6 +761,31 @@ const styles = StyleSheet.create({
     color: '#000',
   },
   difficultyButtonTextSelected: {
+    color: '#fff',
+  },
+  dishTypeWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  dishTypeChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    backgroundColor: '#fff',
+  },
+  dishTypeChipSelected: {
+    backgroundColor: '#000',
+    borderColor: '#000',
+  },
+  dishTypeChipText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#000',
+  },
+  dishTypeChipTextSelected: {
     color: '#fff',
   },
   timePickerRow: {

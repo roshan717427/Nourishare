@@ -31,7 +31,9 @@
       },
       "package": "com.roshanpaul.munchable",
       "permissions": [
-        "android.permission.RECORD_AUDIO"
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.POST_NOTIFICATIONS"
       ]
     },
     "web": {
@@ -43,6 +45,12 @@
         {
           "photosPermission": "The app accesses your photos to let you share them with your meals.",
           "cameraPermission": "The app accesses your camera to let you take photos of your meals."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#FF6B6B"
         }
       ],
       "expo-asset"

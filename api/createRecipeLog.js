@@ -3,6 +3,7 @@ const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { refreshUserPersonality } = require('./_helpers/personalityHelper');
 const { requireAuthForUsername } = require('./_helpers/verifyAuth');
 const { sanitizeRecipeLogFields } = require('./_helpers/validateInput');
+const { resolveDisplayName, sendInteractionNotification } = require('./_helpers/notifications');
 
 let db;
 try {
@@ -74,6 +75,7 @@ module.exports = async (req, res) => {
     if (fields.photoUrl !== undefined) logData.photoUrl = fields.photoUrl;
     if (fields.recipeLink !== undefined) logData.recipeLink = fields.recipeLink;
     if (fields.notes) logData.notes = fields.notes;
+    if (fields.dishType) logData.dishType = fields.dishType;
     if (fields.cookedWith.length > 0) logData.cookedWith = fields.cookedWith;
 
     const docRef = await db.collection('logs').add(logData);
@@ -96,6 +98,25 @@ module.exports = async (req, res) => {
       await refreshUserPersonality(db, auth.username);
     } catch (personalityErr) {
       console.error('Failed to refresh kitchen personality:', personalityErr.message);
+    }
+
+    if (fields.cookedWith.length > 0) {
+      try {
+        const taggerName = await resolveDisplayName(db, auth.username);
+        await Promise.all(
+          fields.cookedWith.map((taggedUsername) =>
+            sendInteractionNotification({
+              recipientUsername: taggedUsername,
+              actorUsername: auth.username,
+              title: 'You were tagged',
+              body: `${taggerName} cooked a dish with you: ${fields.title}`,
+              data: { type: 'tag', postId: docRef.id, collection: 'logs' },
+            })
+          )
+        );
+      } catch (tagErr) {
+        console.error('Failed to send cookedWith tag notifications:', tagErr.message);
+      }
     }
 
     res.status(201).json({ message: 'Recipe log created', logId: docRef.id });

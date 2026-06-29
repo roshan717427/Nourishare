@@ -1,8 +1,17 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { colors, radii } from '../constants/theme';
 
-export default function StatsCard({ label, value, color = colors.primary }) {
+export default function StatsCard({ label, value, color = colors.primary, onPress }) {
+  if (onPress) {
+    return (
+      <TouchableOpacity style={styles.container} onPress={onPress} activeOpacity={0.85}>
+        <Text style={[styles.value, { color }]}>{value}</Text>
+        <Text style={styles.label}>{label}</Text>
+      </TouchableOpacity>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <Text style={[styles.value, { color }]}>{value}</Text>
