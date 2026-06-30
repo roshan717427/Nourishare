@@ -69,8 +69,9 @@
  *   - postDetail    GET   ?action=postDetail&postId=<id>&collection=<c>&username=<u>
  *                   collection is 'logs' (default) or 'recipe_posts'.
  *                   resp  { post: <normalized>, comments: [...], likes: [{username,name}], likedByMe }
- *   - comments      GET   ?action=comments&postId=<id>
- *                   resp  { comments: [{ id, username, name, text, timestamp }] }
+ *   - comments      GET   ?action=comments&postId=<id>&collection=<logs|recipe_posts>
+ *                   resp  { comments: [{ id, username, name, text, parentId?, timestamp, likes_count, likedByMe }] }
+ *                   Requires auth; likedByMe reflects only the authenticated viewer.
  *   - addComment    POST  ?action=addComment
  *                   body  { username, postId, collection, text, parentId? }
  *                   parentId (optional) threads the comment as a reply; replies
@@ -833,8 +834,20 @@ async function handleComments(req, res) {
   if (!postId) {
     return res.status(400).json({ error: 'Valid postId is required' });
   }
-  const viewerUsername = req.query.username ? normalizeUsername(req.query.username) : null;
-  const comments = await loadComments(postId, viewerUsername);
+
+  const auth = await requireAuth(req, res);
+  if (!auth) return;
+
+  const collectionName = resolveCollection(req.query.collection);
+  const authorUsername = await resolvePostAuthor(postId, collectionName);
+  if (!authorUsername) {
+    return res.status(404).json({ error: 'Post not found' });
+  }
+  if (!(await userFollows(auth.username, authorUsername))) {
+    return res.status(403).json({ error: 'Follow this user to view their posts' });
+  }
+
+  const comments = await loadComments(postId, auth.username);
   res.status(200).json({ comments });
 }
 
@@ -1155,6 +1168,10 @@ async function handleUnlike(req, res) {
 
   const likeRef = db.collection('post_likes').doc(validPostId).collection('users').doc(auth.username);
   const existing = await likeRef.get();
+  if (!existing.exists && !(await userFollows(auth.username, postDoc.data().username || null))) {
+    return res.status(403).json({ error: 'Follow this user to interact with their posts' });
+  }
+
   let count = postDoc.data().likes_count || 0;
   if (existing.exists) {
     await likeRef.delete();
@@ -1190,7 +1207,11 @@ async function handleLikeComment(req, res) {
     return res.status(404).json({ error: 'Comment not found' });
   }
 
-  if (!(await userFollows(auth.username, await resolvePostAuthor(validPostId)))) {
+  const postAuthor = await resolvePostAuthor(validPostId);
+  if (!postAuthor) {
+    return res.status(404).json({ error: 'Post not found' });
+  }
+  if (!(await userFollows(auth.username, postAuthor))) {
     return res.status(403).json({ error: 'Follow this user to interact with their posts' });
   }
 
@@ -1239,6 +1260,15 @@ async function handleUnlikeComment(req, res) {
 
   const likeRef = commentLikeRef(validCommentId, auth.username);
   const existing = await likeRef.get();
+
+  const authorUsername = await resolvePostAuthor(validPostId);
+  if (!authorUsername) {
+    return res.status(404).json({ error: 'Post not found' });
+  }
+  if (!existing.exists && !(await userFollows(auth.username, authorUsername))) {
+    return res.status(403).json({ error: 'Follow this user to interact with their posts' });
+  }
+
   let count = commentDoc.data().likes_count || 0;
   if (existing.exists) {
     await likeRef.delete();

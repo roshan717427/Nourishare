@@ -52,6 +52,7 @@ function DayCell({
   isToday,
   isDropTarget,
   schedulingActive,
+  cellRef,
   onLayout,
   onEntryPress,
   onEntryLongPress,
@@ -62,6 +63,7 @@ function DayCell({
 
   return (
     <TouchableOpacity
+      ref={cellRef}
       activeOpacity={schedulingActive ? 0.7 : 1}
       onPress={schedulingActive ? () => onDayPress(dateKey) : undefined}
       style={[
@@ -195,6 +197,7 @@ export default function MealPlanScreen({ navigation }) {
   const [dropTargetDate, setDropTargetDate] = useState(null);
   const dragPosition = useRef(new Animated.ValueXY()).current;
   const dayLayouts = useRef({});
+  const dayCellRefs = useRef({});
   const dragItemRef = useRef(null);
   const dragTypeRef = useRef(null);
 
@@ -402,10 +405,31 @@ export default function MealPlanScreen({ navigation }) {
     }
   };
 
-  const registerDayLayout = (dateKey) => (event) => {
-    event.target.measureInWindow((pageX, pageY, width, height) => {
+  const measureDayCell = useCallback((dateKey) => {
+    const ref = dayCellRefs.current[dateKey];
+    if (!ref?.measureInWindow) return;
+    ref.measureInWindow((pageX, pageY, width, height) => {
       dayLayouts.current[dateKey] = { pageX, pageY, width, height };
     });
+  }, []);
+
+  const remeasureAllDayCells = useCallback(() => {
+    Object.keys(dayCellRefs.current).forEach((dateKey) => {
+      measureDayCell(dateKey);
+    });
+  }, [measureDayCell]);
+
+  const registerDayCellRef = (dateKey) => (node) => {
+    if (node) {
+      dayCellRefs.current[dateKey] = node;
+    } else {
+      delete dayCellRefs.current[dateKey];
+      delete dayLayouts.current[dateKey];
+    }
+  };
+
+  const registerDayLayout = (dateKey) => () => {
+    measureDayCell(dateKey);
   };
 
   const goPrevWeek = () => setWeekAnchor((prev) => addDays(prev, -7));
@@ -497,6 +521,8 @@ export default function MealPlanScreen({ navigation }) {
           style={styles.calendarScroll}
           contentContainerStyle={styles.calendarContent}
           showsVerticalScrollIndicator={false}
+          onScroll={dragItem ? remeasureAllDayCells : undefined}
+          scrollEventThrottle={16}
         >
           {visibleWeeks.map((week) => (
             <View key={formatDateKey(week.start)} style={styles.weekRow}>
@@ -508,6 +534,7 @@ export default function MealPlanScreen({ navigation }) {
                   isToday={isSameDay(date, today)}
                   isDropTarget={dropTargetDate === formatDateKey(date)}
                   schedulingActive={!!dragItem}
+                  cellRef={registerDayCellRef(formatDateKey(date))}
                   onLayout={registerDayLayout(formatDateKey(date))}
                   onEntryPress={handleEntryPress}
                   onEntryLongPress={(entry, _dateKey, e) => startDragEntry(entry, e)}

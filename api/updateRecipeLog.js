@@ -38,6 +38,9 @@ module.exports = async (req, res) => {
   if (!filteredUpdates) {
     return res.status(400).json({ error: 'No valid fields to update' });
   }
+  if (filteredUpdates.error) {
+    return res.status(400).json({ error: filteredUpdates.error });
+  }
 
   try {
     const logRef = db.collection('logs').doc(logId);

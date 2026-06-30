@@ -201,7 +201,8 @@ function sanitizeLogUpdates(updates) {
         out.dishType = null;
         continue;
       }
-      if (sanitized.dishType !== undefined) out.dishType = sanitized.dishType;
+      if (sanitized.dishType === undefined) return { error: 'Invalid dishType' };
+      out.dishType = sanitized.dishType;
       continue;
     }
     if (key === 'cookedWith') {
