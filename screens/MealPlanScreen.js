@@ -33,6 +33,7 @@ import {
   scheduleRecipe,
   startOfWeek,
 } from '../utils/mealPlanApi';
+import { friendlyError } from '../utils/errorMessages';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -246,7 +247,7 @@ export default function MealPlanScreen({ navigation }) {
       const entries = await fetchMealPlan(username, range.startDate, range.endDate);
       setEntriesByDate(groupEntriesByDate(entries));
     } catch (err) {
-      setError(err.message || 'Could not load meal plan');
+      setError(friendlyError(err, { fallback: 'Could not load your meal plan. Please try again.' }));
     } finally {
       setLoading(false);
     }
@@ -303,7 +304,10 @@ export default function MealPlanScreen({ navigation }) {
           });
         }
       } catch (err) {
-        Alert.alert('Could not schedule', err.message || 'Please try again.');
+        Alert.alert(
+          'Could not schedule',
+          friendlyError(err, { fallback: 'We couldn\u2019t add that to your meal plan. Please try again.' })
+        );
       }
     },
     [username, dragPosition]
@@ -384,7 +388,10 @@ export default function MealPlanScreen({ navigation }) {
               return next;
             });
           } catch (err) {
-            Alert.alert('Could not remove', err.message);
+            Alert.alert(
+              'Could not remove',
+              friendlyError(err, { fallback: 'We couldn\u2019t remove that from your meal plan. Please try again.' })
+            );
           }
         },
       },
@@ -399,7 +406,10 @@ export default function MealPlanScreen({ navigation }) {
       setShoppingItems(data.ingredients || []);
     } catch (err) {
       setShoppingItems([]);
-      Alert.alert('Shopping list', err.message || 'Could not load ingredients.');
+      Alert.alert(
+        'Shopping list',
+        friendlyError(err, { fallback: 'We couldn\u2019t build your shopping list. Please try again.' })
+      );
     } finally {
       setShoppingLoading(false);
     }

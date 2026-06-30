@@ -16,6 +16,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import { API_URL } from '../config/api';
 import { withAuthHeaders } from '../utils/apiAuth';
+import { friendlyError, friendlyErrorForResponse } from '../utils/errorMessages';
 import { colors, radii, spacing } from '../constants/theme';
 
 function FollowRequestRow({
@@ -154,9 +155,11 @@ export default function NotificationsScreen({ navigation }) {
         headers,
         body: JSON.stringify({ username, fromUsername }),
       });
-      const data = await res.json();
       if (!res.ok) {
-        Alert.alert('Could not accept', data.error || 'Please try again.');
+        Alert.alert(
+          'Could not accept',
+          friendlyErrorForResponse(res, { fallback: 'We couldn\u2019t accept that request. Please try again.' })
+        );
         return;
       }
       setNotifications((prev) =>
@@ -166,7 +169,10 @@ export default function NotificationsScreen({ navigation }) {
       );
       await refreshSocialState();
     } catch (err) {
-      Alert.alert('Could not accept', err.message);
+      Alert.alert(
+        'Could not accept',
+        friendlyError(err, { fallback: 'We couldn\u2019t accept that request. Please try again.' })
+      );
     } finally {
       setActingOn(null);
     }
@@ -182,9 +188,11 @@ export default function NotificationsScreen({ navigation }) {
         headers,
         body: JSON.stringify({ username, fromUsername }),
       });
-      const data = await res.json();
       if (!res.ok) {
-        Alert.alert('Could not decline', data.error || 'Please try again.');
+        Alert.alert(
+          'Could not decline',
+          friendlyErrorForResponse(res, { fallback: 'We couldn\u2019t decline that request. Please try again.' })
+        );
         return;
       }
       setNotifications((prev) =>
@@ -193,7 +201,10 @@ export default function NotificationsScreen({ navigation }) {
         )
       );
     } catch (err) {
-      Alert.alert('Could not decline', err.message);
+      Alert.alert(
+        'Could not decline',
+        friendlyError(err, { fallback: 'We couldn\u2019t decline that request. Please try again.' })
+      );
     } finally {
       setActingOn(null);
     }

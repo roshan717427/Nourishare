@@ -19,6 +19,7 @@ import { useAuth } from '../context/AuthContext';
 import { useNextUp } from '../context/NextUpContext';
 import { API_URL } from '../config/api';
 import { withAuthHeaders } from '../utils/apiAuth';
+import { friendlyError, friendlyErrorForResponse, httpError } from '../utils/errorMessages';
 import { colors, radii, shadows } from '../constants/theme';
 import { toIngredientList } from '../utils/recipeParsing';
 import RecipeSection, { hasRecipeContent } from '../components/RecipeSection';
@@ -63,6 +64,7 @@ export default function PostDetailScreen({ navigation, route }) {
   const [liked, setLiked] = useState(false);
   const [likesCount, setLikesCount] = useState(initialPost.likes_count || 0);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [commentText, setCommentText] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [replyingTo, setReplyingTo] = useState(null);
@@ -90,9 +92,21 @@ export default function PostDetailScreen({ navigation, route }) {
             ? data.post.likes_count
             : (data.likes || []).length
         );
+        setLoadError(null);
+      } else {
+        setLoadError(
+          friendlyErrorForResponse(res, {
+            overrides: {
+              403: 'You need to follow this user to view this post.',
+              404: 'This post is no longer available.',
+            },
+            fallback: 'We couldn\u2019t load this post. Please try again.',
+          })
+        );
       }
     } catch (err) {
       console.log('Could not load post detail:', err.message);
+      setLoadError(friendlyError(err, { fallback: 'We couldn\u2019t load this post. Please try again.' }));
     } finally {
       setLoading(false);
     }
@@ -212,10 +226,17 @@ export default function PostDetailScreen({ navigation, route }) {
         setCommentText('');
         setReplyingTo(null);
       } else {
-        throw new Error('Failed to add comment');
+        const data = await res.json().catch(() => ({}));
+        throw httpError(res, data);
       }
     } catch (err) {
-      Alert.alert('Could not post comment', 'Please try again in a moment.');
+      Alert.alert(
+        'Could not post comment',
+        friendlyError(err, {
+          overrides: { 403: 'You need to follow this user to comment on their posts.' },
+          fallback: 'Please try again in a moment.',
+        })
+      );
       console.log('Add comment failed:', err.message);
     } finally {
       setSubmitting(false);
@@ -242,11 +263,14 @@ export default function PostDetailScreen({ navigation, route }) {
               });
               const data = await res.json().catch(() => ({}));
               if (!res.ok) {
-                throw new Error(data.error || 'Failed to delete comment');
+                throw httpError(res, data);
               }
               setComments((prev) => prev.filter((c) => c.id !== commentId));
             } catch (err) {
-              Alert.alert('Could not delete comment', err.message);
+              Alert.alert(
+                'Could not delete comment',
+                friendlyError(err, { fallback: 'We couldn\u2019t delete this comment. Please try again.' })
+              );
             }
           },
         },
@@ -354,11 +378,14 @@ export default function PostDetailScreen({ navigation, route }) {
               });
               const data = await res.json().catch(() => ({}));
               if (!res.ok) {
-                throw new Error(data.error || 'Failed to delete');
+                throw httpError(res, data);
               }
               navigation.goBack();
             } catch (err) {
-              Alert.alert('Could not delete dish', err.message);
+              Alert.alert(
+                'Could not delete dish',
+                friendlyError(err, { fallback: 'We couldn\u2019t delete this dish. Please try again.' })
+              );
             }
           },
         },
@@ -475,6 +502,12 @@ export default function PostDetailScreen({ navigation, route }) {
         )}
 
         <View style={styles.body}>
+          {loadError ? (
+            <View style={styles.loadErrorBanner}>
+              <Ionicons name="information-circle-outline" size={18} color={colors.textSecondary} />
+              <Text style={styles.loadErrorText}>{loadError}</Text>
+            </View>
+          ) : null}
           <Text style={styles.title}>{post.title}</Text>
           <Text style={styles.byline}>
             by{' '}
@@ -846,6 +879,22 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 15,
     color: colors.textMuted,
+  },
+  loadErrorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.inputBg,
+    borderRadius: radii.md,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 14,
+  },
+  loadErrorText: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.textSecondary,
+    fontWeight: '500',
   },
   likedByWrap: {
     flexDirection: 'row',

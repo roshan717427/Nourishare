@@ -27,6 +27,7 @@ import { useNextUp } from '../context/NextUpContext';
 import PortfolioGalleryModal from '../components/PortfolioGalleryModal';
 import { API_URL } from '../config/api';
 import { authFetch, withAuthHeaders, normalizeUsername } from '../utils/apiAuth';
+import { friendlyError, friendlyErrorForResponse, httpError } from '../utils/errorMessages';
 import { colors, radii, spacing } from '../constants/theme';
 import { buildPersonalityDescription, getTraitCompoundLabel } from '../utils/personalityCopy';
 import { capitalizeList } from '../utils/titleCase';
@@ -402,18 +403,24 @@ export default function ProfileScreen({ navigation, route }) {
 
       if (!response.ok) {
         setProfile(null);
-        const apiError = data.error || 'Could not load profile';
-        const detail = data.details ? `: ${data.details}` : '';
         if (__DEV__) {
           console.warn('[Profile] fetch failed', response.status, data);
         }
-        setError(__DEV__ ? `${apiError}${detail}` : apiError);
+        setError(
+          friendlyErrorForResponse(response, {
+            overrides: {
+              403: 'You need to follow this user to view their profile.',
+              404: "We couldn't find this profile.",
+            },
+            fallback: 'Could not load this profile. Please try again.',
+          })
+        );
         return;
       }
 
       if (!data?.username) {
         setProfile(null);
-        setError('Profile not found');
+        setError("We couldn't find this profile.");
         return;
       }
 
@@ -422,7 +429,7 @@ export default function ProfileScreen({ navigation, route }) {
     } catch (err) {
       console.log('Error fetching profile:', err.message);
       setProfile(null);
-      setError(__DEV__ ? err.message : err.message || 'Could not load profile');
+      setError(friendlyError(err, { fallback: 'Could not load this profile. Please try again.' }));
     } finally {
       setLoading(false);
     }
@@ -488,16 +495,22 @@ export default function ProfileScreen({ navigation, route }) {
         headers: await withAuthHeaders(),
         body: JSON.stringify({ username: user.username, dishId }),
       });
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        Alert.alert('Cannot update favorites', data.error || 'Please try again.');
+        Alert.alert(
+          'Cannot update favorites',
+          friendlyErrorForResponse(response, { fallback: 'We couldn\u2019t update your favorites. Please try again.' })
+        );
         return;
       }
       const nextFavorites = data.portfolio_favorites || [];
       setFavoriteIds(nextFavorites);
       setProfile((prev) => (prev ? { ...prev, portfolio_favorites: nextFavorites } : prev));
     } catch (err) {
-      Alert.alert('Cannot update favorites', err.message);
+      Alert.alert(
+        'Cannot update favorites',
+        friendlyError(err, { fallback: 'We couldn\u2019t update your favorites. Please try again.' })
+      );
     }
   };
 
@@ -595,7 +608,7 @@ export default function ProfileScreen({ navigation, route }) {
       });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to save');
+        throw httpError(response, data);
       }
       setProfile((prev) =>
         prev
@@ -621,7 +634,10 @@ export default function ProfileScreen({ navigation, route }) {
         );
       }
     } catch (err) {
-      Alert.alert('Could not save profile', err.message);
+      Alert.alert(
+        'Could not save profile',
+        friendlyError(err, { fallback: 'We couldn\u2019t save your profile. Please try again.' })
+      );
     } finally {
       setSavingProfile(false);
     }
@@ -647,12 +663,15 @@ export default function ProfileScreen({ navigation, route }) {
               });
               const data = await response.json().catch(() => ({}));
               if (!response.ok) {
-                throw new Error(data.error || 'Failed to delete account');
+                throw httpError(response, data);
               }
               await clearOnboardingStorage(user.username, user.uid);
               await signOut();
             } catch (err) {
-              Alert.alert('Could not delete account', err.message);
+              Alert.alert(
+                'Could not delete account',
+                friendlyError(err, { fallback: 'We couldn\u2019t delete your account. Please try again.' })
+              );
             }
           },
         },
@@ -680,7 +699,7 @@ export default function ProfileScreen({ navigation, route }) {
               });
               const data = await response.json().catch(() => ({}));
               if (!response.ok) {
-                throw new Error(data.error || 'Failed to delete');
+                throw httpError(response, data);
               }
               setDishes((prev) => prev.filter((d) => d.id !== dish.id));
               setFavoriteIds((prev) => prev.filter((id) => id !== dish.id));
@@ -696,7 +715,10 @@ export default function ProfileScreen({ navigation, route }) {
               );
               fetchProfile();
             } catch (err) {
-              Alert.alert('Could not delete dish', err.message);
+              Alert.alert(
+                'Could not delete dish',
+                friendlyError(err, { fallback: 'We couldn\u2019t delete this dish. Please try again.' })
+              );
             }
           },
         },
@@ -720,7 +742,7 @@ export default function ProfileScreen({ navigation, route }) {
       <View style={styles.container}>
         <StatusBar style="dark" />
         <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>Error: {error}</Text>
+          <Text style={styles.errorText}>{error}</Text>
           <TouchableOpacity onPress={fetchProfile} style={styles.retryButton}>
             <Text style={styles.retryButtonText}>Retry</Text>
           </TouchableOpacity>

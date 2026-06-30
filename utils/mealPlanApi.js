@@ -1,5 +1,6 @@
 import { API_URL } from '../config/api';
 import { authFetch } from './apiAuth';
+import { httpError } from './errorMessages';
 
 const BASE = `${API_URL}/mealPlan`;
 
@@ -40,7 +41,7 @@ export async function fetchMealPlan(username, startDate, endDate) {
   const response = await authFetch(`${BASE}?${params}`, { method: 'GET' });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to load meal plan');
+    throw httpError(response, data);
   }
   const data = await response.json();
   return data.entries || [];
@@ -62,7 +63,7 @@ export async function scheduleRecipe(username, date, recipe) {
   });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to schedule recipe');
+    throw httpError(response, data);
   }
   const data = await response.json();
   return data.entry;
@@ -75,7 +76,7 @@ export async function moveMealPlanEntry(username, entryId, newDate) {
   });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to move entry');
+    throw httpError(response, data);
   }
   const data = await response.json();
   return data.entry;
@@ -88,7 +89,7 @@ export async function removeMealPlanEntry(username, entryId) {
   });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to remove entry');
+    throw httpError(response, data);
   }
 }
 
@@ -97,7 +98,7 @@ export async function fetchShoppingList(username, startDate, endDate) {
   const response = await authFetch(`${BASE}?${params}`, { method: 'GET' });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to load shopping list');
+    throw httpError(response, data);
   }
   return response.json();
 }

@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { colors, radii } from '../constants/theme';
 import { USERNAME_HINT, validatePersonName, validateUsername } from '../utils/signupValidation';
+import { friendlyError } from '../utils/errorMessages';
 
 function splitDisplayName(displayName) {
   const raw = String(displayName || '').trim();
@@ -64,7 +65,9 @@ export default function FinishProfileScreen() {
       });
     } catch (err) {
       const code = err?.code || '';
-      let message = err.message || 'Could not finish setting up your profile. Please try again.';
+      let message = friendlyError(err, {
+        fallback: 'Could not finish setting up your profile. Please try again.',
+      });
       if (code === 'auth/username-already-exists') {
         message = 'That username is already taken.';
       } else if (code === 'auth/invalid-username') {

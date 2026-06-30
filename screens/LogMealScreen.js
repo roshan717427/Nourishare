@@ -22,6 +22,7 @@ import { colors } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
 import { API_URL } from '../config/api';
 import { authFetch, AuthError, normalizeUsername } from '../utils/apiAuth';
+import { friendlyError, httpError } from '../utils/errorMessages';
 
 const HOUR_OPTIONS = Array.from({ length: 13 }, (_, i) => i);
 const MINUTE_OPTIONS = Array.from({ length: 12 }, (_, i) => i * 5);
@@ -283,7 +284,7 @@ export default function LogMealScreen({ navigation, route }) {
             { text: 'OK', onPress: () => navigation.goBack() },
           ]);
         } else {
-          throw new Error(result.error || 'Failed to update meal');
+          throw httpError(response, result);
         }
         return;
       }
@@ -343,14 +344,21 @@ export default function LogMealScreen({ navigation, route }) {
           },
         ]);
       } else {
-        throw new Error(result.error || 'Failed to log meal');
+        throw httpError(response, result);
       }
     } catch (error) {
       console.error('Error logging meal:', error);
       if (error instanceof AuthError) {
-        Alert.alert('Session expired', error.message);
+        Alert.alert('Please sign in again', 'Your session expired. Please sign in again to continue.');
       } else {
-        Alert.alert('Error', error.message || 'Failed to log meal. Please try again.');
+        Alert.alert(
+          isEditing ? 'Could not save changes' : 'Could not log meal',
+          friendlyError(error, {
+            fallback: isEditing
+              ? 'We couldn\u2019t save your changes. Please try again.'
+              : 'We couldn\u2019t log your meal. Please try again.',
+          })
+        );
       }
     } finally {
       setIsSubmitting(false);
