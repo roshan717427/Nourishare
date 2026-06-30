@@ -1166,11 +1166,15 @@ async function handleUnlike(req, res) {
     return res.status(404).json({ error: 'Post not found' });
   }
 
-  const likeRef = db.collection('post_likes').doc(validPostId).collection('users').doc(auth.username);
-  const existing = await likeRef.get();
-  if (!existing.exists && !(await userFollows(auth.username, postDoc.data().username || null))) {
+  // Strict privacy gate: interacting (including unliking) requires currently
+  // following the author. A former follower who unfollows loses all access to
+  // the post; their old like stays put until they follow again.
+  if (!(await userFollows(auth.username, postDoc.data().username || null))) {
     return res.status(403).json({ error: 'Follow this user to interact with their posts' });
   }
+
+  const likeRef = db.collection('post_likes').doc(validPostId).collection('users').doc(auth.username);
+  const existing = await likeRef.get();
 
   let count = postDoc.data().likes_count || 0;
   if (existing.exists) {
@@ -1258,16 +1262,19 @@ async function handleUnlikeComment(req, res) {
     return res.status(404).json({ error: 'Comment not found' });
   }
 
-  const likeRef = commentLikeRef(validCommentId, auth.username);
-  const existing = await likeRef.get();
-
   const authorUsername = await resolvePostAuthor(validPostId);
   if (!authorUsername) {
     return res.status(404).json({ error: 'Post not found' });
   }
-  if (!existing.exists && !(await userFollows(auth.username, authorUsername))) {
+  // Strict privacy gate: interacting (including unliking) requires currently
+  // following the author. A former follower who unfollows loses all access to
+  // the post; their old like stays put until they follow again.
+  if (!(await userFollows(auth.username, authorUsername))) {
     return res.status(403).json({ error: 'Follow this user to interact with their posts' });
   }
+
+  const likeRef = commentLikeRef(validCommentId, auth.username);
+  const existing = await likeRef.get();
 
   let count = commentDoc.data().likes_count || 0;
   if (existing.exists) {
