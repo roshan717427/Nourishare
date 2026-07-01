@@ -63,6 +63,25 @@ async function cleanupDeletedUserData(username) {
     await commitDeletes(snap.docs.map((d) => d.ref));
   });
 
+  // Recipes/entries filed under the username itself. If left behind, a new
+  // account created with the same (now-freed) username would inherit the
+  // deleted account's meal plan and AI-suggested recipes.
+  await bestEffort('meal_plans', async () => {
+    const snap = await db.collection('meal_plans').doc(username).collection('entries').get();
+    await commitDeletes(snap.docs.map((d) => d.ref));
+    await db.collection('meal_plans').doc(username).delete();
+  });
+  await bestEffort('ai_suggestions', async () => {
+    const snap = await db.collection('ai_suggestions').doc(username).collection('recipes').get();
+    await commitDeletes(snap.docs.map((d) => d.ref));
+    await db.collection('ai_suggestions').doc(username).delete();
+  });
+  await bestEffort('ai_usage', async () => {
+    const snap = await db.collection('ai_usage').doc(username).collection('daily').get();
+    await commitDeletes(snap.docs.map((d) => d.ref));
+    await db.collection('ai_usage').doc(username).delete();
+  });
+
   // Outgoing follow edges + the mirror on each target user's followers list.
   await bestEffort('outgoing_follows', async () => {
     const snap = await db

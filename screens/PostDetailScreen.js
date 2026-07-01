@@ -26,6 +26,10 @@ import { toIngredientList } from '../utils/recipeParsing';
 import RecipeSection, { hasRecipeContent } from '../components/RecipeSection';
 import CookedWithTags from '../components/CookedWithTags';
 
+function generateClientId() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function likerName(l) {
   return l.name || l.username || 'Someone';
 }
@@ -86,6 +90,9 @@ export default function PostDetailScreen({ navigation, route }) {
   const [submitting, setSubmitting] = useState(false);
   const [replyingTo, setReplyingTo] = useState(null);
   const commentInputRef = useRef(null);
+  // Stable per-draft key so retrying a failed submit (without editing the
+  // text) reuses the same request instead of risking a duplicate comment.
+  const pendingCommentIdRef = useRef(null);
 
   const loadDetail = useCallback(async () => {
     if (!postId) {
@@ -205,11 +212,15 @@ export default function PostDetailScreen({ navigation, route }) {
 
   const startReply = (comment) => {
     if (!canInteract) return;
+    pendingCommentIdRef.current = null;
     setReplyingTo({ id: comment.id, name: comment.name || comment.username });
     commentInputRef.current?.focus();
   };
 
-  const cancelReply = () => setReplyingTo(null);
+  const cancelReply = () => {
+    pendingCommentIdRef.current = null;
+    setReplyingTo(null);
+  };
 
   const submitComment = async () => {
     const text = commentText.trim();
@@ -220,12 +231,16 @@ export default function PostDetailScreen({ navigation, route }) {
     }
     if (!canInteract) return;
     const parentId = replyingTo?.id || null;
+    if (!pendingCommentIdRef.current) {
+      pendingCommentIdRef.current = generateClientId();
+    }
+    const clientId = pendingCommentIdRef.current;
     setSubmitting(true);
     try {
       const res = await fetch(`${API_URL}/social?action=addComment`, {
         method: 'POST',
         headers: await withAuthHeaders(),
-        body: JSON.stringify({ username, postId, collection, text, parentId }),
+        body: JSON.stringify({ username, postId, collection, text, parentId, clientId }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -242,6 +257,7 @@ export default function PostDetailScreen({ navigation, route }) {
         setComments((prev) => [...prev, newComment]);
         setCommentText('');
         setReplyingTo(null);
+        pendingCommentIdRef.current = null;
       } else {
         const data = await res.json().catch(() => ({}));
         throw httpError(res, data);
@@ -683,7 +699,10 @@ export default function PostDetailScreen({ navigation, route }) {
             placeholder={replyingTo ? `Reply to ${replyingTo.name}...` : 'Add a comment...'}
             placeholderTextColor={colors.textMuted}
             value={commentText}
-            onChangeText={setCommentText}
+            onChangeText={(value) => {
+              pendingCommentIdRef.current = null;
+              setCommentText(value);
+            }}
             multiline
           />
           <TouchableOpacity

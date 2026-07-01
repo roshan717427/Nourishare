@@ -1001,6 +1001,11 @@ async function handleAddComment(req, res) {
     return res.status(400).json({ error: 'Invalid collection' });
   }
 
+  // Optional idempotency key: if the client never saw the response to an
+  // earlier attempt (timeout, dropped connection) and retries, this lets us
+  // return the comment that was already created instead of posting a duplicate.
+  const clientId = validatePostId(req.body.clientId);
+
   // Optional parent for threaded replies. Threads are kept one level deep: a
   // reply always attaches to a top-level comment, so if the client replies to
   // an existing reply we re-root it to that reply's parent.
@@ -1041,15 +1046,40 @@ async function handleAddComment(req, res) {
   const userDoc = await db.collection('users').doc(auth.username).get();
   const name = userDoc.exists ? userDoc.data().name || null : null;
 
-  const commentRef = itemsRef.doc();
+  // A client-supplied clientId becomes the doc id itself, so a retried
+  // request (server processed, client never saw the response) collides
+  // atomically on create() instead of racing a read-then-write check.
+  const commentRef = clientId ? itemsRef.doc(clientId) : itemsRef.doc();
 
-  await commentRef.set({
-    username: auth.username,
-    name,
-    text: commentText,
-    parentId: parentId || null,
-    timestamp: FieldValue.serverTimestamp(),
-  });
+  try {
+    await commentRef.create({
+      username: auth.username,
+      name,
+      text: commentText,
+      parentId: parentId || null,
+      timestamp: FieldValue.serverTimestamp(),
+    });
+  } catch (err) {
+    if (clientId && (err.code === 6 || err.code === 'already-exists')) {
+      const existing = await commentRef.get();
+      const data = existing.data();
+      return res.status(200).json({
+        message: 'Comment added',
+        comment: {
+          id: existing.id,
+          username: data.username,
+          name: data.name || null,
+          text: data.text,
+          parentId: data.parentId || null,
+          timestamp: toMillis(data.timestamp) || Date.now(),
+          likes_count: data.likes_count || 0,
+          likedByMe: false,
+        },
+        comments_count: postDoc.data().comments_count || 0,
+      });
+    }
+    throw err;
+  }
   await postRef.set({ comments_count: FieldValue.increment(1) }, { merge: true });
 
   const actorName = name || (await resolveDisplayName(db, auth.username));

@@ -43,10 +43,6 @@ module.exports = async (req, res) => {
     res.status(400).json({ error: 'Ingredients are required' });
     return;
   }
-  if (!fields.recipeInstructions && !fields.recipeLink) {
-    res.status(400).json({ error: 'Recipe steps or link is required' });
-    return;
-  }
   if (fields.rating == null) {
     res.status(400).json({ error: 'Rating is required' });
     return;

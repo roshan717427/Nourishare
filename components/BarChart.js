@@ -14,21 +14,24 @@ export function barHeightForValue(value) {
   return Math.min(Math.round(scaled), MAX_BAR_HEIGHT);
 }
 
+const VALUE_LABEL_HEIGHT = 13;
+
 function Bar({ item }) {
   const value = item.value || 0;
   const height = barHeightForValue(value);
+  // Center the label on the bar's own height rather than the full chart
+  // area, so it stays anchored to the bar no matter how short/tall it is.
+  const labelBottom = Math.max(0, height / 2 - VALUE_LABEL_HEIGHT / 2);
 
   return (
     <View style={styles.barWrapper}>
       <View style={styles.barColumn}>
-        {value > 0 ? (
-          <Text style={styles.valueLabel}>{value}</Text>
-        ) : (
-          <View style={styles.valueLabelSpacer} />
-        )}
         <View style={styles.barContainer}>
           {value > 0 ? (
-            <View style={[styles.bar, { height }]} />
+            <>
+              <View style={[styles.bar, { height }]} />
+              <Text style={[styles.valueLabel, { bottom: labelBottom }]}>{value}</Text>
+            </>
           ) : null}
         </View>
       </View>
@@ -82,15 +85,14 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   valueLabel: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
     fontSize: 11,
-    lineHeight: 13,
+    lineHeight: VALUE_LABEL_HEIGHT,
     fontWeight: '700',
-    color: colors.chipCoralText,
-    marginBottom: 0,
+    color: colors.card,
     textAlign: 'center',
-  },
-  valueLabelSpacer: {
-    height: 13,
   },
   barContainer: {
     width: '72%',

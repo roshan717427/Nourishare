@@ -224,9 +224,6 @@ export default function LogMealScreen({ navigation, route }) {
     const missing = [];
     if (!mealName.trim()) missing.push('Meal name');
     if (!ingredients.trim()) missing.push('Ingredients');
-    if (!recipeInstructions.trim() && !recipeLink.trim()) {
-      missing.push('Recipe steps or link');
-    }
     if (!rating) missing.push('Rating');
     if (!difficulty) missing.push('Difficulty');
     if (cookHours === 0 && cookMinutes === 0) missing.push('Time');
@@ -561,7 +558,7 @@ export default function LogMealScreen({ navigation, route }) {
 
         {/* Recipe */}
         <View style={styles.section}>
-          <Text style={styles.label}>Recipe</Text>
+          <Text style={styles.label}>Recipe (optional)</Text>
           <Text style={styles.fieldHint}>
             Write steps so you can re-cook easily if you wish. Or, include a link to the recipe source.
           </Text>
