@@ -103,7 +103,7 @@ function NextUpRecipeCard({ recipe, selected, onPress, onLongPress }) {
     <TouchableOpacity
       style={[styles.nextUpCard, selected && styles.nextUpCardSelected, shadows.cardSoft]}
       onPress={() => onPress(recipe)}
-      onLongPress={(e) => onLongPress(recipe, e)}
+      onLongPress={onLongPress ? (e) => onLongPress(recipe, e) : undefined}
       delayLongPress={250}
       activeOpacity={0.85}
     >
@@ -165,7 +165,7 @@ function ShoppingListModal({ visible, onClose, ingredients, loading, rangeLabel 
                 </View>
               ))}
               <Text style={styles.shoppingDisclaimer}>
-                Quantities are not combined — ingredient lines are grouped by name only.
+                Quantities are not combined. Ingredient lines are grouped by name only.
               </Text>
             </ScrollView>
           )}
@@ -377,6 +377,19 @@ export default function MealPlanScreen({ navigation }) {
     requestAnimationFrame(remeasureDayCells);
   };
 
+  // Tapping the already-selected recipe clears the selection (deselect).
+  const toggleSelectRecipe = (recipe) => {
+    if (dragTypeRef.current === 'recipe' && dragItemRef.current?.id === recipe.id) {
+      setDragItem(null);
+      setDragType(null);
+      setDropTargetDate(null);
+      dragItemRef.current = null;
+      dragTypeRef.current = null;
+      return;
+    }
+    selectRecipe(recipe);
+  };
+
   const startDragRecipe = (recipe, gestureEvent) => {
     selectRecipe(recipe);
     const { pageX, pageY } = gestureEvent?.nativeEvent || {};
@@ -474,7 +487,7 @@ export default function MealPlanScreen({ navigation }) {
   const goToday = () => setWeekAnchor(startOfWeek(new Date()));
 
   return (
-    <View style={styles.container} {...panResponder.panHandlers}>
+    <View style={styles.container}>
       <StatusBar style="light" />
 
       <LinearGradient
@@ -564,9 +577,6 @@ export default function MealPlanScreen({ navigation }) {
           style={styles.calendarScroll}
           contentContainerStyle={styles.calendarContent}
           showsVerticalScrollIndicator={false}
-          scrollEnabled={!dragItem}
-          onScroll={dragItem ? remeasureAllDayCells : undefined}
-          scrollEventThrottle={16}
         >
           {visibleWeeks.map((week) => (
             <View key={formatDateKey(week.start)} style={styles.weekRow}>
@@ -608,7 +618,6 @@ export default function MealPlanScreen({ navigation }) {
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            scrollEnabled={!dragItem}
             contentContainerStyle={styles.nextUpRow}
           >
             {nextUpItems.map((recipe) => (
@@ -616,33 +625,12 @@ export default function MealPlanScreen({ navigation }) {
                 key={recipe.id}
                 recipe={recipe}
                 selected={dragType === 'recipe' && dragItem?.id === recipe.id}
-                onPress={selectRecipe}
-                onLongPress={startDragRecipe}
+                onPress={toggleSelectRecipe}
               />
             ))}
           </ScrollView>
         )}
       </View>
-
-      {dragItem ? (
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            styles.dragGhost,
-            shadows.card,
-            {
-              transform: [
-                { translateX: dragPosition.x },
-                { translateY: dragPosition.y },
-              ],
-            },
-          ]}
-        >
-          <Text style={styles.dragGhostText} numberOfLines={2}>
-            {dragType === 'entry' ? dragItem.recipeName : dragItem.name}
-          </Text>
-        </Animated.View>
-      ) : null}
 
       <ShoppingListModal
         visible={shoppingVisible}

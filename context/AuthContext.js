@@ -101,36 +101,35 @@ export function AuthProvider({ children }) {
     };
 
     (async () => {
-      try {
-        const response = await authFetch(`${API_URL}/getUserProfile?me=1`);
-        if (cancelled) return;
-
-        if (response.ok) {
-          const profile = await response.json();
-          applyReady(profile);
-          return;
-        }
-
-        const data = await response.json().catch(() => ({}));
-        if (response.status === 404 && data.needsSetup) {
-          // Signup may still be creating the profile; retry once before recovery UI.
-          await new Promise((resolve) => setTimeout(resolve, 2000));
+      // Poll the profile a few times before falling back to the setup screen.
+      // Signup may still be creating the profile, and a transient network/auth
+      // hiccup should never bounce an existing user into "finish setup".
+      const MAX_ATTEMPTS = 4;
+      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+        if (cancelled || profileReadyRef.current) return;
+        try {
+          const response = await authFetch(`${API_URL}/getUserProfile?me=1`);
           if (cancelled || profileReadyRef.current) return;
 
-          const retryResponse = await authFetch(`${API_URL}/getUserProfile?me=1`);
-          if (cancelled || profileReadyRef.current) return;
-
-          if (retryResponse.ok) {
-            const profile = await retryResponse.json();
+          if (response.ok) {
+            const profile = await response.json();
             applyReady(profile);
             return;
           }
 
-          applyNeedsSetup();
-          return;
+          // Only a definitive "no profile yet" (404 needsSetup) is a setup
+          // signal; other statuses are treated as transient and retried.
+          if (response.status !== 404) {
+            const data = await response.json().catch(() => ({}));
+            if (!data.needsSetup) throw new Error(`status ${response.status}`);
+          }
+        } catch (err) {
+          console.log('Could not check profile status:', err.message);
         }
-      } catch (err) {
-        console.log('Could not check profile status:', err.message);
+
+        if (attempt < MAX_ATTEMPTS - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
       }
 
       applyNeedsSetup();

@@ -11,6 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Modal,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useFocusEffect } from '@react-navigation/native';
@@ -24,6 +25,21 @@ import { colors, radii, shadows } from '../constants/theme';
 import { toIngredientList } from '../utils/recipeParsing';
 import RecipeSection, { hasRecipeContent } from '../components/RecipeSection';
 import CookedWithTags from '../components/CookedWithTags';
+
+function likerName(l) {
+  return l.name || l.username || 'Someone';
+}
+
+// Instagram-style summary: shows up to three names then "and N others".
+function buildLikedBySummary(likes) {
+  const names = likes.map(likerName);
+  if (names.length === 1) return `Liked by ${names[0]}`;
+  if (names.length === 2) return `Liked by ${names[0]} and ${names[1]}`;
+  if (names.length === 3) return `Liked by ${names[0]}, ${names[1]} and ${names[2]}`;
+  const shown = names.slice(0, 3).join(', ');
+  const others = names.length - 3;
+  return `Liked by ${shown} and ${others} ${others === 1 ? 'other' : 'others'}`;
+}
 
 function postToNextUpRecipe(post, collection, postId) {
   const difficulty = post.difficulty
@@ -64,6 +80,7 @@ export default function PostDetailScreen({ navigation, route }) {
   const [liked, setLiked] = useState(false);
   const [likesCount, setLikesCount] = useState(initialPost.likes_count || 0);
   const [loading, setLoading] = useState(true);
+  const [likesModalVisible, setLikesModalVisible] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [commentText, setCommentText] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -607,22 +624,21 @@ export default function PostDetailScreen({ navigation, route }) {
             <ActivityIndicator color={colors.primary} style={{ marginTop: 16 }} />
           ) : null}
 
-          <Text style={styles.sectionTitle}>Liked by</Text>
           {likes.length === 0 ? (
-            <Text style={styles.emptyText}>No likes yet. Be the first!</Text>
+            <>
+              <Text style={styles.sectionTitle}>Liked by</Text>
+              <Text style={styles.emptyText}>No likes yet. Be the first!</Text>
+            </>
           ) : (
-            <View style={styles.likedByWrap}>
-              {likes.map((l) => (
-                <View key={l.username} style={styles.likedChip}>
-                  <View style={styles.likedAvatar}>
-                    <Text style={styles.likedAvatarText}>
-                      {(l.name || l.username || '?').charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
-                  <Text style={styles.likedName}>{l.name || l.username}</Text>
-                </View>
-              ))}
-            </View>
+            <TouchableOpacity
+              style={styles.likedSummaryRow}
+              onPress={() => setLikesModalVisible(true)}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="See everyone who liked this"
+            >
+              <Text style={styles.likedSummaryText}>{buildLikedBySummary(likes)}</Text>
+            </TouchableOpacity>
           )}
 
           <Text style={styles.sectionTitle}>Comments</Text>
@@ -687,6 +703,53 @@ export default function PostDetailScreen({ navigation, route }) {
           </Text>
         </View>
       )}
+
+      <Modal
+        visible={likesModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setLikesModalVisible(false)}
+      >
+        <View style={styles.likesModalOverlay}>
+          <View style={styles.likesModalCard}>
+            <View style={styles.likesModalHeader}>
+              <Text style={styles.likesModalTitle}>Likes</Text>
+              <TouchableOpacity
+                onPress={() => setLikesModalVisible(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityLabel="Close likes list"
+              >
+                <Ionicons name="close" size={22} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView>
+              {likes.map((l) => (
+                <TouchableOpacity
+                  key={l.username}
+                  style={styles.likesModalRow}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    setLikesModalVisible(false);
+                    navigation.navigate('Profile', { username: l.username });
+                  }}
+                >
+                  <View style={styles.likedAvatar}>
+                    <Text style={styles.likedAvatarText}>
+                      {(l.name || l.username || '?').charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                  <View>
+                    <Text style={styles.likesModalName}>{l.name || l.username}</Text>
+                    {l.name ? (
+                      <Text style={styles.likesModalUsername}>@{l.username}</Text>
+                    ) : null}
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -928,6 +991,53 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.text,
     fontWeight: '600',
+  },
+  likedSummaryRow: {
+    paddingVertical: 4,
+  },
+  likedSummaryText: {
+    fontSize: 14,
+    color: colors.text,
+    fontWeight: '600',
+  },
+  likesModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  likesModalCard: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: radii.xl,
+    borderTopRightRadius: radii.xl,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 32,
+    maxHeight: '70%',
+  },
+  likesModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  likesModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  likesModalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  likesModalName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  likesModalUsername: {
+    fontSize: 13,
+    color: colors.textMuted,
   },
   comment: {
     flexDirection: 'row',

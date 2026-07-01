@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import {
   Text,
   TextInput,
@@ -18,20 +18,11 @@ import { colors, radii } from '../constants/theme';
 import { USERNAME_HINT, validatePersonName, validateUsername } from '../utils/signupValidation';
 import { friendlyError } from '../utils/errorMessages';
 
-function splitDisplayName(displayName) {
-  const raw = String(displayName || '').trim();
-  if (!raw) return { firstName: '', lastName: '' };
-  const parts = raw.split(/\s+/);
-  if (parts.length === 1) return { firstName: parts[0], lastName: '' };
-  return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
-}
-
 export default function FinishProfileScreen() {
   const { user, completeProfileSetup, signOut } = useAuth();
-  const initialNames = useMemo(() => splitDisplayName(user?.name), [user?.name]);
 
-  const [firstName, setFirstName] = useState(initialNames.firstName);
-  const [lastName, setLastName] = useState(initialNames.lastName);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [username, setUsername] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 

@@ -278,18 +278,6 @@ function SkeletonRow({ pulseAnim }) {
   );
 }
 
-function SectionEmptyState({ icon, title, hint, accentColor, chipColors }) {
-  return (
-    <View style={[styles.sectionEmpty, shadows.cardSoft]}>
-      <LinearGradient colors={chipColors} style={styles.sectionEmptyIcon}>
-        <Ionicons name={icon} size={30} color={accentColor} />
-      </LinearGradient>
-      <Text style={styles.sectionEmptyTitle}>{title}</Text>
-      <Text style={styles.sectionEmptyHint}>{hint}</Text>
-    </View>
-  );
-}
-
 function formatSubtitle(suggestion) {
   const difficulty = suggestion.difficulty_level
     ? suggestion.difficulty_level.charAt(0).toUpperCase() +
@@ -396,8 +384,7 @@ export default function AISuggestionsScreen({ navigation }) {
   const [dailyLimit, setDailyLimit] = useState(3);
   const [statusMessage, setStatusMessage] = useState('');
   const [pantryText, setPantryText] = useState('');
-  const [pantryActive, setPantryActive] = useState(null);
-  const [pantryResolved, setPantryResolved] = useState(false);
+  const [pantrySkipped, setPantrySkipped] = useState(false);
   const [hasStartedGeneration, setHasStartedGeneration] = useState(false);
   const [hasLoadedCache, setHasLoadedCache] = useState(false);
 
@@ -425,7 +412,6 @@ export default function AISuggestionsScreen({ navigation }) {
     const hasCachedTotal = (data.total_cached || 0) > 0;
     if (hasVisible || hasCachedTotal) {
       setHasStartedGeneration(true);
-      setPantryResolved(true);
     }
   }, []);
 
@@ -436,25 +422,30 @@ export default function AISuggestionsScreen({ navigation }) {
       const data = await loadCachedSuggestions(username);
       applySuggestionsData(data);
     } catch (err) {
+      // Never surface a "not found" style message before the user has generated;
+      // an empty cache is a normal first-run state, not an error to show.
       console.log('Could not load cached suggestions:', err.message);
-      setStatusMessage(friendlyAiError(err));
     } finally {
       setHasLoadedCache(true);
       setLoading(false);
     }
   }, [username, applySuggestionsData]);
 
-  const handleGenerate = async (pantryOverride) => {
+  const handleGenerate = async () => {
     if (generating) return;
     if (generationsRemaining <= 0) {
       Alert.alert('Daily limit reached', friendlyAiError({ code: 'daily_limit_exceeded' }));
       return;
     }
 
+    // Single generate button for the whole page: if the user typed pantry
+    // ingredients (and hasn't skipped), send them so the server returns a pantry
+    // section with 2 recipes per section; otherwise 3 recipes per section.
+    const pantryForRequest = pantrySkipped ? [] : parsePantryInput(pantryText);
+
     setHasStartedGeneration(true);
     setGenerating(true);
     setStatusMessage('');
-    const pantryForRequest = pantryOverride !== undefined ? pantryOverride : pantryActive;
     try {
       const data = await generateSuggestions(username, pantryForRequest);
       applySuggestionsData(data);
@@ -524,6 +515,9 @@ export default function AISuggestionsScreen({ navigation }) {
   useFocusEffect(
     useCallback(() => {
       loadCached();
+      // Always re-show the pantry section when the user returns to the AI tab,
+      // even if they skipped it last time, in case they changed their mind.
+      setPantrySkipped(false);
       return undefined;
     }, [loadCached])
   );
@@ -534,20 +528,7 @@ export default function AISuggestionsScreen({ navigation }) {
 
   const handleSkipPantry = () => {
     setPantryText('');
-    setPantryActive([]);
-    setPantryResolved(true);
-    setPantrySuggestions([]);
-  };
-
-  const handleMatchPantry = async () => {
-    const parsed = parsePantryInput(pantryText);
-    if (parsed.length === 0) {
-      Alert.alert('Add ingredients', 'Enter what you have on hand, separated by commas.');
-      return;
-    }
-    setPantryActive(parsed);
-    setPantryResolved(true);
-    await handleGenerate(parsed);
+    setPantrySkipped(true);
   };
 
   const openRecipe = (recipe) => {
@@ -565,111 +546,52 @@ export default function AISuggestionsScreen({ navigation }) {
     }
   };
 
-  const hasCached =
+  const hasAnyRecipes =
     preferenceSuggestions.length > 0 ||
     friendSuggestions.length > 0 ||
     pantrySuggestions.length > 0;
-  const hasContent = hasCached || hasStartedGeneration;
+  const hasContent = hasAnyRecipes || hasStartedGeneration;
   const isBusy = loading || generating;
-  const pantrySkipped = pantryResolved && Array.isArray(pantryActive) && pantryActive.length === 0;
-  const showInitialOnly = hasLoadedCache && !hasContent && !isBusy;
-  const showPantryInput = hasContent && !pantryResolved;
-  const showPantrySection = !pantrySkipped && pantrySuggestions.length > 0;
-
-  const showPreferenceEmpty = !isBusy && preferenceSuggestions.length === 0;
-  const showFriendEmpty = !isBusy && friendSuggestions.length === 0;
-
-  const preferenceEmptyCopy = {
-    title: 'No preference-inspired picks yet',
-    hint: 'Tap Generate to create AI recipes based on your tastes.',
-  };
-
-  const friendEmptyCopy = {
-    title: 'No friend-inspired picks yet',
-    hint: hasFriends
-      ? 'Tap Generate for ideas inspired by your friends\' cooking.'
-      : 'Follow friends, then tap Generate for friend-inspired ideas.',
-  };
-
-  const pantryEmptyCopy = {
-    title: 'No pantry picks yet',
-    hint: 'Tap Generate to get recipes based on your pantry ingredients.',
-  };
+  const showPantrySection = pantrySuggestions.length > 0;
+  // After a generation completes with nothing to show, surface the not-found line
+  // directly under the generate button (never on first load).
+  const showNotFound = hasStartedGeneration && !isBusy && !hasAnyRecipes;
+  // Recipe sections only appear once we're generating or have results.
+  const showSections = isBusy || hasAnyRecipes;
 
   const greetingText = isBusy
     ? generating
-      ? 'Cooking up fresh AI recipe ideas…'
-      : 'Loading your saved suggestions…'
+      ? 'Cooking up fresh AI recipe ideas...'
+      : 'Loading your saved suggestions...'
     : buildGreeting(firstName, hasLogs, hasFriends, {
         hasContent,
         hasPantry: showPantrySection,
         pantrySkipped,
       });
 
-  const renderGenerateRow = (compact = false) => {
-    if (compact) {
-      return (
-        <View style={styles.initialGenerateInner}>
-          <TouchableOpacity
-            style={[
-              styles.initialGenerateButton,
-              shadows.cardSoft,
-              (generating || generationsRemaining <= 0) && styles.generateButtonDisabled,
-            ]}
-            onPress={() => handleGenerate()}
-            disabled={generating || generationsRemaining <= 0}
-            activeOpacity={0.85}
-          >
-            {generating ? (
-              <Text style={styles.initialGenerateButtonText}>Generating…</Text>
-            ) : (
-              <Text style={styles.initialGenerateButtonText}>Generate suggestions 👀</Text>
-            )}
-          </TouchableOpacity>
-          <Text style={styles.initialGenerateHint}>
-            {generationsRemaining} of {dailyLimit} left today
-          </Text>
-          {statusMessage ? (
-            <Text style={styles.statusMessage}>{statusMessage}</Text>
-          ) : null}
-        </View>
-      );
-    }
+  const generateDisabled = generating || generationsRemaining <= 0;
 
-    return (
-      <View style={[styles.generateCard, shadows.cardSoft]}>
-        <View style={styles.generateRow}>
-          <View style={styles.generateTextWrap}>
-            <Text style={styles.generateTitle}>Generate AI Recipes</Text>
-            <Text style={styles.generateHint}>
-              {generationsRemaining} of {dailyLimit} left today
-            </Text>
-          </View>
-          <TouchableOpacity
-            style={[
-              styles.generateButton,
-              (generating || generationsRemaining <= 0) && styles.generateButtonDisabled,
-            ]}
-            onPress={() => handleGenerate()}
-            disabled={generating || generationsRemaining <= 0}
-            activeOpacity={0.85}
-          >
-            {generating ? (
-              <Text style={styles.generateButtonText}>Generating…</Text>
-            ) : (
-              <>
-                <Ionicons name="sparkles" size={16} color="#fff" />
-                <Text style={styles.generateButtonText}>Generate</Text>
-              </>
-            )}
-          </TouchableOpacity>
+  const renderGenerateButton = () => (
+    <View style={styles.generateWrap}>
+      <TouchableOpacity
+        style={[styles.bigGenerateButton, shadows.cardSoft, generateDisabled && styles.generateButtonDisabled]}
+        onPress={handleGenerate}
+        disabled={generateDisabled}
+        activeOpacity={0.85}
+      >
+        <View style={styles.bigGenerateTitleRow}>
+          <Ionicons name="sparkles" size={20} color="#fff" />
+          <Text style={styles.bigGenerateButtonText}>
+            {generating ? 'Generating...' : 'Generate recipes'}
+          </Text>
         </View>
-        {statusMessage ? (
-          <Text style={styles.statusMessage}>{statusMessage}</Text>
-        ) : null}
-      </View>
-    );
-  };
+        <Text style={styles.bigGenerateCount}>
+          {generationsRemaining} of {dailyLimit} generations left today
+        </Text>
+      </TouchableOpacity>
+      {statusMessage ? <Text style={styles.statusMessage}>{statusMessage}</Text> : null}
+    </View>
+  );
 
   const renderPantryStrip = () => (
     <View style={[styles.pantryStrip, shadows.cardSoft]}>
@@ -678,7 +600,7 @@ export default function AISuggestionsScreen({ navigation }) {
         <Text style={styles.pantryTitle}>What's in your pantry?</Text>
       </View>
       <Text style={styles.pantryHint}>
-        List ingredients you have and we'll rank recipes you can make, or skip to see your usual picks.
+        List ingredients you have, then tap Generate to get recipes you can make (2 per section). Leave it blank or skip for 3 picks per section.
       </Text>
       <TextInput
         style={styles.pantryInput}
@@ -696,15 +618,6 @@ export default function AISuggestionsScreen({ navigation }) {
         >
           <Text style={styles.pantrySkipText}>Skip</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.pantryMatchButton, generating && styles.generateButtonDisabled]}
-          onPress={handleMatchPantry}
-          disabled={generating}
-          activeOpacity={0.85}
-        >
-          <Ionicons name="search" size={16} color="#fff" />
-          <Text style={styles.pantryMatchText}>Find matches</Text>
-        </TouchableOpacity>
       </View>
     </View>
   );
@@ -720,14 +633,6 @@ export default function AISuggestionsScreen({ navigation }) {
       />
       {isBusy ? (
         <SkeletonRow pulseAnim={pulseAnim} />
-      ) : pantrySuggestions.length === 0 ? (
-        <SectionEmptyState
-          icon="basket-outline"
-          title={pantryEmptyCopy.title}
-          hint={pantryEmptyCopy.hint}
-          accentColor={colors.chipAmberText}
-          chipColors={[colors.chipAmber, colors.chipCoral]}
-        />
       ) : (
         <ScrollView
           horizontal
@@ -790,123 +695,113 @@ export default function AISuggestionsScreen({ navigation }) {
       </LinearGradient>
 
       <ScrollView
-        contentContainerStyle={[
-          styles.scrollContent,
-          showInitialOnly && styles.scrollContentInitial,
-        ]}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {showInitialOnly ? (
-          <View style={styles.initialGenerateWrap}>
-            {renderGenerateRow(true)}
-          </View>
-        ) : (
-          <>
-            <View style={[styles.greetingCard, shadows.cardSoft]}>
-              <LinearGradient
-                colors={[colors.cardWarm, colors.card]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.greetingGradient}
-              >
-                <View style={styles.greetingAccent} />
-                <View style={styles.greetingContent}>
-                  <View style={styles.greetingIconWrap}>
-                    <Ionicons name="bulb-outline" size={18} color={colors.primary} />
-                  </View>
-                  <Text style={styles.greeting}>{greetingText}</Text>
-                </View>
-              </LinearGradient>
+        <View style={[styles.greetingCard, shadows.cardSoft]}>
+          <LinearGradient
+            colors={[colors.cardWarm, colors.card]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.greetingGradient}
+          >
+            <View style={styles.greetingAccent} />
+            <View style={styles.greetingContent}>
+              <View style={styles.greetingIconWrap}>
+                <Ionicons name="bulb-outline" size={18} color={colors.primary} />
+              </View>
+              <Text style={styles.greeting}>{greetingText}</Text>
             </View>
+          </LinearGradient>
+        </View>
 
-            {showPantryInput ? renderPantryStrip() : null}
-            {showPantrySection ? renderPantrySection() : null}
+        {renderGenerateButton()}
 
-            {renderGenerateRow()}
+        {showNotFound ? (
+          <Text style={styles.notFoundText}>We couldn't find what you were looking for.</Text>
+        ) : null}
 
-            <SectionHeader
-              eyebrow="YOUR TASTES"
-              title="Preference-Inspired"
-              icon="heart"
-              accentColor={colors.primary}
-              tintBg={colors.chipCoral}
-            />
-            {isBusy ? (
-              <SkeletonRow pulseAnim={pulseAnim} />
-            ) : showPreferenceEmpty ? (
-              <SectionEmptyState
-                icon="restaurant-outline"
-                title={preferenceEmptyCopy.title}
-                hint={preferenceEmptyCopy.hint}
-                accentColor={colors.primary}
-                chipColors={[colors.chipCoral, colors.chipAmber]}
-              />
-            ) : (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.cardRow}
-                decelerationRate="fast"
-              >
-                {preferenceSuggestions.map((recipe) => (
-                  <RecipeCard
-                    key={recipe.id}
-                    recipe={recipe}
-                    accentColor={colors.primary}
-                    reasonTint={colors.chipCoral}
-                    reasonTextColor={colors.chipCoralText}
-                    showPantry={showPantrySection}
-                    isInNextUp={isInNextUp(recipe.id)}
-                    onAddPress={() => handleAddToNextUp(recipe)}
-                    onHidePress={() => handleHideRecipe(recipe, 'preference')}
-                    onPress={() => openRecipe(recipe)}
-                  />
-                ))}
-              </ScrollView>
-            )}
+        {!pantrySkipped ? renderPantryStrip() : null}
 
-            <SectionHeader
-              eyebrow="YOUR CIRCLE"
-              title="Friend-Inspired"
-              icon="people"
-              accentColor={colors.accent}
-              tintBg={colors.chipTeal}
-            />
-            {isBusy ? (
-              <SkeletonRow pulseAnim={pulseAnim} />
-            ) : showFriendEmpty ? (
-              <SectionEmptyState
-                icon="people-outline"
-                title={friendEmptyCopy.title}
-                hint={friendEmptyCopy.hint}
-                accentColor={colors.accent}
-                chipColors={[colors.chipTeal, colors.chipBlue]}
-              />
-            ) : (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.cardRow}
-                decelerationRate="fast"
-              >
-                {friendSuggestions.map((recipe) => (
-                  <RecipeCard
-                    key={recipe.id}
-                    recipe={recipe}
-                    accentColor={colors.accent}
-                    reasonTint={colors.chipTeal}
-                    reasonTextColor={colors.chipTealText}
-                    showPantry={showPantrySection}
-                    isInNextUp={isInNextUp(recipe.id)}
-                    onAddPress={() => handleAddToNextUp(recipe)}
-                    onHidePress={() => handleHideRecipe(recipe, 'friend')}
-                    onPress={() => openRecipe(recipe)}
-                  />
-                ))}
-              </ScrollView>
-            )}
+        {showPantrySection ? renderPantrySection() : null}
+
+        {showSections ? (
+          <>
+            {isBusy || preferenceSuggestions.length > 0 ? (
+              <>
+                <SectionHeader
+                  eyebrow="YOUR TASTES"
+                  title="Preference-Inspired"
+                  icon="heart"
+                  accentColor={colors.primary}
+                  tintBg={colors.chipCoral}
+                />
+                {isBusy ? (
+                  <SkeletonRow pulseAnim={pulseAnim} />
+                ) : (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.cardRow}
+                    decelerationRate="fast"
+                  >
+                    {preferenceSuggestions.map((recipe) => (
+                      <RecipeCard
+                        key={recipe.id}
+                        recipe={recipe}
+                        accentColor={colors.primary}
+                        reasonTint={colors.chipCoral}
+                        reasonTextColor={colors.chipCoralText}
+                        showPantry={showPantrySection}
+                        isInNextUp={isInNextUp(recipe.id)}
+                        onAddPress={() => handleAddToNextUp(recipe)}
+                        onHidePress={() => handleHideRecipe(recipe, 'preference')}
+                        onPress={() => openRecipe(recipe)}
+                      />
+                    ))}
+                  </ScrollView>
+                )}
+              </>
+            ) : null}
+
+            {isBusy || friendSuggestions.length > 0 ? (
+              <>
+                <SectionHeader
+                  eyebrow="YOUR CIRCLE"
+                  title="Friend-Inspired"
+                  icon="people"
+                  accentColor={colors.accent}
+                  tintBg={colors.chipTeal}
+                />
+                {isBusy ? (
+                  <SkeletonRow pulseAnim={pulseAnim} />
+                ) : (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.cardRow}
+                    decelerationRate="fast"
+                  >
+                    {friendSuggestions.map((recipe) => (
+                      <RecipeCard
+                        key={recipe.id}
+                        recipe={recipe}
+                        accentColor={colors.accent}
+                        reasonTint={colors.chipTeal}
+                        reasonTextColor={colors.chipTealText}
+                        showPantry={showPantrySection}
+                        isInNextUp={isInNextUp(recipe.id)}
+                        onAddPress={() => handleAddToNextUp(recipe)}
+                        onHidePress={() => handleHideRecipe(recipe, 'friend')}
+                        onPress={() => openRecipe(recipe)}
+                      />
+                    ))}
+                  </ScrollView>
+                )}
+              </>
+            ) : null}
           </>
-        )}
+        ) : null}
       </ScrollView>
 
       <BottomNavigation navigation={navigation} activeTab="AI" />
@@ -968,48 +863,54 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: spacing.lg,
   },
-  scrollContentInitial: {
-    flexGrow: 1,
-  },
-  initialGenerateWrap: {
-    flex: 1,
-    justifyContent: 'center',
+  generateWrap: {
+    marginHorizontal: spacing.md + 4,
+    marginTop: spacing.lg,
     alignItems: 'center',
-    paddingHorizontal: spacing.md + 4,
-    paddingVertical: spacing.xl,
-    minHeight: 360,
+    gap: 8,
   },
-  initialGenerateInner: {
-    width: '100%',
-    alignItems: 'center',
-    gap: 12,
-  },
-  initialGenerateButton: {
+  bigGenerateButton: {
     width: '100%',
     backgroundColor: colors.primary,
     borderRadius: radii.xl,
-    paddingVertical: 18,
+    paddingVertical: 20,
     paddingHorizontal: spacing.lg,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 6,
   },
-  initialGenerateButtonText: {
-    fontSize: 18,
+  bigGenerateTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  bigGenerateButtonText: {
+    fontSize: 20,
     fontWeight: '800',
     color: '#fff',
     letterSpacing: -0.2,
     textAlign: 'center',
   },
-  initialGenerateHint: {
+  bigGenerateCount: {
     fontSize: 13,
-    color: colors.textMuted,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.9)',
+  },
+  notFoundText: {
+    marginHorizontal: spacing.md + 4,
+    marginTop: spacing.md,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.textSecondary,
     fontWeight: '500',
+    textAlign: 'center',
   },
   pantryStrip: {
+    marginHorizontal: spacing.md + 4,
     marginTop: spacing.lg,
     backgroundColor: colors.card,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
+    borderRadius: radii.xl,
+    borderWidth: 1,
     borderColor: colors.border,
     paddingHorizontal: spacing.md + 4,
     paddingVertical: spacing.md + 2,

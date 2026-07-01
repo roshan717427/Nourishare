@@ -128,16 +128,25 @@ function buildGeminiPrompt({ logs, friendsMeals, preferences, pantryIngredients 
     .filter(Boolean)
     .join('\n');
 
-  const pantrySummary = pantryIngredients?.length
+  const hasPantry = pantryIngredients?.length > 0;
+  const pantrySummary = hasPantry
     ? pantryIngredients.join(', ')
     : 'No pantry ingredients provided.';
 
+  // With pantry ingredients: 3 sections x 2 recipes (friend, preference, pantry).
+  // Without pantry: 2 sections x 3 recipes (friend, preference; no pantry section).
+  const sectionSpec = hasPantry
+    ? `Split them into three sections (2 recipes each):
+1. "friend" - inspired by what the user's friends have been cooking (similar style/ingredients, NOT exact copies)
+2. "preference" - based on the user's own logged meals and taste preferences
+3. "pantry" - recipes the user can make using their pantry ingredients on hand`
+    : `Split them into two sections (3 recipes each). Do NOT include any "pantry" section:
+1. "friend" - inspired by what the user's friends have been cooking (similar style/ingredients, NOT exact copies)
+2. "preference" - based on the user's own logged meals and taste preferences`;
+
   return `You are a creative home-cooking assistant for the Munchable app. Generate exactly 6 unique recipe suggestions as JSON.
 
-Split them into three sections (2 recipes each):
-1. "friend" — inspired by what the user's friends have been cooking (similar style/ingredients, NOT exact copies)
-2. "preference" — based on the user's own logged meals and taste preferences
-3. "pantry" — recipes the user can make using their pantry ingredients (only if pantry is provided; otherwise creative weeknight ideas using common staples)
+${sectionSpec}
 
 User's recent logged meals:
 ${logSummary}
@@ -152,6 +161,7 @@ ${pantrySummary}
 
 Rules:
 - Do NOT repeat exact dish names the user has already logged.
+- Do NOT use em dashes anywhere in your output; use commas, periods, or "to" for ranges.
 - Each recipe needs: name, ingredients (comma-separated string), cooking_time (e.g. "25 min"), difficulty_level (easy|medium|hard), description (1 sentence), why_suggested (short reason without leading "it").
 - Return ONLY valid JSON in this shape:
 {
