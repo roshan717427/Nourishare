@@ -6,6 +6,7 @@ from collections import Counter
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '_helpers'))
 from validate_input import normalize_username
+from internal_auth import is_internal_request
 
 # Add the functions directory to Python path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'functions'))
@@ -343,6 +344,26 @@ class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         """Handle POST requests to analyze kitchen personality"""
         try:
+            # Internal endpoint: the live client no longer calls this directly
+            # (personality is computed in Node via personalityHelper.js), so it
+            # is gated by the shared INTERNAL_API_SECRET. Fails closed when the
+            # secret is unset. Reject before any work or DB access.
+            # NOTE: if this is ever re-exposed to the mobile client, replace this
+            # with proper user-token auth (Authorization: Bearer) instead.
+            if not is_internal_request(self.headers):
+                self.send_response(401)
+                self.send_header('Content-type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+                self.send_header('Access-Control-Allow-Headers', 'Content-Type, x-internal-secret')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    'status': 'error',
+                    'error': 'unauthorized',
+                    'message': 'Unauthorized'
+                }).encode())
+                return
+
             # Set CORS headers for cross-origin requests
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
@@ -428,5 +449,5 @@ class handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, x-internal-secret')
         self.end_headers()

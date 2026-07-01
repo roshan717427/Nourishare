@@ -245,7 +245,10 @@ function pickProfileUpdates(rawUpdates) {
   for (const key of ALLOWED_PROFILE_UPDATE_KEYS) {
     if (rawUpdates[key] !== undefined) out[key] = rawUpdates[key];
   }
-  if (out.name !== undefined) out.name = sanitizeText(out.name, 100);
+  if (out.name !== undefined) {
+    out.name = sanitizeText(out.name, 100);
+    out.nameLower = out.name.toLowerCase();
+  }
   if (out.bio !== undefined) out.bio = sanitizeText(out.bio, 500);
   if (out.profilePhotoUrl !== undefined) {
     const url = validatePhotoUrl(out.profilePhotoUrl);

@@ -21,6 +21,7 @@ import OnboardingTour, { ONBOARDING_STEPS } from './components/OnboardingTour';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { OnboardingProvider } from './context/OnboardingContext';
 import { NextUpProvider } from './context/NextUpContext';
+import { normalizeUsername } from './utils/apiAuth';
 import {
   addNotificationResponseListener,
   getLastNotificationResponse,
@@ -30,12 +31,26 @@ const Stack = createStackNavigator();
 
 export const navigationRef = createNavigationContainerRef();
 
+// Push payloads are attacker-influenced (anyone who learns a device's Expo push
+// token can send one), so every field is validated before it reaches the
+// navigator. Collections are restricted to the backend's known post sources and
+// usernames must satisfy the same format rule used everywhere else.
+const ALLOWED_POST_COLLECTIONS = ['logs', 'recipe_posts'];
+
+function sanitizePostId(value) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function sanitizeCollection(value) {
+  return ALLOWED_POST_COLLECTIONS.includes(value) ? value : 'logs';
+}
+
 // Map a push notification's data payload to an in-app destination.
 function navigateFromNotificationData(data) {
-  if (!data || !navigationRef.isReady()) return;
+  if (!data || typeof data !== 'object' || !navigationRef.isReady()) return;
 
-  const postId = data.postId || null;
-  const collection = data.collection || 'logs';
+  const postId = sanitizePostId(data.postId);
+  const collection = sanitizeCollection(data.collection);
 
   switch (data.type) {
     case 'like':
@@ -51,11 +66,13 @@ function navigateFromNotificationData(data) {
     case 'follow_request':
       navigationRef.navigate('Notifications');
       break;
-    case 'follow_accepted':
-      if (data.fromUsername) {
-        navigationRef.navigate('Profile', { username: data.fromUsername });
+    case 'follow_accepted': {
+      const fromUsername = normalizeUsername(data.fromUsername);
+      if (fromUsername) {
+        navigationRef.navigate('Profile', { username: fromUsername });
       }
       break;
+    }
     default:
       break;
   }

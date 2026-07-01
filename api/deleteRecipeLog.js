@@ -83,7 +83,7 @@ module.exports = async (req, res) => {
     console.error('Error deleting log:', error);
     return res.status(500).json({
       error: 'Failed to delete recipe log',
-      details: error.message,
+      ...(process.env.NODE_ENV !== 'production' ? { details: error.message } : {}),
     });
   }
 };

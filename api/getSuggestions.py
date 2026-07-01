@@ -19,6 +19,7 @@ DEFAULT_FALLBACK_IMAGE = _suggestion_images.DEFAULT_FALLBACK_IMAGE
 title_matched_image = _suggestion_images.title_matched_image
 
 from validate_input import normalize_username, sanitize_pantry_ingredients, validate_limit
+from internal_auth import is_internal_request
 
 # Import Firebase Admin SDK
 from firebase_admin import firestore
@@ -1502,6 +1503,23 @@ class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         """Handle POST requests to get smart suggestions"""
         try:
+            # Internal endpoint: only reachable by trusted server-to-server
+            # callers presenting the shared INTERNAL_API_SECRET. Fails closed
+            # when the secret is unset. Reject before any work or DB access.
+            if not is_internal_request(self.headers):
+                self.send_response(401)
+                self.send_header('Content-type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+                self.send_header('Access-Control-Allow-Headers', 'Content-Type, x-internal-secret')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    'status': 'error',
+                    'error': 'unauthorized',
+                    'message': 'Unauthorized'
+                }).encode())
+                return
+
             # Set CORS headers for cross-origin requests
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
@@ -1586,6 +1604,6 @@ class handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, x-internal-secret')
         self.end_headers()
 

@@ -65,12 +65,14 @@ module.exports = async (req, res) => {
 
   const capitalFirst = capitalizeFirst(firstName);
   const capitalLast = capitalizeFirst(lastName);
+  const displayName = `${capitalFirst} ${capitalLast}`;
 
   const userData = {
     username,
     uid: auth.uid,
     createdAt: new Date().toISOString(),
-    name: `${capitalFirst} ${capitalLast}`,
+    name: displayName,
+    nameLower: displayName.toLowerCase(),
     firstName: capitalFirst,
     lastName: capitalLast,
     email,
@@ -120,7 +122,7 @@ module.exports = async (req, res) => {
     console.error('Error creating user profile:', error);
     res.status(500).json({
       error: 'Failed to create user profile',
-      details: error.message,
+      ...(process.env.NODE_ENV !== 'production' ? { details: error.message } : {}),
     });
   }
 };

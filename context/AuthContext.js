@@ -151,7 +151,7 @@ export function AuthProvider({ children }) {
       const [followingRes, pendingRes] = await Promise.all([
         fetch(
           `${API_URL}/social?action=following&username=${encodeURIComponent(username)}`,
-          { method: 'GET', headers: { 'Content-Type': 'application/json' } }
+          { method: 'GET', headers }
         ),
         fetch(
           `${API_URL}/social?action=sentFollowRequests&username=${encodeURIComponent(username)}`,

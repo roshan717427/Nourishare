@@ -18,13 +18,19 @@ import { useFocusEffect } from '@react-navigation/native';
 import BottomNavigation from '../components/BottomNavigation';
 import { useAuth } from '../context/AuthContext';
 import { useNextUp } from '../context/NextUpContext';
-import { API_URL } from '../config/api';
 import { colors, radii, spacing, shadows } from '../constants/theme';
 import {
   DEFAULT_FALLBACK_IMAGE,
   resolveSuggestionImage,
   titleFallbackImage,
 } from '../utils/suggestionImages';
+import {
+  loadCachedSuggestions,
+  generateSuggestions,
+  hideSuggestion,
+} from '../utils/aiSuggestionsApi';
+import { friendlyAiError } from '../utils/errorMessages';
+import { extractFirstName } from '../utils/personalityCopy';
 
 const CARD_WIDTH = 200;
 const IMAGE_HEIGHT = 150;
@@ -103,7 +109,17 @@ function MetaChip({ icon, label, tint, textColor }) {
   );
 }
 
-function RecipeCard({ recipe, onPress, onAddPress, isInNextUp, accentColor, reasonTint, reasonTextColor, showPantry }) {
+function RecipeCard({
+  recipe,
+  onPress,
+  onAddPress,
+  onHidePress,
+  isInNextUp,
+  accentColor,
+  reasonTint,
+  reasonTextColor,
+  showPantry,
+}) {
   const why = formatSuggestionReason(recipe.why_suggested);
   const difficulty = recipe.difficulty_level
     ? recipe.difficulty_level.charAt(0).toUpperCase() + recipe.difficulty_level.slice(1)
@@ -137,22 +153,38 @@ function RecipeCard({ recipe, onPress, onAddPress, isInNextUp, accentColor, reas
           colors={['transparent', 'rgba(0,0,0,0.55)']}
           style={styles.recipeImageGradient}
         />
-        <TouchableOpacity
-          style={[styles.addButton, isInNextUp && styles.addButtonActive, shadows.cardSoft]}
-          onPress={(e) => {
-            e?.stopPropagation?.();
-            onAddPress?.();
-          }}
-          activeOpacity={0.85}
-          accessibilityRole="button"
-          accessibilityLabel={isInNextUp ? 'Already in Next Up' : 'Add to Next Up'}
-        >
-          <Ionicons
-            name={isInNextUp ? 'checkmark' : 'add'}
-            size={18}
-            color={isInNextUp ? colors.card : accentColor}
-          />
-        </TouchableOpacity>
+        <View style={styles.recipeImageActions}>
+          <TouchableOpacity
+            style={[styles.addButton, isInNextUp && styles.addButtonActive, shadows.cardSoft]}
+            onPress={(e) => {
+              e?.stopPropagation?.();
+              onAddPress?.();
+            }}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={isInNextUp ? 'Already in Next Up' : 'Add to Next Up'}
+          >
+            <Ionicons
+              name={isInNextUp ? 'checkmark' : 'add'}
+              size={18}
+              color={isInNextUp ? colors.card : accentColor}
+            />
+          </TouchableOpacity>
+          {onHidePress ? (
+            <TouchableOpacity
+              style={[styles.hideButton, shadows.cardSoft]}
+              onPress={(e) => {
+                e?.stopPropagation?.();
+                onHidePress?.();
+              }}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Hide suggestion"
+            >
+              <Ionicons name="trash-outline" size={16} color={colors.textMuted} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
         {recipe.rating ? (
           <View style={[styles.ratingBadge, shadows.cardSoft]}>
             <Ionicons name="star" size={11} color={colors.star} />
@@ -300,39 +332,176 @@ function parsePantryInput(text) {
     .filter(Boolean);
 }
 
-function buildGreeting(displayName, hasLogs, hasFollowing) {
+function buildGreeting(firstName, hasLogs, hasFollowing, { hasContent, hasPantry, pantrySkipped }) {
+  if (!hasContent) {
+    if (!hasLogs && !hasFollowing) {
+      return `Hey ${firstName}! Tap Generate suggestions to get AI recipe ideas. Log meals and follow friends for better picks.`;
+    }
+    return `Hey ${firstName}! Tap Generate suggestions for fresh AI recipe ideas tailored to you.`;
+  }
+
+  if (hasPantry) {
+    if (!hasLogs && !hasFollowing) {
+      return `Hey ${firstName}! Here are pantry-inspired picks plus ideas from your tastes. Log meals and follow friends for even sharper suggestions.`;
+    }
+    if (!hasLogs) {
+      return `Hey ${firstName}! Your pantry-inspired picks are ready, along with taste-based ideas. Log meals so we can learn your preferences.`;
+    }
+    if (!hasFollowing) {
+      return `Hey ${firstName}! Pantry picks and preference-inspired ideas are below. Follow friends to unlock friend-inspired recipes too.`;
+    }
+    return `Hey ${firstName}! Here are pantry-inspired picks alongside your taste and friend favorites. Tap Generate for more.`;
+  }
+
+  if (pantrySkipped) {
+    if (!hasLogs && !hasFollowing) {
+      return `Hey ${firstName}! Preference and friend-inspired picks are below. Log meals and follow friends for sharper suggestions next time.`;
+    }
+    if (!hasLogs) {
+      return `Hey ${firstName}! Your taste-based picks are ready below. Log meals so we can learn what you love.`;
+    }
+    if (!hasFollowing) {
+      return `Hey ${firstName}! Preference-inspired ideas are below. Follow friends to unlock friend-inspired picks too.`;
+    }
+    return `Hey ${firstName}! Here are preference and friend-inspired picks. Tap Generate for more.`;
+  }
+
   if (!hasLogs && !hasFollowing) {
-    return `Hey ${displayName}! Log a few meals and follow friends, and we'll start picking recipes just for you.`;
+    return `Hey ${firstName}! Here are your saved AI picks. Log meals and follow friends for sharper suggestions next time.`;
   }
   if (!hasLogs) {
-    return `Hey ${displayName}! Follow friends to see what they're cooking. Log your own meals too so we can learn your tastes.`;
+    return `Hey ${firstName}! Your saved AI picks are below. Log meals so we can learn your tastes.`;
   }
   if (!hasFollowing) {
-    return `Hey ${displayName}! Here are picks based on what you've been cooking. Follow friends to unlock more inspiration.`;
+    return `Hey ${firstName}! Your saved AI picks are below. Follow friends to unlock friend-inspired ideas.`;
   }
-  return `Hey ${displayName}! Here are recipes based on your tastes and meals your friends have been cooking lately.`;
+  return `Hey ${firstName}! Your saved AI recipe picks are ready below. Tap Generate for more.`;
 }
 
 export default function AISuggestionsScreen({ navigation }) {
   const { user, following } = useAuth();
   const { addToNextUp, isInNextUp } = useNextUp();
   const username = user?.username || 'current_user';
-  const displayName = user?.name || username;
+  const firstName = extractFirstName(user?.name) || username;
   const hasFollowing = following.length > 0;
 
   const [loading, setLoading] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [hasLogs, setHasLogs] = useState(false);
   const [hasFriends, setHasFriends] = useState(false);
   const [preferenceSuggestions, setPreferenceSuggestions] = useState([]);
   const [friendSuggestions, setFriendSuggestions] = useState([]);
+  const [pantrySuggestions, setPantrySuggestions] = useState([]);
+  const [generationsRemaining, setGenerationsRemaining] = useState(3);
+  const [dailyLimit, setDailyLimit] = useState(3);
+  const [statusMessage, setStatusMessage] = useState('');
   const [pantryText, setPantryText] = useState('');
   const [pantryActive, setPantryActive] = useState(null);
   const [pantryResolved, setPantryResolved] = useState(false);
+  const [hasStartedGeneration, setHasStartedGeneration] = useState(false);
+  const [hasLoadedCache, setHasLoadedCache] = useState(false);
 
   const pulseAnim = useRef(new Animated.Value(0)).current;
 
+  const applySuggestionsData = useCallback((data) => {
+    const preferenceItems = mapApiSuggestions(data.preference_suggestions || []);
+    const friendItems = mapApiSuggestions(data.friend_suggestions || []);
+    const pantryItems = mapApiSuggestions(data.pantry_suggestions || []);
+    setPreferenceSuggestions(preferenceItems);
+    setFriendSuggestions(friendItems);
+    setPantrySuggestions(pantryItems);
+    if (data.has_logs != null) setHasLogs(data.has_logs);
+    if (data.has_friends != null) setHasFriends(data.has_friends);
+    if (typeof data.generations_remaining === 'number') {
+      setGenerationsRemaining(data.generations_remaining);
+    }
+    if (typeof data.daily_limit === 'number') {
+      setDailyLimit(data.daily_limit);
+    }
+    const hasVisible =
+      preferenceItems.length > 0 ||
+      friendItems.length > 0 ||
+      pantryItems.length > 0;
+    const hasCachedTotal = (data.total_cached || 0) > 0;
+    if (hasVisible || hasCachedTotal) {
+      setHasStartedGeneration(true);
+      setPantryResolved(true);
+    }
+  }, []);
+
+  const loadCached = useCallback(async () => {
+    setLoading(true);
+    setStatusMessage('');
+    try {
+      const data = await loadCachedSuggestions(username);
+      applySuggestionsData(data);
+    } catch (err) {
+      console.log('Could not load cached suggestions:', err.message);
+      setStatusMessage(friendlyAiError(err));
+    } finally {
+      setHasLoadedCache(true);
+      setLoading(false);
+    }
+  }, [username, applySuggestionsData]);
+
+  const handleGenerate = async (pantryOverride) => {
+    if (generating) return;
+    if (generationsRemaining <= 0) {
+      Alert.alert('Daily limit reached', friendlyAiError({ code: 'daily_limit_exceeded' }));
+      return;
+    }
+
+    setHasStartedGeneration(true);
+    setGenerating(true);
+    setStatusMessage('');
+    const pantryForRequest = pantryOverride !== undefined ? pantryOverride : pantryActive;
+    try {
+      const data = await generateSuggestions(username, pantryForRequest);
+      applySuggestionsData(data);
+      if (data.generated_count > 0) {
+        setStatusMessage(`Added ${data.generated_count} new recipe ideas!`);
+      }
+    } catch (err) {
+      console.log('Generate suggestions failed:', err.message);
+      setStatusMessage(friendlyAiError(err));
+      if (err.status === 429) {
+        Alert.alert('Limit reached', friendlyAiError(err));
+      }
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleHideRecipe = (recipe, section) => {
+    Alert.alert(
+      'Hide this suggestion?',
+      `"${recipe.name}" will be hidden from your list. You can see it again in a future generation.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Hide',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await hideSuggestion(username, recipe.id);
+              if (section === 'preference') {
+                setPreferenceSuggestions((prev) => prev.filter((r) => r.id !== recipe.id));
+              } else if (section === 'friend') {
+                setFriendSuggestions((prev) => prev.filter((r) => r.id !== recipe.id));
+              } else {
+                setPantrySuggestions((prev) => prev.filter((r) => r.id !== recipe.id));
+              }
+            } catch (err) {
+              Alert.alert('Could not hide', friendlyAiError(err));
+            }
+          },
+        },
+      ]
+    );
+  };
+
   useEffect(() => {
-    if (!loading) return undefined;
+    if (!loading && !generating) return undefined;
 
     const animation = Animated.loop(
       Animated.sequence([
@@ -350,102 +519,27 @@ export default function AISuggestionsScreen({ navigation }) {
     );
     animation.start();
     return () => animation.stop();
-  }, [loading, pulseAnim]);
+  }, [loading, generating, pulseAnim]);
 
   useFocusEffect(
     useCallback(() => {
-      if (!pantryResolved) {
-        return undefined;
-      }
-
-      let isMounted = true;
-
-      const fetchSuggestions = async (pantryList = null) => {
-        setLoading(true);
-
-        let logsCount = 0;
-        try {
-          const logsResponse = await fetch(
-            `${API_URL}/social?action=userLogs&username=${encodeURIComponent(username)}`,
-            { method: 'GET', headers: { 'Content-Type': 'application/json' } }
-          );
-          if (logsResponse.ok) {
-            const logsData = await logsResponse.json();
-            logsCount = Array.isArray(logsData.logs) ? logsData.logs.length : 0;
-          }
-        } catch (err) {
-          console.log('Could not load user logs for suggestions:', err.message);
-        }
-
-        try {
-          const body = { username, limit: 6 };
-          if (pantryList && pantryList.length > 0) {
-            body.pantry_ingredients = pantryList;
-          }
-
-          const response = await fetch(`${API_URL}/getSuggestions`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-          });
-
-          if (!isMounted) {
-            return;
-          }
-
-          if (!response.ok) {
-            setHasLogs(logsCount > 0);
-            setHasFriends(hasFollowing);
-            setPreferenceSuggestions([]);
-            setFriendSuggestions([]);
-            return;
-          }
-
-          const data = await response.json();
-          const userHasLogs = data.has_logs ?? logsCount > 0;
-          const userHasFriends =
-            (data.has_friends ?? (data.total_friends ?? 0) >= 1) || hasFollowing;
-          setHasLogs(userHasLogs);
-          setHasFriends(userHasFriends);
-
-          const preferenceItems = userHasLogs
-            ? data.preference_suggestions || []
-            : [];
-          const friendItems = userHasFriends
-            ? data.friend_suggestions || data.suggestions || []
-            : [];
-
-          setPreferenceSuggestions(mapApiSuggestions(preferenceItems));
-          setFriendSuggestions(mapApiSuggestions(friendItems));
-        } catch (err) {
-          console.log('Suggestions API unavailable:', err.message);
-          if (isMounted) {
-            setHasLogs(logsCount > 0);
-            setHasFriends(hasFollowing);
-            setPreferenceSuggestions([]);
-            setFriendSuggestions([]);
-          }
-        } finally {
-          if (isMounted) {
-            setLoading(false);
-          }
-        }
-      };
-
-      fetchSuggestions(pantryActive);
-      return () => {
-        isMounted = false;
-      };
-    }, [username, hasFollowing, pantryActive, pantryResolved])
+      loadCached();
+      return undefined;
+    }, [loadCached])
   );
+
+  useEffect(() => {
+    setHasFriends(hasFollowing);
+  }, [hasFollowing]);
 
   const handleSkipPantry = () => {
     setPantryText('');
     setPantryActive([]);
     setPantryResolved(true);
+    setPantrySuggestions([]);
   };
 
-  const handleMatchPantry = () => {
+  const handleMatchPantry = async () => {
     const parsed = parsePantryInput(pantryText);
     if (parsed.length === 0) {
       Alert.alert('Add ingredients', 'Enter what you have on hand, separated by commas.');
@@ -453,6 +547,7 @@ export default function AISuggestionsScreen({ navigation }) {
     }
     setPantryActive(parsed);
     setPantryResolved(true);
+    await handleGenerate(parsed);
   };
 
   const openRecipe = (recipe) => {
@@ -470,25 +565,194 @@ export default function AISuggestionsScreen({ navigation }) {
     }
   };
 
-  const showPreferenceEmpty = !loading && !hasLogs;
-  const showPreferenceLearning =
-    !loading && hasLogs && preferenceSuggestions.length === 0;
-  const showFriendEmpty = !loading && (!hasFriends || friendSuggestions.length === 0);
+  const hasCached =
+    preferenceSuggestions.length > 0 ||
+    friendSuggestions.length > 0 ||
+    pantrySuggestions.length > 0;
+  const hasContent = hasCached || hasStartedGeneration;
+  const isBusy = loading || generating;
+  const pantrySkipped = pantryResolved && Array.isArray(pantryActive) && pantryActive.length === 0;
+  const showInitialOnly = hasLoadedCache && !hasContent && !isBusy;
+  const showPantryInput = hasContent && !pantryResolved;
+  const showPantrySection = !pantrySkipped && pantrySuggestions.length > 0;
+
+  const showPreferenceEmpty = !isBusy && preferenceSuggestions.length === 0;
+  const showFriendEmpty = !isBusy && friendSuggestions.length === 0;
 
   const preferenceEmptyCopy = {
-    title: 'Nothing to suggest yet',
-    hint: 'Log your first meal and we will start picking recipes for you.',
+    title: 'No preference-inspired picks yet',
+    hint: 'Tap Generate to create AI recipes based on your tastes.',
   };
 
-  const friendEmptyCopy = !hasFriends
-    ? {
-        title: 'No friend picks yet',
-        hint: 'Follow friends to see what they\'re cooking.',
-      }
-    : {
-        title: 'No friend-inspired picks yet',
-        hint: 'When friends log meals, similar recipe ideas will show up here.',
-      };
+  const friendEmptyCopy = {
+    title: 'No friend-inspired picks yet',
+    hint: hasFriends
+      ? 'Tap Generate for ideas inspired by your friends\' cooking.'
+      : 'Follow friends, then tap Generate for friend-inspired ideas.',
+  };
+
+  const pantryEmptyCopy = {
+    title: 'No pantry picks yet',
+    hint: 'Tap Generate to get recipes based on your pantry ingredients.',
+  };
+
+  const greetingText = isBusy
+    ? generating
+      ? 'Cooking up fresh AI recipe ideas…'
+      : 'Loading your saved suggestions…'
+    : buildGreeting(firstName, hasLogs, hasFriends, {
+        hasContent,
+        hasPantry: showPantrySection,
+        pantrySkipped,
+      });
+
+  const renderGenerateRow = (compact = false) => {
+    if (compact) {
+      return (
+        <View style={styles.initialGenerateInner}>
+          <TouchableOpacity
+            style={[
+              styles.initialGenerateButton,
+              shadows.cardSoft,
+              (generating || generationsRemaining <= 0) && styles.generateButtonDisabled,
+            ]}
+            onPress={() => handleGenerate()}
+            disabled={generating || generationsRemaining <= 0}
+            activeOpacity={0.85}
+          >
+            {generating ? (
+              <Text style={styles.initialGenerateButtonText}>Generating…</Text>
+            ) : (
+              <Text style={styles.initialGenerateButtonText}>Generate suggestions 👀</Text>
+            )}
+          </TouchableOpacity>
+          <Text style={styles.initialGenerateHint}>
+            {generationsRemaining} of {dailyLimit} left today
+          </Text>
+          {statusMessage ? (
+            <Text style={styles.statusMessage}>{statusMessage}</Text>
+          ) : null}
+        </View>
+      );
+    }
+
+    return (
+      <View style={[styles.generateCard, shadows.cardSoft]}>
+        <View style={styles.generateRow}>
+          <View style={styles.generateTextWrap}>
+            <Text style={styles.generateTitle}>Generate AI Recipes</Text>
+            <Text style={styles.generateHint}>
+              {generationsRemaining} of {dailyLimit} left today
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[
+              styles.generateButton,
+              (generating || generationsRemaining <= 0) && styles.generateButtonDisabled,
+            ]}
+            onPress={() => handleGenerate()}
+            disabled={generating || generationsRemaining <= 0}
+            activeOpacity={0.85}
+          >
+            {generating ? (
+              <Text style={styles.generateButtonText}>Generating…</Text>
+            ) : (
+              <>
+                <Ionicons name="sparkles" size={16} color="#fff" />
+                <Text style={styles.generateButtonText}>Generate</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+        {statusMessage ? (
+          <Text style={styles.statusMessage}>{statusMessage}</Text>
+        ) : null}
+      </View>
+    );
+  };
+
+  const renderPantryStrip = () => (
+    <View style={[styles.pantryStrip, shadows.cardSoft]}>
+      <View style={styles.pantryHeader}>
+        <Ionicons name="basket-outline" size={20} color={colors.primary} />
+        <Text style={styles.pantryTitle}>What's in your pantry?</Text>
+      </View>
+      <Text style={styles.pantryHint}>
+        List ingredients you have and we'll rank recipes you can make, or skip to see your usual picks.
+      </Text>
+      <TextInput
+        style={styles.pantryInput}
+        placeholder="e.g. chicken, rice, garlic, soy sauce"
+        placeholderTextColor={colors.textMuted}
+        value={pantryText}
+        onChangeText={setPantryText}
+        multiline
+      />
+      <View style={styles.pantryActions}>
+        <TouchableOpacity
+          style={styles.pantrySkipButton}
+          onPress={handleSkipPantry}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.pantrySkipText}>Skip</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.pantryMatchButton, generating && styles.generateButtonDisabled]}
+          onPress={handleMatchPantry}
+          disabled={generating}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="search" size={16} color="#fff" />
+          <Text style={styles.pantryMatchText}>Find matches</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  const renderPantrySection = () => (
+    <>
+      <SectionHeader
+        eyebrow="YOUR KITCHEN"
+        title="Based on Your Pantry"
+        icon="basket"
+        accentColor={colors.chipAmberText}
+        tintBg={colors.chipAmber}
+      />
+      {isBusy ? (
+        <SkeletonRow pulseAnim={pulseAnim} />
+      ) : pantrySuggestions.length === 0 ? (
+        <SectionEmptyState
+          icon="basket-outline"
+          title={pantryEmptyCopy.title}
+          hint={pantryEmptyCopy.hint}
+          accentColor={colors.chipAmberText}
+          chipColors={[colors.chipAmber, colors.chipCoral]}
+        />
+      ) : (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.cardRow}
+          decelerationRate="fast"
+        >
+          {pantrySuggestions.map((recipe) => (
+            <RecipeCard
+              key={recipe.id}
+              recipe={recipe}
+              accentColor={colors.chipAmberText}
+              reasonTint={colors.chipAmber}
+              reasonTextColor={colors.chipAmberText}
+              showPantry
+              isInNextUp={isInNextUp(recipe.id)}
+              onAddPress={() => handleAddToNextUp(recipe)}
+              onHidePress={() => handleHideRecipe(recipe, 'pantry')}
+              onPress={() => openRecipe(recipe)}
+            />
+          ))}
+        </ScrollView>
+      )}
+    </>
+  );
 
   return (
     <View style={styles.container}>
@@ -528,155 +792,119 @@ export default function AISuggestionsScreen({ navigation }) {
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
-          !pantryResolved && styles.scrollContentPantryFocus,
+          showInitialOnly && styles.scrollContentInitial,
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {!pantryResolved ? (
-          <View style={styles.pantryFocusWrap}>
-            <View style={[styles.pantryCard, styles.pantryCardFocus, shadows.cardSoft]}>
-              <View style={styles.pantryHeader}>
-                <Ionicons name="basket-outline" size={20} color={colors.primary} />
-                <Text style={styles.pantryTitle}>What's in your pantry?</Text>
-              </View>
-              <Text style={styles.pantryHint}>
-                List ingredients you have and we'll rank recipes you can make, or skip to see your usual picks.
-              </Text>
-              <TextInput
-                style={styles.pantryInput}
-                placeholder="e.g. chicken, rice, garlic, soy sauce"
-                placeholderTextColor={colors.textMuted}
-                value={pantryText}
-                onChangeText={setPantryText}
-                multiline
-              />
-              <View style={styles.pantryActions}>
-                <TouchableOpacity
-                  style={styles.pantrySkipButton}
-                  onPress={handleSkipPantry}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.pantrySkipText}>Skip</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.pantryMatchButton}
-                  onPress={handleMatchPantry}
-                  activeOpacity={0.85}
-                >
-                  <Ionicons name="search" size={16} color="#fff" />
-                  <Text style={styles.pantryMatchText}>Find matches</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+        {showInitialOnly ? (
+          <View style={styles.initialGenerateWrap}>
+            {renderGenerateRow(true)}
           </View>
         ) : (
           <>
-        <View style={[styles.greetingCard, shadows.cardSoft]}>
-          <LinearGradient
-            colors={[colors.cardWarm, colors.card]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.greetingGradient}
-          >
-            <View style={styles.greetingAccent} />
-            <View style={styles.greetingContent}>
-              <View style={styles.greetingIconWrap}>
-                <Ionicons name="bulb-outline" size={18} color={colors.primary} />
-              </View>
-              <Text style={styles.greeting}>
-                {loading ? 'Finding recipes tailored to your tastes...' : buildGreeting(displayName, hasLogs, hasFriends)}
-              </Text>
+            <View style={[styles.greetingCard, shadows.cardSoft]}>
+              <LinearGradient
+                colors={[colors.cardWarm, colors.card]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.greetingGradient}
+              >
+                <View style={styles.greetingAccent} />
+                <View style={styles.greetingContent}>
+                  <View style={styles.greetingIconWrap}>
+                    <Ionicons name="bulb-outline" size={18} color={colors.primary} />
+                  </View>
+                  <Text style={styles.greeting}>{greetingText}</Text>
+                </View>
+              </LinearGradient>
             </View>
-          </LinearGradient>
-        </View>
 
-        <SectionHeader
-          eyebrow="YOUR TASTES"
-          title="Based on Your Preferences"
-          icon="heart"
-          accentColor={colors.primary}
-          tintBg={colors.chipCoral}
-        />
-        {loading ? (
-          <SkeletonRow pulseAnim={pulseAnim} />
-        ) : showPreferenceEmpty ? (
-          <SectionEmptyState
-            icon="restaurant-outline"
-            title={preferenceEmptyCopy.title}
-            hint={preferenceEmptyCopy.hint}
-            accentColor={colors.primary}
-            chipColors={[colors.chipCoral, colors.chipAmber]}
-          />
-        ) : showPreferenceLearning ? (
-          <SectionEmptyState
-            icon="restaurant-outline"
-            title="Still learning your tastes"
-            hint="Keep logging meals, and we will sharpen these picks as we go."
-            accentColor={colors.primary}
-            chipColors={[colors.chipCoral, colors.chipAmber]}
-          />
-        ) : (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.cardRow}
-            decelerationRate="fast"
-          >
-            {preferenceSuggestions.map((recipe) => (
-              <RecipeCard
-                key={recipe.id}
-                recipe={recipe}
+            {showPantryInput ? renderPantryStrip() : null}
+            {showPantrySection ? renderPantrySection() : null}
+
+            {renderGenerateRow()}
+
+            <SectionHeader
+              eyebrow="YOUR TASTES"
+              title="Preference-Inspired"
+              icon="heart"
+              accentColor={colors.primary}
+              tintBg={colors.chipCoral}
+            />
+            {isBusy ? (
+              <SkeletonRow pulseAnim={pulseAnim} />
+            ) : showPreferenceEmpty ? (
+              <SectionEmptyState
+                icon="restaurant-outline"
+                title={preferenceEmptyCopy.title}
+                hint={preferenceEmptyCopy.hint}
                 accentColor={colors.primary}
-                reasonTint={colors.chipCoral}
-                reasonTextColor={colors.chipCoralText}
-                showPantry={pantryActive && pantryActive.length > 0}
-                isInNextUp={isInNextUp(recipe.id)}
-                onAddPress={() => handleAddToNextUp(recipe)}
-                onPress={() => openRecipe(recipe)}
+                chipColors={[colors.chipCoral, colors.chipAmber]}
               />
-            ))}
-          </ScrollView>
-        )}
+            ) : (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.cardRow}
+                decelerationRate="fast"
+              >
+                {preferenceSuggestions.map((recipe) => (
+                  <RecipeCard
+                    key={recipe.id}
+                    recipe={recipe}
+                    accentColor={colors.primary}
+                    reasonTint={colors.chipCoral}
+                    reasonTextColor={colors.chipCoralText}
+                    showPantry={showPantrySection}
+                    isInNextUp={isInNextUp(recipe.id)}
+                    onAddPress={() => handleAddToNextUp(recipe)}
+                    onHidePress={() => handleHideRecipe(recipe, 'preference')}
+                    onPress={() => openRecipe(recipe)}
+                  />
+                ))}
+              </ScrollView>
+            )}
 
-        <SectionHeader
-          eyebrow="YOUR CIRCLE"
-          title="Inspired by Your Friends"
-          icon="people"
-          accentColor={colors.accent}
-          tintBg={colors.chipTeal}
-        />
-        {loading ? (
-          <SkeletonRow pulseAnim={pulseAnim} />
-        ) : showFriendEmpty ? (
-          <SectionEmptyState
-            icon="people-outline"
-            title={friendEmptyCopy.title}
-            hint={friendEmptyCopy.hint}
-            accentColor={colors.accent}
-            chipColors={[colors.chipTeal, colors.chipBlue]}
-          />
-        ) : (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.cardRow}
-            decelerationRate="fast"
-          >
-            {friendSuggestions.map((recipe) => (
-              <RecipeCard
-                key={recipe.id}
-                recipe={recipe}
+            <SectionHeader
+              eyebrow="YOUR CIRCLE"
+              title="Friend-Inspired"
+              icon="people"
+              accentColor={colors.accent}
+              tintBg={colors.chipTeal}
+            />
+            {isBusy ? (
+              <SkeletonRow pulseAnim={pulseAnim} />
+            ) : showFriendEmpty ? (
+              <SectionEmptyState
+                icon="people-outline"
+                title={friendEmptyCopy.title}
+                hint={friendEmptyCopy.hint}
                 accentColor={colors.accent}
-                reasonTint={colors.chipTeal}
-                reasonTextColor={colors.chipTealText}
-                showPantry={pantryActive && pantryActive.length > 0}
-                isInNextUp={isInNextUp(recipe.id)}
-                onAddPress={() => handleAddToNextUp(recipe)}
-                onPress={() => openRecipe(recipe)}
+                chipColors={[colors.chipTeal, colors.chipBlue]}
               />
-            ))}
-          </ScrollView>
-        )}
+            ) : (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.cardRow}
+                decelerationRate="fast"
+              >
+                {friendSuggestions.map((recipe) => (
+                  <RecipeCard
+                    key={recipe.id}
+                    recipe={recipe}
+                    accentColor={colors.accent}
+                    reasonTint={colors.chipTeal}
+                    reasonTextColor={colors.chipTealText}
+                    showPantry={showPantrySection}
+                    isInNextUp={isInNextUp(recipe.id)}
+                    onAddPress={() => handleAddToNextUp(recipe)}
+                    onHidePress={() => handleHideRecipe(recipe, 'friend')}
+                    onPress={() => openRecipe(recipe)}
+                  />
+                ))}
+              </ScrollView>
+            )}
           </>
         )}
       </ScrollView>
@@ -740,27 +968,51 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: spacing.lg,
   },
-  scrollContentPantryFocus: {
+  scrollContentInitial: {
     flexGrow: 1,
   },
-  pantryFocusWrap: {
+  initialGenerateWrap: {
     flex: 1,
     justifyContent: 'center',
+    alignItems: 'center',
     paddingHorizontal: spacing.md + 4,
     paddingVertical: spacing.xl,
+    minHeight: 360,
   },
-  pantryCard: {
-    marginHorizontal: spacing.md + 4,
+  initialGenerateInner: {
+    width: '100%',
+    alignItems: 'center',
+    gap: 12,
+  },
+  initialGenerateButton: {
+    width: '100%',
+    backgroundColor: colors.primary,
+    borderRadius: radii.xl,
+    paddingVertical: 18,
+    paddingHorizontal: spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  initialGenerateButtonText: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: -0.2,
+    textAlign: 'center',
+  },
+  initialGenerateHint: {
+    fontSize: 13,
+    color: colors.textMuted,
+    fontWeight: '500',
+  },
+  pantryStrip: {
     marginTop: spacing.lg,
     backgroundColor: colors.card,
-    borderRadius: radii.xl,
-    borderWidth: 1,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
     borderColor: colors.border,
-    padding: spacing.md + 2,
-  },
-  pantryCardFocus: {
-    marginHorizontal: 0,
-    marginTop: 0,
+    paddingHorizontal: spacing.md + 4,
+    paddingVertical: spacing.md + 2,
   },
   pantryHeader: {
     flexDirection: 'row',
@@ -824,6 +1076,60 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#fff',
+  },
+  generateCard: {
+    marginHorizontal: spacing.md + 4,
+    marginTop: spacing.lg,
+    backgroundColor: colors.card,
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md + 2,
+  },
+  generateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  generateTextWrap: {
+    flex: 1,
+  },
+  generateTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.text,
+    letterSpacing: -0.2,
+  },
+  generateHint: {
+    fontSize: 13,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  generateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.primary,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: radii.pill,
+  },
+  generateButtonDisabled: {
+    opacity: 0.55,
+  },
+  generateButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  statusMessage: {
+    marginTop: 4,
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.textSecondary,
+    fontWeight: '500',
+    textAlign: 'center',
   },
   greetingCard: {
     marginHorizontal: spacing.md + 4,
@@ -952,10 +1258,16 @@ const styles = StyleSheet.create({
   recipeImageWrap: {
     position: 'relative',
   },
-  addButton: {
+  recipeImageActions: {
     position: 'absolute',
     top: 10,
     left: 10,
+    right: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    zIndex: 2,
+  },
+  addButton: {
     width: 34,
     height: 34,
     borderRadius: 17,
@@ -964,7 +1276,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.6)',
-    zIndex: 2,
+  },
+  hideButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.6)',
   },
   addButtonActive: {
     backgroundColor: colors.primary,

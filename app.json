@@ -32,7 +32,6 @@
       "package": "com.roshanpaul.munchable",
       "permissions": [
         "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO",
         "android.permission.POST_NOTIFICATIONS"
       ]
     },
@@ -44,7 +43,8 @@
         "expo-image-picker",
         {
           "photosPermission": "The app accesses your photos to let you share them with your meals.",
-          "cameraPermission": "The app accesses your camera to let you take photos of your meals."
+          "cameraPermission": "The app accesses your camera to let you take photos of your meals.",
+          "microphonePermission": false
         }
       ],
       [

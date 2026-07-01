@@ -123,10 +123,11 @@ export default function ExploreScreen({ navigation }) {
     }
 
     const merged = [];
+    const normalizedQuery = trimmed.toLowerCase();
 
     try {
       const response = await fetch(
-        `${API_URL}/social?action=searchUsers&q=${encodeURIComponent(trimmed)}`,
+        `${API_URL}/social?action=searchUsers&q=${encodeURIComponent(normalizedQuery)}`,
         { method: 'GET', headers: { 'Content-Type': 'application/json' } }
       );
       if (response.ok) {

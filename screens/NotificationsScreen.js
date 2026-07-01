@@ -75,6 +75,14 @@ function FollowRequestRow({
             )}
           </TouchableOpacity>
         </View>
+      ) : wasAccepted && isFollowing ? (
+        <View style={styles.followingBadge}>
+          <Text style={styles.followingBadgeText}>Following</Text>
+        </View>
+      ) : wasAccepted && isPending ? (
+        <View style={styles.followingBadge}>
+          <Text style={styles.followingBadgeText}>Requested</Text>
+        </View>
       ) : wasAccepted && !isFollowing && !isPending ? (
         <TouchableOpacity
           style={styles.followBackBtn}
@@ -83,10 +91,6 @@ function FollowRequestRow({
         >
           <Text style={styles.followBackBtnText}>Follow back</Text>
         </TouchableOpacity>
-      ) : wasAccepted && isFollowing ? (
-        <View style={styles.followingBadge}>
-          <Text style={styles.followingBadgeText}>Following</Text>
-        </View>
       ) : null}
     </View>
   );

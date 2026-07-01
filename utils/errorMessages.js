@@ -13,6 +13,14 @@ export const NETWORK_ERROR = "Couldn't connect. Check your internet and try agai
 export const SESSION_ERROR = 'Please sign in again to continue.';
 export const SERVER_ERROR = 'Our servers are having trouble. Please try again shortly.';
 
+// AI suggestion generation limits (Gemini + app daily quota)
+export const AI_DAILY_LIMIT =
+  'You have reached the daily usage limit. Please try again tomorrow!';
+export const AI_RPM_LIMIT =
+  'Suggestions are popular right now! Please try again in a minute.';
+export const AI_GENERATION_FAILED =
+  "We couldn't generate new suggestions right now. Please try again shortly.";
+
 const STATUS_MESSAGES = {
   400: "Something doesn't look right. Please check your input and try again.",
   401: SESSION_ERROR,
@@ -114,4 +122,41 @@ export function friendlyErrorForResponse(response, options = {}) {
     mergedOverrides.default = fallback;
   }
   return messageForStatus(response && response.status, mergedOverrides);
+}
+
+// Map structured AI suggestion error codes from the backend to friendly copy.
+export function messageForAiErrorCode(code) {
+  switch (code) {
+    case 'daily_limit_exceeded':
+    case 'gemini_rate_limit_rpd':
+      return AI_DAILY_LIMIT;
+    case 'gemini_rate_limit_rpm':
+      return AI_RPM_LIMIT;
+    case 'generation_failed':
+    case 'generation_empty':
+    case 'gemini_error':
+    case 'gemini_unavailable':
+    case 'gemini_empty':
+      return AI_GENERATION_FAILED;
+    default:
+      return null;
+  }
+}
+
+// Resolve friendly copy for AI API errors (thrown httpError or raw response data).
+export function friendlyAiError(err, options = {}) {
+  const code =
+    (err && err.data && (err.data.code || err.data.error)) ||
+    (err && err.code) ||
+    null;
+  const fromCode = messageForAiErrorCode(code);
+  if (fromCode) return fromCode;
+  return friendlyError(err, {
+    fallback: AI_GENERATION_FAILED,
+    overrides: {
+      429: AI_RPM_LIMIT,
+      ...(options.overrides || {}),
+    },
+    ...options,
+  });
 }

@@ -124,7 +124,7 @@ module.exports = async (req, res) => {
     console.error('Error creating recipe log:', error);
     res.status(500).json({
       error: 'Failed to create recipe log',
-      details: error.message,
+      ...(process.env.NODE_ENV !== 'production' ? { details: error.message } : {}),
     });
   }
 };

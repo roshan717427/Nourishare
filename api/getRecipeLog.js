@@ -34,12 +34,15 @@ module.exports = async (req, res) => {
     return;
   }
 
+  // Both the single-log and the full-list path return a user's private logs, so
+  // gate the whole endpoint to the owner (the single-log path always required
+  // this; the list path previously did not).
+  const auth = await requireAuthForUsername(req, res, username);
+  if (!auth) return;
+
   try {
     const logId = validatePostId(req.body.logId);
     if (logId) {
-      const auth = await requireAuthForUsername(req, res, username);
-      if (!auth) return;
-
       const doc = await db.collection('logs').doc(logId).get();
       if (!doc.exists || doc.data().username !== auth.username) {
         return res.status(404).json({ error: 'Log not found or access denied' });
@@ -61,7 +64,7 @@ module.exports = async (req, res) => {
     console.error('Error fetching logs:', error);
     res.status(500).json({
       error: 'Failed to fetch recipe logs',
-      details: error.message,
+      ...(process.env.NODE_ENV !== 'production' ? { details: error.message } : {}),
     });
   }
 };

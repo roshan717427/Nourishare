@@ -48,7 +48,11 @@
  *                   common shape and sorted newest-first.
  *   - login         POST  ?action=login
  *                   body  { username } | { email }
- *                   resp  { ...userData, username }
+ *                   resp  { ...publicProfile, username }  (email/uid/push tokens stripped)
+ *   - signInEmail   GET   ?action=signInEmail&username=<u>
+ *                   resp  { email }
+ *                   Pre-auth username -> email map for username-based sign-in.
+ *                   Returns ONLY the email; generic 404 when the username is unknown.
  *   - searchUsers   GET   ?action=searchUsers&q=<prefix>
  *                   resp  { users: [{ username, name, profilePhotoUrl }] }  (<=20)
  *   - recommendedFollows  GET  ?action=recommendedFollows&username=<u>
@@ -143,6 +147,29 @@ const SEARCH_RESULT_LIMIT = 20;
 const RECOMMENDED_CANDIDATE_LIMIT = 50;
 const RECOMMENDED_RESULT_LIMIT = 6;
 const FEED_LIMIT = 50;
+
+// Fields that must never be exposed to a non-owner / unauthenticated caller.
+// `email`/`uid` enable account enumeration + impersonation; push token fields
+// are normally stored outside the user doc but are stripped here defensively in
+// case a legacy doc still carries them.
+const SENSITIVE_PROFILE_FIELDS = [
+  'email',
+  'uid',
+  'pushTokens',
+  'expoPushTokens',
+  'pushToken',
+  'expoPushToken',
+  'fcmToken',
+];
+
+// Strip sensitive fields from a raw user document for public consumption.
+function toPublicProfile(userData) {
+  const out = { ...userData };
+  for (const field of SENSITIVE_PROFILE_FIELDS) {
+    delete out[field];
+  }
+  return out;
+}
 
 let db;
 try {
@@ -370,6 +397,10 @@ async function handleFollowers(req, res) {
     return res.status(400).json({ error: 'Valid username is required' });
   }
 
+  // Social-graph lists are only exposed to authenticated users.
+  const auth = await requireAuth(req, res);
+  if (!auth) return;
+
   const userDoc = await db.collection('users').doc(username).get();
   if (!userDoc.exists) {
     return res.status(404).json({ error: 'User not found' });
@@ -404,6 +435,10 @@ async function handleFollowing(req, res) {
   if (!username) {
     return res.status(400).json({ error: 'Valid username is required' });
   }
+
+  // Social-graph lists are only exposed to authenticated users.
+  const auth = await requireAuth(req, res);
+  if (!auth) return;
 
   const userDoc = await db.collection('users').doc(username).get();
   if (!userDoc.exists) {
@@ -489,6 +524,10 @@ async function handleFeed(req, res) {
     return res.status(400).json({ error: 'Valid username is required' });
   }
 
+  // A feed is inherently the caller's own — only the owner may read it.
+  const auth = await requireAuthForUsername(req, res, username);
+  if (!auth) return;
+
   const userDoc = await db.collection('users').doc(username).get();
   if (!userDoc.exists) {
     return res.status(404).json({ error: 'User not found' });
@@ -570,7 +609,38 @@ async function handleLogin(req, res) {
   }
 
   const userData = userDoc.data();
-  res.status(200).json({ ...userData, username: userData.username || userDoc.id });
+  // `login` is unauthenticated, so it must only ever return a public projection
+  // (no email/uid/push tokens). Sign-in email resolution lives in the dedicated
+  // `signInEmail` action below.
+  res.status(200).json({
+    ...toPublicProfile(userData),
+    username: userData.username || userDoc.id,
+  });
+}
+
+// Pre-auth sign-in helper. Username-based login needs the account's email to
+// hand to Firebase, but we must NOT expose the rest of the profile (or confirm
+// arbitrary emails). This action maps a username -> email ONLY. A generic 404
+// is returned when the username is unknown to limit enumeration.
+async function handleSignInEmail(req, res) {
+  if (req.method !== 'GET') return methodNotAllowed(res);
+
+  const username = normalizeUsername(req.query.username);
+  if (!username) {
+    return res.status(400).json({ error: 'Valid username is required' });
+  }
+
+  const doc = await db.collection('users').doc(username).get();
+  if (!doc.exists) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  const email = doc.data().email || null;
+  if (!email) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  res.status(200).json({ email });
 }
 
 function toPublicUser(doc) {
@@ -590,39 +660,30 @@ async function handleSearchUsers(req, res) {
     return res.status(200).json({ users: [] });
   }
 
+  const lowerPrefix = prefix.toLowerCase();
   const usersRef = db.collection('users');
-  const end = prefix + '\uf8ff';
+  const end = lowerPrefix + '\uf8ff';
   const byUsername = new Map();
 
-  // Prefix match on the `username` field (document id == username, but we
-  // match the field so this also works if ids ever diverge from usernames).
+  // Prefix match on the `username` field (stored lowercase).
   try {
     const usernameSnap = await usersRef
       .orderBy('username')
-      .startAt(prefix)
+      .startAt(lowerPrefix)
       .endAt(end)
       .limit(SEARCH_RESULT_LIMIT)
       .get();
     usernameSnap.forEach((doc) => byUsername.set(doc.id, toPublicUser(doc)));
   } catch (fieldErr) {
-    // Some legacy docs may lack a `username` field; fall back to a scan and
-    // filter by document id prefix so search still returns results.
     console.log('username field query failed, falling back to scan:', fieldErr.message);
-    const scanSnap = await usersRef.limit(200).get();
-    const lowerPrefix = prefix.toLowerCase();
-    scanSnap.forEach((doc) => {
-      if (doc.id.toLowerCase().startsWith(lowerPrefix)) {
-        byUsername.set(doc.id, toPublicUser(doc));
-      }
-    });
   }
 
-  // Also try to match on the `name` field prefix (best-effort).
+  // Case-insensitive name prefix via `nameLower` when indexed.
   if (byUsername.size < SEARCH_RESULT_LIMIT) {
     try {
       const nameSnap = await usersRef
-        .orderBy('name')
-        .startAt(prefix)
+        .orderBy('nameLower')
+        .startAt(lowerPrefix)
         .endAt(end)
         .limit(SEARCH_RESULT_LIMIT)
         .get();
@@ -630,8 +691,22 @@ async function handleSearchUsers(req, res) {
         if (!byUsername.has(doc.id)) byUsername.set(doc.id, toPublicUser(doc));
       });
     } catch (nameErr) {
-      console.log('name field query unavailable:', nameErr.message);
+      console.log('nameLower field query unavailable:', nameErr.message);
     }
+  }
+
+  // Scan fallback for legacy docs missing indexed fields.
+  if (byUsername.size < SEARCH_RESULT_LIMIT) {
+    const scanSnap = await usersRef.limit(300).get();
+    scanSnap.forEach((doc) => {
+      if (byUsername.size >= SEARCH_RESULT_LIMIT) return;
+      const data = doc.data() || {};
+      const idMatch = doc.id.toLowerCase().startsWith(lowerPrefix);
+      const nameMatch = String(data.name || '').toLowerCase().startsWith(lowerPrefix);
+      if ((idMatch || nameMatch) && !byUsername.has(doc.id)) {
+        byUsername.set(doc.id, toPublicUser(doc));
+      }
+    });
   }
 
   const users = Array.from(byUsername.values()).slice(0, SEARCH_RESULT_LIMIT);
@@ -705,9 +780,9 @@ async function handleCheckEmail(req, res) {
 async function handleCheckUsername(req, res) {
   if (req.method !== 'GET') return methodNotAllowed(res);
 
-  const username = validateUsername(req.query.username);
+  const username = normalizeUsername(req.query.username);
   if (!username) {
-    return res.status(400).json({ error: 'This username already exists' });
+    return res.status(400).json({ error: 'Valid username is required' });
   }
 
   const doc = await db.collection('users').doc(username).get();
@@ -1021,6 +1096,18 @@ async function handleLikes(req, res) {
   if (!postId) {
     return res.status(400).json({ error: 'Valid postId is required' });
   }
+
+  const auth = await requireAuth(req, res);
+  if (!auth) return;
+
+  const authorUsername = await resolvePostAuthor(postId);
+  if (!authorUsername) {
+    return res.status(404).json({ error: 'Post not found' });
+  }
+  if (!(await userFollows(auth.username, authorUsername))) {
+    return res.status(403).json({ error: 'Follow this user to view their posts' });
+  }
+
   const likes = await loadLikes(postId);
   res.status(200).json({ likes, likes_count: likes.length });
 }
@@ -1122,6 +1209,22 @@ async function handleUserLogs(req, res) {
   const username = normalizeUsername(req.query.username);
   if (!username) {
     return res.status(400).json({ error: 'Valid username is required' });
+  }
+
+  const auth = await requireAuth(req, res);
+  if (!auth) return;
+
+  // Self may always read their own logs; otherwise the viewer must follow the
+  // target. Check existence before follow state (404 before 403), mirroring the
+  // follow-gate precedence used by handleComments.
+  if (auth.username !== username) {
+    const targetDoc = await db.collection('users').doc(username).get();
+    if (!targetDoc.exists) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    if (!(await userFollows(auth.username, username))) {
+      return res.status(403).json({ error: 'Follow this user to view their posts' });
+    }
   }
 
   let snapshot;
@@ -1518,10 +1621,11 @@ const handlers = {
   following: handleFollowing,
   feed: handleFeed,
   login: handleLogin,
+  signinemail: handleSignInEmail,
   searchusers: handleSearchUsers,
   recommendedfollows: handleRecommendedFollows,
   checkemail: handleCheckEmail,
-  checkUsername: handleCheckUsername,
+  checkusername: handleCheckUsername,
   postdetail: handlePostDetail,
   comments: handleComments,
   addcomment: handleAddComment,
@@ -1563,6 +1667,9 @@ module.exports = async (req, res) => {
     await handler(req, res);
   } catch (error) {
     console.error(`Error handling social action "${action}":`, error);
-    res.status(500).json({ error: `Failed to handle action "${action}"`, details: error.message });
+    res.status(500).json({
+      error: `Failed to handle action "${action}"`,
+      ...(process.env.NODE_ENV !== 'production' ? { details: error.message } : {}),
+    });
   }
 };

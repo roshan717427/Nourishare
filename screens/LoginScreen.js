@@ -27,12 +27,14 @@ export default function LoginScreen({ navigation }) {
   const resolveEmail = async (identifier) => {
     if (identifier.includes('@')) return identifier;
     try {
+      // Pre-auth username -> email lookup. Uses the dedicated, locked-down
+      // sign-in resolver (returns ONLY the email) rather than the full profile.
       const res = await fetch(
-        `${API_URL}/getUserProfile?username=${encodeURIComponent(identifier)}`
+        `${API_URL}/social?action=signInEmail&username=${encodeURIComponent(identifier)}`
       );
       if (res.ok) {
-        const profile = await res.json();
-        if (profile && profile.email) return profile.email;
+        const data = await res.json();
+        if (data && data.email) return data.email;
       }
     } catch (err) {
       console.log('Username -> email lookup failed:', err.message);

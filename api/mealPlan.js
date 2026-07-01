@@ -245,6 +245,9 @@ module.exports = async (req, res) => {
     await handler(req, res);
   } catch (error) {
     console.error(`Error handling mealPlan action "${action}":`, error);
-    res.status(500).json({ error: `Failed to handle action "${action}"`, details: error.message });
+    res.status(500).json({
+      error: `Failed to handle action "${action}"`,
+      ...(process.env.NODE_ENV !== 'production' ? { details: error.message } : {}),
+    });
   }
 };

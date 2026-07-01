@@ -6,6 +6,19 @@ const { capitalizeList } = require('../utils/titleCase');
 const { normalizeUsername } = require('./_helpers/validateInput');
 const { verifyAuth, verifyToken, resolveUsernameFromToken } = require('./_helpers/verifyAuth');
 
+// Fields that must never be exposed to a non-owner / unauthenticated caller.
+// Owners (authenticated, viewing self) still receive these. Push token fields
+// are normally stored outside the user doc but are stripped defensively.
+const SENSITIVE_PROFILE_FIELDS = [
+  'email',
+  'uid',
+  'pushTokens',
+  'expoPushTokens',
+  'pushToken',
+  'expoPushToken',
+  'fcmToken',
+];
+
 function capitalizeName(value) {
   return String(value || '')
     .trim()
@@ -281,12 +294,20 @@ module.exports = async (req, res) => {
       joinedDate: formatJoinedYear(data),
     };
 
+    // Public projection: strip email/uid/push tokens for anyone other than the
+    // authenticated owner viewing their own profile.
+    if (!isOwnRequest) {
+      for (const field of SENSITIVE_PROFILE_FIELDS) {
+        delete response[field];
+      }
+    }
+
     res.status(200).json(response);
   } catch (error) {
     console.error('Error getting user profile:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to get user profile',
-      details: error.message 
+      ...(process.env.NODE_ENV !== 'production' ? { details: error.message } : {}),
     });
   }
 };

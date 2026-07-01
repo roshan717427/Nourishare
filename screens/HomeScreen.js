@@ -18,11 +18,12 @@ import BottomNavigation from '../components/BottomNavigation';
 import MunchableHeader from '../components/MunchableHeader';
 import { useAuth } from '../context/AuthContext';
 import { API_URL } from '../config/api';
-import { withAuthHeaders } from '../utils/apiAuth';
+import { withAuthHeaders, authFetch } from '../utils/apiAuth';
 import CookedWithTags from '../components/CookedWithTags';
 import { colors, radii } from '../constants/theme';
 
 const CARD_ACCENTS = [colors.primary, colors.accent, colors.secondary, colors.chipAmberText];
+const FEED_REFRESH_MS = 3 * 24 * 60 * 60 * 1000;
 
 function timeAgo(ms) {
   if (!ms) return '';
@@ -165,6 +166,7 @@ export default function HomeScreen({ navigation }) {
 
   const feedScrollRef = useRef(null);
   const postOffsetsRef = useRef({});
+  const lastFeedFetchAtRef = useRef(0);
 
   const hasFollowing = following.length > 0;
 
@@ -174,12 +176,19 @@ export default function HomeScreen({ navigation }) {
         setFeed([]);
         return;
       }
+      if (
+        !isRefresh &&
+        lastFeedFetchAtRef.current > 0 &&
+        Date.now() - lastFeedFetchAtRef.current < FEED_REFRESH_MS
+      ) {
+        return;
+      }
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
       try {
-        const res = await fetch(
+        const res = await authFetch(
           `${API_URL}/social?action=feed&username=${encodeURIComponent(username)}`,
-          { method: 'GET', headers: { 'Content-Type': 'application/json' } }
+          { method: 'GET' }
         );
         let apiPosts = [];
         if (res.ok) {
@@ -187,6 +196,7 @@ export default function HomeScreen({ navigation }) {
           apiPosts = Array.isArray(data.recipe_posts) ? data.recipe_posts : [];
         }
         setFeed(apiPosts);
+        lastFeedFetchAtRef.current = Date.now();
       } catch (err) {
         console.log('Feed unavailable:', err.message);
         setFeed([]);
@@ -234,29 +244,16 @@ export default function HomeScreen({ navigation }) {
   };
 
   const storyByUser = new Map();
-  following.forEach((u) => {
-    storyByUser.set(u, {
-      username: u,
-      name: u,
-      avatar: null,
-      latestPostMs: 0,
-    });
-  });
   feed.forEach((item) => {
     const u = item.user?.username || item.username;
     if (!u) return;
     const postMs = item.created_at_ms || 0;
-    const existing = storyByUser.get(u) || {
-      username: u,
-      name: u,
-      avatar: null,
-      latestPostMs: 0,
-    };
-    if (postMs >= existing.latestPostMs) {
+    const existing = storyByUser.get(u);
+    if (!existing || postMs >= existing.latestPostMs) {
       storyByUser.set(u, {
         username: u,
-        name: item.user?.name || existing.name || u,
-        avatar: item.user?.profilePhotoUrl || existing.avatar,
+        name: item.user?.name || u,
+        avatar: item.user?.profilePhotoUrl || null,
         latestPostMs: postMs,
       });
     }

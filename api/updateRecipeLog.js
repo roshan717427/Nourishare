@@ -60,7 +60,7 @@ module.exports = async (req, res) => {
     console.error('Error updating log:', error);
     return res.status(500).json({
       error: 'Failed to update recipe log',
-      details: error.message,
+      ...(process.env.NODE_ENV !== 'production' ? { details: error.message } : {}),
     });
   }
 };

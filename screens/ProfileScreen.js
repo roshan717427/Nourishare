@@ -28,7 +28,7 @@ import PortfolioGalleryModal from '../components/PortfolioGalleryModal';
 import { API_URL } from '../config/api';
 import { authFetch, withAuthHeaders, normalizeUsername } from '../utils/apiAuth';
 import { friendlyError, friendlyErrorForResponse, httpError } from '../utils/errorMessages';
-import { colors, radii, spacing } from '../constants/theme';
+import { colors, radii, spacing, shadows } from '../constants/theme';
 import { buildPersonalityDescription, getTraitCompoundLabel } from '../utils/personalityCopy';
 import { capitalizeList } from '../utils/titleCase';
 
@@ -320,9 +320,9 @@ export default function ProfileScreen({ navigation, route }) {
         setDishes([]);
         return;
       }
-      const response = await fetch(
+      const response = await authFetch(
         `${API_URL}/social?action=userLogs&username=${encodeURIComponent(profileUsername)}`,
-        { method: 'GET', headers: { 'Content-Type': 'application/json' } }
+        { method: 'GET' }
       );
       if (response.ok) {
         const data = await response.json();
@@ -862,21 +862,23 @@ export default function ProfileScreen({ navigation, route }) {
 
         {isOwnProfile && (
           <View style={styles.section}>
-            <View style={styles.sectionTitleRow}>
-              <Ionicons name="bookmark" size={20} color={colors.accent} />
-              <Text style={styles.sectionTitle}>Cook Next</Text>
+            <View style={styles.cookNextHeader}>
+              <View style={styles.cookNextTitleRow}>
+                <Ionicons name="bookmark" size={20} color={colors.accent} />
+                <Text style={styles.cookNextSectionTitle}>Cook Next</Text>
+                <TouchableOpacity
+                  style={[styles.planMealsButton, shadows.cardSoft]}
+                  onPress={() => navigation.navigate('MealPlan')}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="calendar-outline" size={16} color="#fff" />
+                  <Text style={styles.planMealsButtonText}>Plan meals</Text>
+                </TouchableOpacity>
+              </View>
               <View style={styles.privateBadge}>
                 <Ionicons name="lock-closed" size={11} color={colors.textMuted} />
                 <Text style={styles.privateBadgeText}>Only you</Text>
               </View>
-              <TouchableOpacity
-                style={styles.planMealsButton}
-                onPress={() => navigation.navigate('MealPlan')}
-                activeOpacity={0.85}
-              >
-                <Ionicons name="calendar-outline" size={14} color={colors.accent} />
-                <Text style={styles.planMealsButtonText}>Plan meals</Text>
-              </TouchableOpacity>
             </View>
             {nextUpLoading ? (
               <ActivityIndicator color={colors.accent} style={{ marginVertical: 16 }} />
@@ -1399,11 +1401,20 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     gap: 8,
   },
+  cookNextHeader: {
+    marginBottom: 12,
+    gap: 8,
+  },
+  cookNextTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   privateBadge: {
     flexDirection: 'row',
     alignItems: 'center',
+    alignSelf: 'flex-start',
     gap: 4,
-    marginLeft: 'auto',
     backgroundColor: colors.backgroundAlt,
     borderRadius: radii.pill,
     paddingHorizontal: 10,
@@ -1419,17 +1430,24 @@ const styles = StyleSheet.create({
   planMealsButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: colors.chipTeal,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    gap: 6,
+    flexShrink: 0,
+    marginLeft: 'auto',
+    backgroundColor: colors.accent,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     borderRadius: radii.pill,
-    marginLeft: 8,
   },
   planMealsButtonText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
-    color: colors.chipTealText,
+    color: '#fff',
+  },
+  cookNextSectionTitle: {
+    flexShrink: 0,
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
   },
   sectionTitle: {
     flex: 1,

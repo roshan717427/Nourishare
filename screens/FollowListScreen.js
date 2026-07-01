@@ -14,7 +14,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { API_URL } from '../config/api';
-import { normalizeUsername } from '../utils/apiAuth';
+import { authFetch, normalizeUsername } from '../utils/apiAuth';
 import { colors, radii, spacing } from '../constants/theme';
 
 function UserRow({ user, onPress }) {
@@ -60,9 +60,9 @@ export default function FollowListScreen({ navigation, route }) {
       else setLoading(true);
 
       try {
-        const res = await fetch(
+        const res = await authFetch(
           `${API_URL}/social?action=${mode}&username=${encodeURIComponent(username)}`,
-          { method: 'GET', headers: { 'Content-Type': 'application/json' } }
+          { method: 'GET' }
         );
         if (res.ok) {
           const data = await res.json();

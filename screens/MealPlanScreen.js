@@ -98,10 +98,11 @@ function DayCell({
   );
 }
 
-function NextUpRecipeCard({ recipe, onLongPress }) {
+function NextUpRecipeCard({ recipe, selected, onPress, onLongPress }) {
   return (
     <TouchableOpacity
-      style={[styles.nextUpCard, shadows.cardSoft]}
+      style={[styles.nextUpCard, selected && styles.nextUpCardSelected, shadows.cardSoft]}
+      onPress={() => onPress(recipe)}
       onLongPress={(e) => onLongPress(recipe, e)}
       delayLongPress={250}
       activeOpacity={0.85}
@@ -117,8 +118,8 @@ function NextUpRecipeCard({ recipe, onLongPress }) {
         {recipe.name}
       </Text>
       <View style={styles.dragHint}>
-        <Ionicons name="move" size={10} color={colors.textMuted} />
-        <Text style={styles.dragHintText}>Hold & drag</Text>
+        <Ionicons name="hand-left-outline" size={10} color={colors.textMuted} />
+        <Text style={styles.dragHintText}>Tap</Text>
       </View>
     </TouchableOpacity>
   );
@@ -201,11 +202,16 @@ export default function MealPlanScreen({ navigation }) {
   const dayCellRefs = useRef({});
   const dragItemRef = useRef(null);
   const dragTypeRef = useRef(null);
+  const dropTargetDateRef = useRef(null);
 
   useEffect(() => {
     dragItemRef.current = dragItem;
     dragTypeRef.current = dragType;
   }, [dragItem, dragType]);
+
+  useEffect(() => {
+    dropTargetDateRef.current = dropTargetDate;
+  }, [dropTargetDate]);
 
   const weekStart = useMemo(() => startOfWeek(weekAnchor), [weekAnchor]);
   const visibleWeeks = useMemo(() => {
@@ -315,8 +321,9 @@ export default function MealPlanScreen({ navigation }) {
 
   const endDrag = useCallback(
     async (gestureX, gestureY) => {
-      const targetDate = findDateAtPoint(gestureX, gestureY);
-      await commitSchedule(targetDate);
+      const target =
+        findDateAtPoint(gestureX, gestureY) || dropTargetDateRef.current;
+      await commitSchedule(target);
     },
     [findDateAtPoint, commitSchedule]
   );
@@ -331,6 +338,9 @@ export default function MealPlanScreen({ navigation }) {
     PanResponder.create({
       onStartShouldSetPanResponder: () => !!dragItemRef.current,
       onMoveShouldSetPanResponder: () => !!dragItemRef.current,
+      onStartShouldSetPanResponderCapture: () => !!dragItemRef.current,
+      onMoveShouldSetPanResponderCapture: () => !!dragItemRef.current,
+      onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (_, gesture) => {
         dragPosition.setValue({ x: gesture.x0 - 75, y: gesture.y0 - 40 });
       },
@@ -338,6 +348,7 @@ export default function MealPlanScreen({ navigation }) {
         dragPosition.setValue({ x: gesture.moveX - 75, y: gesture.moveY - 40 });
         const target = findDateRef.current(gesture.moveX, gesture.moveY);
         setDropTargetDate(target);
+        dropTargetDateRef.current = target;
       },
       onPanResponderRelease: (_, gesture) => {
         endDragRef.current(gesture.moveX, gesture.moveY);
@@ -348,11 +359,26 @@ export default function MealPlanScreen({ navigation }) {
     })
   ).current;
 
-  const startDragRecipe = (recipe, gestureEvent) => {
+  const remeasureDayCells = () => {
+    Object.keys(dayCellRefs.current).forEach((dateKey) => {
+      const ref = dayCellRefs.current[dateKey];
+      if (!ref?.measureInWindow) return;
+      ref.measureInWindow((pageX, pageY, width, height) => {
+        dayLayouts.current[dateKey] = { pageX, pageY, width, height };
+      });
+    });
+  };
+
+  const selectRecipe = (recipe) => {
     setDragItem(recipe);
     setDragType('recipe');
     dragItemRef.current = recipe;
     dragTypeRef.current = 'recipe';
+    requestAnimationFrame(remeasureDayCells);
+  };
+
+  const startDragRecipe = (recipe, gestureEvent) => {
+    selectRecipe(recipe);
     const { pageX, pageY } = gestureEvent?.nativeEvent || {};
     if (pageX != null) {
       dragPosition.setValue({ x: pageX - 75, y: pageY - 40 });
@@ -368,6 +394,7 @@ export default function MealPlanScreen({ navigation }) {
     if (pageX != null) {
       dragPosition.setValue({ x: pageX - 75, y: pageY - 40 });
     }
+    requestAnimationFrame(remeasureDayCells);
   };
 
   const handleEntryPress = (entry) => {
@@ -447,7 +474,7 @@ export default function MealPlanScreen({ navigation }) {
   const goToday = () => setWeekAnchor(startOfWeek(new Date()));
 
   return (
-    <View style={styles.container} {...(dragItem ? panResponder.panHandlers : {})}>
+    <View style={styles.container} {...panResponder.panHandlers}>
       <StatusBar style="light" />
 
       <LinearGradient
@@ -494,7 +521,7 @@ export default function MealPlanScreen({ navigation }) {
           <Text style={styles.schedulingBannerText} numberOfLines={1}>
             Scheduling: {dragType === 'entry' ? dragItem.recipeName : dragItem.name}
           </Text>
-          <Text style={styles.schedulingBannerHint}>Drag or tap a day</Text>
+          <Text style={styles.schedulingBannerHint}>Tap a day on the calendar</Text>
           <TouchableOpacity
             onPress={() => {
               setDragItem(null);
@@ -516,6 +543,12 @@ export default function MealPlanScreen({ navigation }) {
         ))}
       </View>
 
+      {!dragItem ? (
+        <Text style={styles.planHint}>
+          Tap a recipe below, then tap a day. Tap a scheduled meal to remove it.
+        </Text>
+      ) : null}
+
       {loading ? (
         <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />
       ) : error ? (
@@ -531,6 +564,7 @@ export default function MealPlanScreen({ navigation }) {
           style={styles.calendarScroll}
           contentContainerStyle={styles.calendarContent}
           showsVerticalScrollIndicator={false}
+          scrollEnabled={!dragItem}
           onScroll={dragItem ? remeasureAllDayCells : undefined}
           scrollEventThrottle={16}
         >
@@ -560,7 +594,7 @@ export default function MealPlanScreen({ navigation }) {
         <View style={styles.nextUpHeader}>
           <Ionicons name="bookmark" size={18} color={colors.accent} />
           <Text style={styles.nextUpTitle}>Cook Next</Text>
-          <Text style={styles.nextUpHint}>Hold & drag onto a day</Text>
+          <Text style={styles.nextUpHint}>Tap a recipe, then tap a day</Text>
         </View>
         {nextUpLoading ? (
           <ActivityIndicator color={colors.accent} style={{ marginVertical: 12 }} />
@@ -574,12 +608,15 @@ export default function MealPlanScreen({ navigation }) {
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
+            scrollEnabled={!dragItem}
             contentContainerStyle={styles.nextUpRow}
           >
             {nextUpItems.map((recipe) => (
               <NextUpRecipeCard
                 key={recipe.id}
                 recipe={recipe}
+                selected={dragType === 'recipe' && dragItem?.id === recipe.id}
+                onPress={selectRecipe}
                 onLongPress={startDragRecipe}
               />
             ))}
@@ -683,6 +720,15 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.textMuted,
     letterSpacing: 0.3,
+  },
+  planHint: {
+    fontSize: 12,
+    color: colors.textMuted,
+    fontWeight: '500',
+    textAlign: 'center',
+    paddingHorizontal: spacing.md + 4,
+    marginBottom: 6,
+    lineHeight: 17,
   },
   calendarScroll: {
     flex: 1,
@@ -801,6 +847,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     overflow: 'hidden',
+  },
+  nextUpCardSelected: {
+    borderColor: colors.primary,
+    borderWidth: 2,
   },
   nextUpImage: {
     width: 110,

@@ -116,7 +116,7 @@ module.exports = async (req, res) => {
     console.error('Error updating user profile:', error);
     res.status(500).json({
       error: 'Failed to update user profile',
-      details: error.message,
+      ...(process.env.NODE_ENV !== 'production' ? { details: error.message } : {}),
     });
   }
 };
