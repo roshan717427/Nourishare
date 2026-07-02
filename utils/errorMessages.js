@@ -17,7 +17,7 @@ export const SERVER_ERROR = 'Our servers are having trouble. Please try again sh
 export const AI_DAILY_LIMIT =
   'You have used your 3 generations for today. Please try again tomorrow!';
 export const AI_SERVICE_BUSY =
-  "Suggestions are unavailable right now (not your limit — the service is busy). Please try again shortly.";
+  "Suggestions are unavailable right now (not your limit, the service is busy). Please try again shortly.";
 export const AI_RPM_LIMIT =
   'Suggestions are popular right now! Please try again in a minute.';
 export const AI_GENERATION_FAILED =

@@ -18,7 +18,7 @@ export const ONBOARDING_STEPS = [
     icon: 'home',
     title: 'Welcome to Munchable!',
     description:
-      'Your home feed shows what friends are cooking. Drop likes, leave comments, and get inspired.',
+      'Your home feed shows what friends are cooking. Drop likes, leave comments, and get inspired!',
     tabLabel: 'Home',
   },
   {
@@ -26,7 +26,7 @@ export const ONBOARDING_STEPS = [
     icon: 'albums-outline',
     title: 'Sticky friend stories',
     description:
-      'Tap a story circle to jump to that friend\'s posts. Circles stay pinned at the top while you scroll, so switching friends is always one tap away.',
+      'Tap a story circle to jump to that friend\'s posts. Circles stay pinned at the top while you scroll, so switching friends is always one tap away!',
     tabLabel: 'Home',
   },
   {
@@ -34,7 +34,7 @@ export const ONBOARDING_STEPS = [
     icon: 'search',
     title: 'Discover cooks',
     description:
-      'Search for people and follow friends to fill your feed with meals you care about.',
+      'Search for people and follow friends to fill your feed with meals you care about!',
     tabLabel: 'Explore',
   },
   {
@@ -42,14 +42,15 @@ export const ONBOARDING_STEPS = [
     icon: 'sparkles',
     title: 'AI recipe ideas',
     description:
-      'Get personalized suggestions from your tastes and pantry. Tap + on any recipe to add it to your Cook Next portfolio.',
+      'Get personalized suggestions from your tastes, friends, and pantry. Tap + on any recipe to save it to your Cook Next portfolio!',
     tabLabel: 'AI',
   },
   {
     id: 'post',
     icon: 'add-circle',
     title: 'Log what you cook',
-    description: 'Snap a photo, rate your dish, and share it with your network.',
+    description:
+      'Snap a photo, describe & rate your dish, tag other users, and share the recipe with your network!',
     tabLabel: 'Post',
   },
   {
@@ -57,7 +58,7 @@ export const ONBOARDING_STEPS = [
     icon: 'person',
     title: 'Your kitchen profile',
     description:
-      'See your cooking stats, kitchen personality, and every dish you\'ve logged.',
+      'See your cooking stats, kitchen personality, and every dish you\'ve logged!',
     tabLabel: 'Profile',
   },
   {
@@ -65,7 +66,7 @@ export const ONBOARDING_STEPS = [
     icon: 'heart',
     title: 'Culinary Portfolio',
     description:
-      'Heart up to 2 dishes to showcase on your profile. Friends see your picks and can open your full gallery.',
+      'Heart up to 2 dishes to showcase on your profile. Friends see your picks and can open your full gallery!',
     tabLabel: 'Profile',
   },
   {
@@ -73,7 +74,15 @@ export const ONBOARDING_STEPS = [
     icon: 'list',
     title: 'Cook Next Portfolio',
     description:
-      'Your private Cook Next portfolio saves recipes you want to try. Only you can see it.',
+      'Your private Cook Next portfolio saves recipes you want to try. Only you can see it!',
+    tabLabel: 'Profile',
+  },
+  {
+    id: 'meal-planning',
+    icon: 'calendar',
+    title: 'Meal planning',
+    description:
+      'Use the built-in calendar to plan meals; view a generated, up-to-date shopping list to buy the missing ingredients for them!',
     tabLabel: 'Profile',
   },
 ];
