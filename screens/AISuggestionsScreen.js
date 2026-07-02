@@ -387,7 +387,9 @@ export default function AISuggestionsScreen({ navigation }) {
   const handleGenerate = async () => {
     if (generating) return;
     if (generationsRemaining <= 0) {
-      Alert.alert('Daily limit reached', friendlyAiError({ code: 'daily_limit_exceeded' }));
+      const message = friendlyAiError({ code: 'daily_limit_exceeded' });
+      setStatusMessage(message);
+      Alert.alert('Daily limit reached', message);
       return;
     }
 

@@ -85,10 +85,20 @@ export function AuthProvider({ children }) {
     profileReadyRef.current = false;
     setProfileStatus('checking');
 
-    const applyReady = (profile) => {
+    const applyReady = async (profile) => {
       const resolved = normalizeUsername(profile?.username);
       if (resolved && auth.currentUser) {
         usernameOverrides.current[auth.currentUser.uid] = resolved;
+        // Backfill the auth displayName for accounts that finished profile setup
+        // before this was wired up, so `name` (not username) shows everywhere.
+        if (!auth.currentUser.displayName && profile?.name) {
+          try {
+            await updateProfile(auth.currentUser, { displayName: profile.name });
+            await auth.currentUser.reload();
+          } catch (err) {
+            console.log('Could not backfill auth displayName:', err.message);
+          }
+        }
         setUser(mapFirebaseUser(auth.currentUser, resolved));
       }
       profileReadyRef.current = true;

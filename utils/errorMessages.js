@@ -15,7 +15,9 @@ export const SERVER_ERROR = 'Our servers are having trouble. Please try again sh
 
 // AI suggestion generation limits (Gemini + app daily quota)
 export const AI_DAILY_LIMIT =
-  'You have reached the daily usage limit. Please try again tomorrow!';
+  'You have used your 3 generations for today. Please try again tomorrow!';
+export const AI_SERVICE_BUSY =
+  "Suggestions are unavailable right now (not your limit — the service is busy). Please try again shortly.";
 export const AI_RPM_LIMIT =
   'Suggestions are popular right now! Please try again in a minute.';
 export const AI_GENERATION_FAILED =
@@ -128,8 +130,11 @@ export function friendlyErrorForResponse(response, options = {}) {
 export function messageForAiErrorCode(code) {
   switch (code) {
     case 'daily_limit_exceeded':
-    case 'gemini_rate_limit_rpd':
       return AI_DAILY_LIMIT;
+    case 'gemini_rate_limit_rpd':
+      // The shared AI service hit its own daily quota — distinct from this
+      // user's personal 3/day cap, which is untouched (and refunded server-side).
+      return AI_SERVICE_BUSY;
     case 'gemini_rate_limit_rpm':
       return AI_RPM_LIMIT;
     case 'generation_failed':
