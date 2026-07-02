@@ -630,9 +630,19 @@ async function handleSignInEmail(req, res) {
     return res.status(400).json({ error: 'Valid username is required' });
   }
 
-  const doc = await db.collection('users').doc(username).get();
+  let doc = await db.collection('users').doc(username).get();
   if (!doc.exists) {
-    return res.status(404).json({ error: 'User not found' });
+    // Fall back to a field lookup in case this account's doc id doesn't match
+    // its `username` field (older accounts predating the doc-id convention).
+    const querySnap = await db
+      .collection('users')
+      .where('username', '==', username)
+      .limit(1)
+      .get();
+    if (querySnap.empty) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    doc = querySnap.docs[0];
   }
 
   const email = doc.data().email || null;

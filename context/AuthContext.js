@@ -323,6 +323,12 @@ export function AuthProvider({ children }) {
 
     if (auth.currentUser) {
       usernameOverrides.current[auth.currentUser.uid] = normalized;
+      try {
+        await updateProfile(auth.currentUser, { displayName: profile.name });
+        await auth.currentUser.reload();
+      } catch (err) {
+        console.log('Could not set auth displayName:', err.message);
+      }
       setUser(mapFirebaseUser(auth.currentUser, normalized));
     }
     profileReadyRef.current = true;

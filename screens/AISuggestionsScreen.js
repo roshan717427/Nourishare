@@ -320,63 +320,18 @@ function parsePantryInput(text) {
     .filter(Boolean);
 }
 
-function buildGreeting(firstName, hasLogs, hasFollowing, { hasContent, hasPantry, pantrySkipped }) {
-  if (!hasContent) {
-    if (!hasLogs && !hasFollowing) {
-      return `Hey ${firstName}! Tap Generate suggestions to get AI recipe ideas. Log meals and follow friends for better picks.`;
-    }
-    return `Hey ${firstName}! Tap Generate suggestions for fresh AI recipe ideas tailored to you.`;
-  }
-
-  if (hasPantry) {
-    if (!hasLogs && !hasFollowing) {
-      return `Hey ${firstName}! Here are pantry-inspired picks plus ideas from your tastes. Log meals and follow friends for even sharper suggestions.`;
-    }
-    if (!hasLogs) {
-      return `Hey ${firstName}! Your pantry-inspired picks are ready, along with taste-based ideas. Log meals so we can learn your preferences.`;
-    }
-    if (!hasFollowing) {
-      return `Hey ${firstName}! Pantry picks and preference-inspired ideas are below. Follow friends to unlock friend-inspired recipes too.`;
-    }
-    return `Hey ${firstName}! Here are pantry-inspired picks alongside your taste and friend favorites. Tap Generate for more.`;
-  }
-
-  if (pantrySkipped) {
-    if (!hasLogs && !hasFollowing) {
-      return `Hey ${firstName}! Preference and friend-inspired picks are below. Log meals and follow friends for sharper suggestions next time.`;
-    }
-    if (!hasLogs) {
-      return `Hey ${firstName}! Your taste-based picks are ready below. Log meals so we can learn what you love.`;
-    }
-    if (!hasFollowing) {
-      return `Hey ${firstName}! Preference-inspired ideas are below. Follow friends to unlock friend-inspired picks too.`;
-    }
-    return `Hey ${firstName}! Here are preference and friend-inspired picks. Tap Generate for more.`;
-  }
-
-  if (!hasLogs && !hasFollowing) {
-    return `Hey ${firstName}! Here are your saved AI picks. Log meals and follow friends for sharper suggestions next time.`;
-  }
-  if (!hasLogs) {
-    return `Hey ${firstName}! Your saved AI picks are below. Log meals so we can learn your tastes.`;
-  }
-  if (!hasFollowing) {
-    return `Hey ${firstName}! Your saved AI picks are below. Follow friends to unlock friend-inspired ideas.`;
-  }
-  return `Hey ${firstName}! Your saved AI recipe picks are ready below. Tap Generate for more.`;
+function buildGreeting(firstName) {
+  return `Hey ${firstName}! Tap Generate to receive generated recipes based on your preferences, what friends cooked, and optionally ingredients you currently have. Continue logging meals so I can learn your tastes, and keep expanding your network to find inspiration!`;
 }
 
 export default function AISuggestionsScreen({ navigation }) {
-  const { user, following } = useAuth();
+  const { user } = useAuth();
   const { addToNextUp, isInNextUp } = useNextUp();
   const username = user?.username || 'current_user';
   const firstName = extractFirstName(user?.name) || username;
-  const hasFollowing = following.length > 0;
 
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [hasLogs, setHasLogs] = useState(false);
-  const [hasFriends, setHasFriends] = useState(false);
   const [preferenceSuggestions, setPreferenceSuggestions] = useState([]);
   const [friendSuggestions, setFriendSuggestions] = useState([]);
   const [pantrySuggestions, setPantrySuggestions] = useState([]);
@@ -397,8 +352,6 @@ export default function AISuggestionsScreen({ navigation }) {
     setPreferenceSuggestions(preferenceItems);
     setFriendSuggestions(friendItems);
     setPantrySuggestions(pantryItems);
-    if (data.has_logs != null) setHasLogs(data.has_logs);
-    if (data.has_friends != null) setHasFriends(data.has_friends);
     if (typeof data.generations_remaining === 'number') {
       setGenerationsRemaining(data.generations_remaining);
     }
@@ -454,10 +407,9 @@ export default function AISuggestionsScreen({ navigation }) {
       }
     } catch (err) {
       console.log('Generate suggestions failed:', err.message);
-      setStatusMessage(friendlyAiError(err));
-      if (err.status === 429) {
-        Alert.alert('Limit reached', friendlyAiError(err));
-      }
+      const message = friendlyAiError(err);
+      setStatusMessage(message);
+      Alert.alert(err.status === 429 ? 'Limit reached' : 'Could not generate suggestions', message);
     } finally {
       setGenerating(false);
     }
@@ -522,13 +474,10 @@ export default function AISuggestionsScreen({ navigation }) {
     }, [loadCached])
   );
 
-  useEffect(() => {
-    setHasFriends(hasFollowing);
-  }, [hasFollowing]);
-
   const handleSkipPantry = () => {
     setPantryText('');
     setPantrySkipped(true);
+    setStatusMessage('');
   };
 
   const openRecipe = (recipe) => {
@@ -550,12 +499,12 @@ export default function AISuggestionsScreen({ navigation }) {
     preferenceSuggestions.length > 0 ||
     friendSuggestions.length > 0 ||
     pantrySuggestions.length > 0;
-  const hasContent = hasAnyRecipes || hasStartedGeneration;
   const isBusy = loading || generating;
   const showPantrySection = pantrySuggestions.length > 0;
   // After a generation completes with nothing to show, surface the not-found line
-  // directly under the generate button (never on first load).
-  const showNotFound = hasStartedGeneration && !isBusy && !hasAnyRecipes;
+  // directly under the generate button (never on first load). Suppressed when a
+  // statusMessage is already showing (e.g. an error) to avoid a duplicate message.
+  const showNotFound = hasStartedGeneration && !isBusy && !hasAnyRecipes && !statusMessage;
   // Recipe sections only appear once we're generating or have results.
   const showSections = isBusy || hasAnyRecipes;
 
@@ -563,11 +512,7 @@ export default function AISuggestionsScreen({ navigation }) {
     ? generating
       ? 'Cooking up fresh AI recipe ideas...'
       : 'Loading your saved suggestions...'
-    : buildGreeting(firstName, hasLogs, hasFriends, {
-        hasContent,
-        hasPantry: showPantrySection,
-        pantrySkipped,
-      });
+    : buildGreeting(firstName);
 
   const generateDisabled = generating || generationsRemaining <= 0;
 
@@ -599,9 +544,6 @@ export default function AISuggestionsScreen({ navigation }) {
         <Ionicons name="basket-outline" size={20} color={colors.primary} />
         <Text style={styles.pantryTitle}>What's in your pantry?</Text>
       </View>
-      <Text style={styles.pantryHint}>
-        List ingredients you have, then tap Generate to get recipes you can make (2 per section). Leave it blank or skip for 3 picks per section.
-      </Text>
       <TextInput
         style={styles.pantryInput}
         placeholder="e.g. chicken, rice, garlic, soy sauce"
@@ -926,12 +868,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: colors.text,
     letterSpacing: -0.2,
-  },
-  pantryHint: {
-    fontSize: 13,
-    lineHeight: 19,
-    color: colors.textMuted,
-    marginBottom: 10,
   },
   pantryInput: {
     backgroundColor: colors.inputBg,
