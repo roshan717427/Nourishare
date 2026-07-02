@@ -404,7 +404,7 @@ export default function PostDetailScreen({ navigation, route }) {
           style: 'destructive',
           onPress: async () => {
             try {
-              const res = await fetch(`${API_URL}/deleteRecipeLog`, {
+              const res = await fetch(`${API_URL}/recipeLog?action=delete`, {
                 method: 'POST',
                 headers: await withAuthHeaders(),
                 body: JSON.stringify({ username, logId: postId }),

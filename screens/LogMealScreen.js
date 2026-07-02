@@ -265,7 +265,7 @@ export default function LogMealScreen({ navigation, route }) {
         };
         if (photo) updates.photoUrl = photo;
 
-        const response = await authFetch(`${API_URL}/updateRecipeLog`, {
+        const response = await authFetch(`${API_URL}/recipeLog?action=update`, {
           method: 'POST',
           body: JSON.stringify({
             username: effectiveUsername,
@@ -311,7 +311,7 @@ export default function LogMealScreen({ navigation, route }) {
       });
 
       // Call API
-      const response = await authFetch(`${API_URL}/createRecipeLog`, {
+      const response = await authFetch(`${API_URL}/recipeLog?action=create`, {
         method: 'POST',
         body: JSON.stringify(logData),
       });

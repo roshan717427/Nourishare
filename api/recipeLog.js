@@ -1,0 +1,239 @@
+/**
+ * Recipe log CRUD (the `logs` collection backing a user's own cooking history).
+ *
+ * Consolidated from createRecipeLog/getRecipeLog/updateRecipeLog/deleteRecipeLog
+ * into one file (action-dispatched, same pattern as social.js/mealPlan.js) to
+ * stay under the Vercel Hobby plan's 12-serverless-function limit.
+ *
+ * Actions (POST, case-insensitive via ?action=):
+ *   - create  body { username, title, ingredients, rating, difficulty, time,
+ *                     recipeInstructions?, recipeLink?, photoUrl?, notes?,
+ *                     dishType?, cookedWith? }
+ *             resp { message, logId }
+ *   - update  body { username, logId, updates: {...} }
+ *             resp { message }
+ *   - delete  body { username, logId }
+ *             resp { message }
+ */
+const { initializeApp, cert, getApps } = require('firebase-admin/app');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+const { refreshUserPersonality } = require('./_helpers/personalityHelper');
+const { requireAuthForUsername } = require('./_helpers/verifyAuth');
+const { validatePostId, sanitizeRecipeLogFields, sanitizeLogUpdates } = require('./_helpers/validateInput');
+const { resolveDisplayName, sendInteractionNotification } = require('./_helpers/notifications');
+
+let db;
+try {
+  if (!getApps().length) {
+    if (!process.env.GOOGLE_SERVICE_ACCOUNT) {
+      throw new Error('GOOGLE_SERVICE_ACCOUNT environment variable is not set');
+    }
+    const serviceAccount = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
+    initializeApp({ credential: cert(serviceAccount) });
+  }
+  db = getFirestore();
+} catch (error) {
+  console.error('Firebase initialization error:', error);
+}
+
+function methodNotAllowed(res) {
+  res.status(405).send('Method Not Allowed');
+}
+
+async function handleCreate(req, res) {
+  if (req.method !== 'POST') return methodNotAllowed(res);
+
+  const auth = await requireAuthForUsername(req, res, req.body.username);
+  if (!auth) return;
+
+  const fields = sanitizeRecipeLogFields(req.body);
+
+  if (!fields.title) {
+    return res.status(400).json({ error: 'Title (name of the dish) is required' });
+  }
+  if (!fields.ingredients) {
+    return res.status(400).json({ error: 'Ingredients are required' });
+  }
+  if (fields.rating == null) {
+    return res.status(400).json({ error: 'Rating is required' });
+  }
+  if (!fields.difficulty) {
+    return res.status(400).json({ error: 'Difficulty is required' });
+  }
+  if (!fields.time) {
+    return res.status(400).json({ error: 'Time is required' });
+  }
+
+  const logData = {
+    username: auth.username,
+    title: fields.title,
+    ingredients: fields.ingredients,
+    recipeInstructions: fields.recipeInstructions,
+    rating: fields.rating,
+    difficulty: fields.difficulty,
+    time: fields.time,
+    createdAt: FieldValue.serverTimestamp(),
+  };
+
+  if (fields.photoUrl !== undefined) logData.photoUrl = fields.photoUrl;
+  if (fields.recipeLink !== undefined) logData.recipeLink = fields.recipeLink;
+  if (fields.notes) logData.notes = fields.notes;
+  if (fields.dishType) logData.dishType = fields.dishType;
+  if (fields.cookedWith.length > 0) logData.cookedWith = fields.cookedWith;
+
+  const docRef = await db.collection('logs').add(logData);
+
+  try {
+    await db
+      .collection('users')
+      .doc(auth.username)
+      .set({ cookingStats: { total_recipes: FieldValue.increment(1) } }, { merge: true });
+  } catch (counterErr) {
+    console.error('Failed to increment user recipe counter:', counterErr.message);
+  }
+
+  try {
+    await refreshUserPersonality(db, auth.username);
+  } catch (personalityErr) {
+    console.error('Failed to refresh kitchen personality:', personalityErr.message);
+  }
+
+  if (fields.cookedWith.length > 0) {
+    try {
+      const taggerName = await resolveDisplayName(db, auth.username);
+      await Promise.all(
+        fields.cookedWith.map((taggedUsername) =>
+          sendInteractionNotification({
+            recipientUsername: taggedUsername,
+            actorUsername: auth.username,
+            title: 'You were tagged',
+            body: `${taggerName} cooked a dish with you: ${fields.title}`,
+            data: { type: 'tag', postId: docRef.id, collection: 'logs' },
+          })
+        )
+      );
+    } catch (tagErr) {
+      console.error('Failed to send cookedWith tag notifications:', tagErr.message);
+    }
+  }
+
+  res.status(201).json({ message: 'Recipe log created', logId: docRef.id });
+}
+
+async function handleUpdate(req, res) {
+  if (req.method !== 'POST') return methodNotAllowed(res);
+
+  const auth = await requireAuthForUsername(req, res, req.body.username);
+  if (!auth) return;
+
+  const logId = validatePostId(req.body.logId);
+  if (!logId) {
+    return res.status(400).json({ error: 'Valid logId is required' });
+  }
+
+  const filteredUpdates = sanitizeLogUpdates(req.body.updates);
+  if (!filteredUpdates) {
+    return res.status(400).json({ error: 'No valid fields to update' });
+  }
+  if (filteredUpdates.error) {
+    return res.status(400).json({ error: filteredUpdates.error });
+  }
+
+  const logRef = db.collection('logs').doc(logId);
+  const doc = await logRef.get();
+
+  if (!doc.exists || doc.data().username !== auth.username) {
+    return res.status(404).json({ error: 'Log not found or access denied' });
+  }
+
+  await logRef.update({
+    ...filteredUpdates,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  res.status(200).json({ message: 'Recipe log updated' });
+}
+
+async function handleDelete(req, res) {
+  if (req.method !== 'POST') return methodNotAllowed(res);
+
+  const auth = await requireAuthForUsername(req, res, req.body.username);
+  if (!auth) return;
+
+  const logId = validatePostId(req.body.logId);
+  if (!logId) {
+    return res.status(400).json({ error: 'Valid logId is required' });
+  }
+
+  const logRef = db.collection('logs').doc(logId);
+  const doc = await logRef.get();
+
+  if (!doc.exists || doc.data().username !== auth.username) {
+    return res.status(404).json({ error: 'Log not found or access denied' });
+  }
+
+  await logRef.delete();
+
+  try {
+    const userRef = db.collection('users').doc(auth.username);
+    const userDoc = await userRef.get();
+    if (userDoc.exists) {
+      const favorites = userDoc.data().portfolio_favorites || [];
+      if (favorites.includes(logId)) {
+        await userRef.update({
+          portfolio_favorites: favorites.filter((id) => id !== logId),
+        });
+      }
+    }
+  } catch (favErr) {
+    console.error('Failed to update portfolio favorites after delete:', favErr.message);
+  }
+
+  try {
+    await db
+      .collection('users')
+      .doc(auth.username)
+      .set({ cookingStats: { total_recipes: FieldValue.increment(-1) } }, { merge: true });
+  } catch (counterErr) {
+    console.error('Failed to decrement user recipe counter:', counterErr.message);
+  }
+
+  try {
+    await refreshUserPersonality(db, auth.username);
+  } catch (personalityErr) {
+    console.error('Failed to refresh kitchen personality:', personalityErr.message);
+  }
+
+  res.status(200).json({ message: 'Recipe log deleted' });
+}
+
+const handlers = {
+  create: handleCreate,
+  update: handleUpdate,
+  delete: handleDelete,
+};
+
+module.exports = async (req, res) => {
+  if (!db) {
+    res.status(500).json({ error: 'Database not initialized. Check Firebase credentials.' });
+    return;
+  }
+
+  const action = `${req.query.action || ''}`.toLowerCase();
+  const handler = handlers[action];
+
+  if (!handler) {
+    res.status(400).json({ error: 'Invalid or missing action', validActions: Object.keys(handlers) });
+    return;
+  }
+
+  try {
+    await handler(req, res);
+  } catch (error) {
+    console.error(`Error handling recipeLog action "${action}":`, error);
+    res.status(500).json({
+      error: `Failed to handle action "${action}"`,
+      ...(process.env.NODE_ENV !== 'production' ? { details: error.message } : {}),
+    });
+  }
+};

@@ -692,7 +692,7 @@ export default function ProfileScreen({ navigation, route }) {
           style: 'destructive',
           onPress: async () => {
             try {
-              const response = await fetch(`${API_URL}/deleteRecipeLog`, {
+              const response = await fetch(`${API_URL}/recipeLog?action=delete`, {
                 method: 'POST',
                 headers: await withAuthHeaders(),
                 body: JSON.stringify({ username: user.username, logId: dish.id }),
