@@ -1,6 +1,12 @@
 const { initializeApp, cert, getApps } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
-const { normalizeUsername, sanitizeText, validateEmail, validatePersonName, validateUrl } = require('./_helpers/validateInput');
+const {
+  normalizeUsername,
+  sanitizeText,
+  validateEmail,
+  validatePersonName,
+  validateUrl,
+} = require('./_helpers/validateInput');
 
 let db;
 try {
@@ -29,18 +35,15 @@ module.exports = async (req, res) => {
 
   const { requireToken } = require('./_helpers/verifyAuth');
 
-  // 1. Verify token → uid (no username resolution)
   const auth = await requireToken(req, res);
   if (!auth) return;
 
-  // 2. Validate claimed username from body
   const username = normalizeUsername(req.body.username);
   if (!username) {
     res.status(400).json({ error: 'Invalid username' });
     return;
   }
 
-  // 3. Email must match token (prevents creating a profile on someone else's account)
   const email = validateEmail(req.body.email);
   if (!email) {
     res.status(400).json({ error: 'Valid email is required' });
@@ -80,7 +83,9 @@ module.exports = async (req, res) => {
     profilePhotoUrl: validateUrl(req.body.profilePhotoUrl ?? req.body.profile_photo_url),
     kitchenPersona: sanitizeText(req.body.kitchenPersona ?? req.body.kitchen_persona, 100) || undefined,
     topDishes: Array.isArray(req.body.topDishes ?? req.body.top_dishes)
-      ? (req.body.topDishes ?? req.body.top_dishes).map((item) => sanitizeText(item, 100)).filter(Boolean)
+      ? (req.body.topDishes ?? req.body.top_dishes)
+          .map((item) => sanitizeText(item, 100))
+          .filter(Boolean)
       : undefined,
     favoriteIngredients: Array.isArray(req.body.favoriteIngredients ?? req.body.favorite_ingredients)
       ? (req.body.favoriteIngredients ?? req.body.favorite_ingredients)
@@ -105,14 +110,42 @@ module.exports = async (req, res) => {
       .where('uid', '==', auth.uid)
       .limit(1)
       .get();
+    const existingUsernameDoc = await db.collection('users').doc(username).get();
 
     if (!uidSnapshot.empty) {
-      res.status(409).json({ error: 'User profile already exists' });
+      const existingUserDoc = uidSnapshot.docs[0];
+      const existingUserData = existingUserDoc.data() || {};
+
+      if (existingUserDoc.id === username) {
+        await existingUserDoc.ref.set({ ...existingUserData, ...userData }, { merge: true });
+        res.status(200).json({ message: 'User profile updated', username });
+        return;
+      }
+
+      if (existingUsernameDoc.exists && existingUsernameDoc.data()?.uid !== auth.uid) {
+        res.status(409).json({ error: 'User profile already exists' });
+        return;
+      }
+
+      const batch = db.batch();
+      batch.delete(existingUserDoc.ref);
+      batch.set(db.collection('users').doc(username), {
+        ...existingUserData,
+        ...userData,
+      });
+      await batch.commit();
+      res.status(200).json({ message: 'User profile updated', username });
       return;
     }
-    const existing = await db.collection('users').doc(username).get();
-    if (existing.exists) {
-      res.status(409).json({ error: 'User profile already exists' });
+
+    if (existingUsernameDoc.exists) {
+      if (existingUsernameDoc.data()?.uid !== auth.uid) {
+        res.status(409).json({ error: 'User profile already exists' });
+        return;
+      }
+
+      await existingUsernameDoc.ref.set({ ...existingUsernameDoc.data(), ...userData }, { merge: true });
+      res.status(200).json({ message: 'User profile updated', username });
       return;
     }
 

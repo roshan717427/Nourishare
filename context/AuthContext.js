@@ -278,19 +278,6 @@ export function AuthProvider({ children }) {
       throw new Error('No email on account. Please sign out and sign in again.');
     }
 
-    const usernameRes = await fetch(
-      `${API_URL}/social?action=checkUsername&username=${encodeURIComponent(normalized)}`,
-      { method: 'GET', headers: { 'Content-Type': 'application/json' } }
-    );
-    if (usernameRes.ok) {
-      const { exists } = await usernameRes.json();
-      if (exists) {
-        const err = new Error('Username already taken');
-        err.code = 'auth/username-already-exists';
-        throw err;
-      }
-    }
-
     const profile = {
       username: normalized,
       name: `${firstName.trim()} ${lastName.trim()}`,

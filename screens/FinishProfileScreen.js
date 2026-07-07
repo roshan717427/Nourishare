@@ -87,12 +87,12 @@ export default function FinishProfileScreen() {
         >
           <View style={styles.logoRow}>
             <Ionicons name="restaurant" size={48} color="#fff" />
-            <Text style={styles.brand}>Munchable</Text>
+            <Text style={styles.brand}>Nourishare</Text>
           </View>
           <Text style={styles.title}>Almost there</Text>
           <Text style={styles.subtitle}>
-            Your account exists, but we need to finish your profile. Enter the username you chose
-            when you signed up.
+            Your account exists, but we need to finish your profile. If you do not remember the
+            username from signup, you can choose a new one here.
           </Text>
 
           <View style={styles.formCard}>
@@ -129,7 +129,10 @@ export default function FinishProfileScreen() {
               autoCapitalize="none"
               autoCorrect={false}
             />
-            <Text style={styles.helperText}>{USERNAME_HINT}</Text>
+            <Text style={styles.helperText}>
+              {USERNAME_HINT} For profile setup only, you can pick a new username if you forgot the
+              one you used before.
+            </Text>
 
             <TouchableOpacity
               style={[styles.finishButton, isSubmitting && styles.finishButtonDisabled]}
