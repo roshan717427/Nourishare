@@ -16,7 +16,7 @@ export const ONBOARDING_STEPS = [
   {
     id: 'welcome',
     icon: 'home',
-    title: 'Welcome to Munchable!',
+    title: 'Welcome to Nourishare!',
     description:
       'Your home feed shows what friends are cooking. Drop likes, leave comments, and get inspired!',
     tabLabel: 'Home',

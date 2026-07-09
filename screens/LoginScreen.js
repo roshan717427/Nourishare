@@ -9,6 +9,7 @@ import {
   ScrollView,
   Alert,
   View,
+  Image,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -98,8 +99,12 @@ export default function LoginScreen({ navigation }) {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.logoRow}>
-            <Ionicons name="restaurant" size={48} color="#fff" />
-            <Text style={styles.brand}>Munchable</Text>
+            <Image
+              source={require('../assets/logo.png')}
+              style={{ width: 48, height: 48 }}
+              resizeMode="contain"
+            />
+            <Text style={styles.brand}>Nourishare</Text>
           </View>
           <Text style={styles.title}>Welcome back!</Text>
 

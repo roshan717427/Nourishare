@@ -179,8 +179,12 @@ export default function SignUpScreen({ navigation, route }) {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.logoRow}>
-            <Ionicons name="restaurant" size={48} color="#fff" />
-            <Text style={styles.brand}>Munchable</Text>
+            <Image
+              source={require('../assets/logo.png')}
+              style={{ width: 48, height: 48 }}
+              resizeMode="contain"
+            />
+            <Text style={styles.brand}>Nourishare</Text>
           </View>
           <Text style={styles.title}>Create account</Text>
           <Text style={styles.subtitle}>Join the community & start logging!</Text>

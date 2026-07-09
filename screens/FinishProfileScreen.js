@@ -86,7 +86,11 @@ export default function FinishProfileScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.logoRow}>
-            <Ionicons name="restaurant" size={48} color="#fff" />
+            <Image
+              source={require('../assets/logo.png')}
+              style={{ width: 48, height: 48 }}
+              resizeMode="contain"
+            />
             <Text style={styles.brand}>Nourishare</Text>
           </View>
           <Text style={styles.title}>Almost there</Text>

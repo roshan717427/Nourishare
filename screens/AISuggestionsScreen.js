@@ -631,7 +631,7 @@ export default function AISuggestionsScreen({ navigation }) {
             <Ionicons name="sparkles" size={18} color={colors.primary} />
           </View>
           <View>
-            <Text style={styles.headerTitle}>Munchable AI</Text>
+            <Text style={styles.headerTitle}>Nourishare AI</Text>
             <Text style={styles.headerSubtitle}>Curated picks, just for you</Text>
           </View>
         </View>

@@ -161,9 +161,10 @@ async function generateSuggestions(username, pantryRaw) {
       normalized = normalizeGeminiRecipes(parsed, context.pantryIngredients);
     } catch (err) {
       if (err.code === 'gemini_rate_limit_rpm' || err.code === 'gemini_rate_limit_rpd') {
-        throw err;
+        console.warn('Gemini rate limited, using fallback suggestions:', err.message);
+      } else {
+        console.error('Gemini generation failed, falling back:', err.message);
       }
-      console.error('Gemini generation failed, falling back:', err.message);
       normalized = await fetchRuleBasedFallback(username, context.pantryIngredients);
       source = 'rule_based_fallback';
     }

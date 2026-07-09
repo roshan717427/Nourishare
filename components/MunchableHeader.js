@@ -5,7 +5,7 @@ import { colors } from '../constants/theme';
 
 const SIDE_WIDTH = 40;
 
-export default function MunchableHeader({ leftAction, rightAction }) {
+export default function NourishareHeader({ leftAction, rightAction }) {
   return (
     <LinearGradient
       colors={[colors.gradientStart, colors.gradientEnd]}
@@ -16,7 +16,7 @@ export default function MunchableHeader({ leftAction, rightAction }) {
       <View style={styles.side}>
         {leftAction ?? <View style={styles.spacer} />}
       </View>
-      <Text style={styles.title}>Munchable</Text>
+      <Text style={styles.title}>Nourishare</Text>
       <View style={[styles.side, styles.sideRight]}>
         {rightAction ?? <View style={styles.spacer} />}
       </View>
