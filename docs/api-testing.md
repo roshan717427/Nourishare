@@ -1,4 +1,4 @@
-# Munchable v4 API Testing Reference
+# Nourishare API Testing Reference
 
 Reference for manually testing the live Vercel API endpoints. For a runnable
 version of all of these, see [`scripts/test_api.sh`](../scripts/test_api.sh).

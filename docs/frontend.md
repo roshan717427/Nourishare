@@ -1,4 +1,4 @@
-# Munchable Frontend
+# Nourishare Frontend
 
 React Native mobile app built with Expo and React Navigation.
 
@@ -69,7 +69,7 @@ The Log Meal screen allows users to:
 ### API Integration
 
 The app connects to the backend API at:
-- Production: `https://munchable-v4.vercel.app/api`
+- Production: `https://nourishare.vercel.app/api`
 - Development: `http://localhost:3000/api` (when using local backend)
 
 Update the API URL in `config/api.js` if needed.
@@ -79,7 +79,7 @@ Update the API URL in `config/api.js` if needed.
 Create a `.env` file in the root directory for environment-specific variables:
 
 ```
-API_URL=https://munchable-v4.vercel.app/api
+API_URL=https://nourishare.vercel.app/api
 ```
 
 Note: For Expo, you may need to use `expo-constants` or `react-native-config` to access environment variables.

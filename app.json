@@ -1,9 +1,9 @@
 {
   "expo": {
-    "name": "Munchable",
-    "slug": "munchable",
-    "version": "2.0.0",
-    "sdkVersion": "54.0.0",
+    "name": "Nourishare",
+    "slug": "nourishare",
+    "version": "1.0.0",
+    "scheme": "nourishare",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -16,12 +16,15 @@
       "**/*"
     ],
     "ios": {
-      "appleTeamID": "862RFB9H5Y",
-      "buildNumber": "2",
-      "supportsTablet": true,
       "bundleIdentifier": "com.roshanpaul.munchable",
+      "appleTeamID": "862RFB9H5Y",
+      "buildNumber": "22",
+      "supportsTablet": true,
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "Nourishare uses your camera to take photos of meals you log.",
+        "NSPhotoLibraryUsageDescription": "Nourishare uses your photo library so you can add meal and profile photos.",
+        "CFBundleDisplayName": "Nourishare"
       }
     },
     "android": {
@@ -29,7 +32,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.roshanpaul.munchable",
+      "package": "com.roshanpaul.nourishare",
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.POST_NOTIFICATIONS"
@@ -42,8 +45,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "The app accesses your photos to let you share them with your meals.",
-          "cameraPermission": "The app accesses your camera to let you take photos of your meals.",
+          "photosPermission": "Nourishare uses your photos so you can add them to meals and your profile.",
+          "cameraPermission": "Nourishare uses your camera to take photos of meals you log.",
           "microphonePermission": false
         }
       ],
@@ -57,7 +60,7 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "e4ea19f9-5433-4b71-ad14-2a5c03d001ba"
+        "projectId": "cdd9ad01-6c90-4a88-9b50-17f53877a548"
       }
     },
     "owner": "roshanpaul"

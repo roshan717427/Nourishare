@@ -1,4 +1,4 @@
-# Munchable
+# Nourishare
 
 A recipe-logging social app: a React Native / Expo mobile client backed by a
 Vercel serverless API (Firestore-backed).

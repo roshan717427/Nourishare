@@ -1,6 +1,6 @@
 # Expo Go Connection Guide
 
-How to run the Munchable Expo app and connect a phone or simulator, plus
+How to run the Nourishare Expo app and connect a phone or simulator, plus
 troubleshooting for the common "Internet connection appears to be offline" /
 QR-code issues.
 
