@@ -2,6 +2,21 @@
  * Shared title → stock image mapping for AI suggestion cards.
  * Server (api/_helpers/suggestion_images.py) mirrors this data and matching logic.
  */
+export const SECTION_SUGGESTION_IMAGES = {
+  friend: require('../assets/friends.png'),
+  preference: require('../assets/pref.png'),
+  pantry: require('../assets/pantry.png'),
+};
+
+export function sectionSuggestionImage(section) {
+  return SECTION_SUGGESTION_IMAGES[section] || SECTION_SUGGESTION_IMAGES.preference;
+}
+
+/** Use for <Image source={...} /> when value may be a URL string or require() asset. */
+export function suggestionImageSource(image) {
+  if (!image) return null;
+  return typeof image === 'string' ? { uri: image } : image;
+}
 
 export const DEFAULT_FALLBACK_IMAGE =
   'https://www.magnific.com/free-vector/blank-plate-with-spoon-fork_2591609.htm#fromView=search&page=1&position=10&uuid=f0abc3ce-cee1-40b0-b582-351f8ff2bcee&query=plate%2C+spoon%2C+fork';
@@ -190,10 +205,6 @@ export function titleFallbackImage(recipeName) {
   return FALLBACK_IMAGES[hash % FALLBACK_IMAGES.length];
 }
 
-export function resolveSuggestionImage(suggestion, recipeName) {
-  const name = recipeName || suggestion?.name || suggestion?.recipe_name || 'Recipe';
-  const titled = titleFallbackImage(name);
-  return typeof titled === 'string' && titled.trim().toLowerCase().startsWith('https://')
-    ? titled
-    : DEFAULT_FALLBACK_IMAGE;
+export function resolveSuggestionImage(suggestion, section) {
+  return sectionSuggestionImage(section || suggestion?.section);
 }

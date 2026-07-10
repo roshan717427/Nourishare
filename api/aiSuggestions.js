@@ -33,7 +33,7 @@ const {
   gatherGenerationContext,
   normalizeGeminiRecipes,
 } = require('./_helpers/generateSuggestionContext');
-const { titleFallbackImage } = require('./_helpers/suggestionImagesServer');
+const { sectionSuggestionImage } = require('./_helpers/suggestionImagesServer');
 
 let db;
 try {
@@ -67,14 +67,11 @@ function normalizeAction(req) {
 }
 
 function attachImages(recipes) {
-  return (recipes || []).map((recipe) => {
-    const name = recipe.name || recipe.recipe_name || 'Recipe';
-    return {
-      ...recipe,
-      image: titleFallbackImage(name),
-      subtitle: [recipe.difficulty_level, recipe.cooking_time].filter(Boolean).join(', '),
-    };
-  });
+  return (recipes || []).map((recipe) => ({
+    ...recipe,
+    image: sectionSuggestionImage(recipe.section),
+    subtitle: [recipe.difficulty_level, recipe.cooking_time].filter(Boolean).join(', '),
+  }));
 }
 
 async function fetchRuleBasedFallback(username, pantryIngredients) {

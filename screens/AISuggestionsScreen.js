@@ -20,9 +20,8 @@ import { useAuth } from '../context/AuthContext';
 import { useNextUp } from '../context/NextUpContext';
 import { colors, radii, spacing, shadows } from '../constants/theme';
 import {
-  DEFAULT_FALLBACK_IMAGE,
   resolveSuggestionImage,
-  titleFallbackImage,
+  suggestionImageSource,
 } from '../utils/suggestionImages';
 import {
   loadCachedSuggestions,
@@ -80,18 +79,7 @@ function RecipeCard({
   const difficulty = recipe.difficulty_level
     ? recipe.difficulty_level.charAt(0).toUpperCase() + recipe.difficulty_level.slice(1)
     : null;
-  const titleImageUri = titleFallbackImage(recipe.name);
-  const [imageUri, setImageUri] = useState(titleImageUri);
-
-  useEffect(() => {
-    setImageUri(titleFallbackImage(recipe.name));
-  }, [recipe.name]);
-
-  const handleImageError = () => {
-    setImageUri((current) => (
-      current !== DEFAULT_FALLBACK_IMAGE ? DEFAULT_FALLBACK_IMAGE : current
-    ));
-  };
+  
 
   return (
     <TouchableOpacity
@@ -101,9 +89,8 @@ function RecipeCard({
     >
       <View style={styles.recipeImageWrap}>
         <Image
-          source={{ uri: imageUri }}
+          source={suggestionImageSource(recipe.image)}
           style={styles.recipeImage}
-          onError={handleImageError}
         />
         <LinearGradient
           colors={['transparent', 'rgba(0,0,0,0.55)']}
@@ -251,17 +238,19 @@ function formatSubtitle(suggestion) {
   return [difficulty, time].filter(Boolean).join(' · ') || 'Suggested for you';
 }
 
-function mapApiSuggestions(items) {
+function mapApiSuggestions(items, section) {
   if (!Array.isArray(items) || items.length === 0) {
     return [];
   }
 
   return items.map((s, index) => {
     const name = s.name || s.recipe_name || 'Recipe';
-    const image = resolveSuggestionImage(s, name);
+    const resolvedSection = s.section || section;
+    const image = resolveSuggestionImage(s, resolvedSection);
     return {
       ...s,
       id: s.id || s.recipe_id || `s-${index}`,
+      section: resolvedSection,
       name,
       subtitle: s.subtitle || formatSubtitle(s),
       image,
@@ -311,9 +300,9 @@ export default function AISuggestionsScreen({ navigation }) {
   const pulseAnim = useRef(new Animated.Value(0)).current;
 
   const applySuggestionsData = useCallback((data) => {
-    const preferenceItems = mapApiSuggestions(data.preference_suggestions || []);
-    const friendItems = mapApiSuggestions(data.friend_suggestions || []);
-    const pantryItems = mapApiSuggestions(data.pantry_suggestions || []);
+    const preferenceItems = mapApiSuggestions(data.preference_suggestions || [], 'preference');
+    const friendItems = mapApiSuggestions(data.friend_suggestions || [], 'friend');
+    const pantryItems = mapApiSuggestions(data.pantry_suggestions || [], 'pantry');
     setPreferenceSuggestions(preferenceItems);
     setFriendSuggestions(friendItems);
     setPantrySuggestions(pantryItems);

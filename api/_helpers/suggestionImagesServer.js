@@ -2,6 +2,16 @@
  * Server-side title → stock image mapping for AI suggestion cards.
  * Mirrors utils/suggestionImages.js (subset for API handlers).
  */
+const SECTION_IMAGES = {
+  friend: 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?w=500&q=80',
+  preference: 'https://imhttps://images.unsplash.com/photo-1741011089185-fd2be1a7f53b?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3Dages.unsplash.com/photo-1551183053-bf91a1d81141?w=500&q=80',
+  pantry: 'https://images.unsplash.com/photo-1631021967261-c57ee4dfa9bb?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
+};
+
+function sectionSuggestionImage(section) {
+  return SECTION_IMAGES[section] || SECTION_IMAGES.preference;
+}
+
 const DEFAULT_FALLBACK_IMAGE =
   'https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=500&q=80';
 
@@ -51,5 +61,5 @@ function titleFallbackImage(recipeName) {
 
 module.exports = {
   DEFAULT_FALLBACK_IMAGE,
-  titleFallbackImage,
+  sectionSuggestionImage,
 };

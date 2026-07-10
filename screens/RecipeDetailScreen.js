@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, radii } from '../constants/theme';
 import { toIngredientList, getRecipeSteps } from '../utils/recipeParsing';
 import RecipeSection, { hasRecipeContent } from '../components/RecipeSection';
+import { sectionSuggestionImage, suggestionImageSource } from '../utils/suggestionImages';
 import { formatSuggestionReasonBody } from '../utils/suggestionReason';
 
 
@@ -22,7 +23,9 @@ export default function RecipeDetailScreen({ navigation, route }) {
   const recipe = route?.params?.recipe || {};
 
   const name = recipe.name || recipe.recipe_name || 'Recipe';
-  const image = recipe.image || recipe.photoUrl || null;
+  const image = recipe.section
+    ? sectionSuggestionImage(recipe.section)
+    : suggestionImageSource(recipe.image || recipe.photoUrl) || null;
   const difficulty = recipe.difficulty_level || recipe.difficulty || null;
   const time = recipe.cooking_time || recipe.time || null;
   const rating = recipe.rating != null && recipe.rating !== '' ? recipe.rating : null;
@@ -68,7 +71,7 @@ export default function RecipeDetailScreen({ navigation, route }) {
         showsVerticalScrollIndicator={false}
       >
         {image ? (
-          <Image source={{ uri: image }} style={styles.photo} />
+          <Image source={suggestionImageSource(image)} style={styles.photo} />
         ) : (
           <View style={[styles.photo, styles.photoPlaceholder]}>
             <Ionicons name="restaurant-outline" size={48} color={colors.textMuted} />
