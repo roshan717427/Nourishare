@@ -21,6 +21,7 @@ const { refreshUserPersonality } = require('./_helpers/personalityHelper');
 const { requireAuthForUsername } = require('./_helpers/verifyAuth');
 const { validatePostId, sanitizeRecipeLogFields, sanitizeLogUpdates } = require('./_helpers/validateInput');
 const { resolveDisplayName, sendInteractionNotification } = require('./_helpers/notifications');
+const { partitionExistingUsernames } = require('./_helpers/userLookup');
 
 let db;
 try {
@@ -47,6 +48,18 @@ async function handleCreate(req, res) {
   if (!auth) return;
 
   const fields = sanitizeRecipeLogFields(req.body);
+
+  // After const fields = sanitizeRecipeLogFields(req.body);
+  if (fields.cookedWith.length > 0) {
+    const { existing, missing } = await partitionExistingUsernames(db, fields.cookedWith);
+    if (missing.length > 0) {
+      return res.status(400).json({
+        error: 'Some tagged users were not found',
+        invalid_usernames: missing,
+      });
+    }
+    fields.cookedWith = existing;
+  }
 
   if (!fields.title) {
     return res.status(400).json({ error: 'Title (name of the dish) is required' });
@@ -137,6 +150,20 @@ async function handleUpdate(req, res) {
   }
   if (filteredUpdates.error) {
     return res.status(400).json({ error: filteredUpdates.error });
+  }
+
+  if (filteredUpdates.cookedWith !== undefined) {
+    const { existing, missing } = await partitionExistingUsernames(
+      db,
+      filteredUpdates.cookedWith
+    );
+    if (missing.length > 0) {
+      return res.status(400).json({
+        error: 'Some tagged users were not found',
+        invalid_usernames: missing,
+      });
+    }
+    filteredUpdates.cookedWith = existing;
   }
 
   const logRef = db.collection('logs').doc(logId);

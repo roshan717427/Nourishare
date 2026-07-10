@@ -250,6 +250,27 @@ export default function LogMealScreen({ navigation, route }) {
 
     const cookedWithList = parseCookedWith(cookedWith);
 
+    if (cookedWithList.length > 0) {
+      const checks = await Promise.all(
+        cookedWithList.map(async (name) => {
+          const res = await authFetch(
+            `${API_URL}/social?action=checkUsername&username=${encodeURIComponent(name)}`
+          );
+          const data = await res.json().catch(() => ({}));
+          return { name, exists: Boolean(data.exists) };
+        })
+      );
+      const invalid = checks.filter((c) => !c.exists).map((c) => c.name);
+      if (invalid.length > 0) {
+        Alert.alert(
+          'User not found',
+          `These usernames don't exist: ${invalid.map((u) => `@${u}`).join(', ')}`
+        );
+        setIsSubmitting(false);
+        return;
+      }
+    }
+    
     try {
       if (isEditing) {
         const updates = {
