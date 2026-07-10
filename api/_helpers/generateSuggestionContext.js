@@ -162,7 +162,9 @@ ${pantrySummary}
 Rules:
 - Do NOT repeat exact dish names the user has already logged.
 - Do NOT use em dashes anywhere in your output; use commas, periods, or "to" for ranges.
-- Each recipe needs: name, ingredients (comma-separated string), cooking_time (e.g. "25 min"), difficulty_level (easy|medium|hard), description (1 sentence), why_suggested (short reason without leading "it").
+- Each recipe needs: name, ingredients (comma-separated string), cooking_time (e.g. "25 min"), difficulty_level (easy|medium|hard), description (1 sentence), steps (4-8 short cooking steps, semicolon-separated), why_suggested (short reason without leading "it").
+- Use concise ingredient names; avoid redundant words (e.g. "naan" not "naan bread", since naan means bread).
+- Do NOT include URLs or recipe links; only provide steps.
 - Return ONLY valid JSON in this shape:
 {
   "recipes": [
@@ -173,6 +175,7 @@ Rules:
       "cooking_time": "30 min",
       "difficulty_level": "easy",
       "description": "Brief appetizing description.",
+      "steps": "Step one; Step two; Step three",
       "why_suggested": "similar to the Thai flavors your friend enjoys"
     }
   ]
@@ -242,6 +245,7 @@ function normalizeGeminiRecipes(parsed, pantryIngredients) {
           difficulty_level: (r.difficulty_level || 'medium').toLowerCase(),
           description: r.description || '',
           why_suggested: r.why_suggested || r.reason || '',
+          steps: r.steps || '',
         },
         pantryTokens
       )

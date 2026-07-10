@@ -13,49 +13,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, radii } from '../constants/theme';
 import { toIngredientList, getRecipeSteps } from '../utils/recipeParsing';
 import RecipeSection, { hasRecipeContent } from '../components/RecipeSection';
+import { formatSuggestionReasonBody } from '../utils/suggestionReason';
+
 
 /** Normalize API reason text for "Suggested because {reason}." */
-function formatSuggestionReason(raw) {
-  if (!raw) return null;
-  const why = `${raw}`.trim();
-  if (!why) return null;
-
-  // New API copy already starts with "it …" or "your friend …".
-  if (/^(it |your friend )/i.test(why)) {
-    return why;
-  }
-
-  // Legacy verb-first fragments from older API responses.
-  if (/^a great /i.test(why)) {
-    return `it is ${why}`;
-  }
-  if (/^(highly rated|well-?rated|popular recipe|liked by)/i.test(why)) {
-    return `it is ${why}`;
-  }
-  if (/^(cooked by|recently cooked)/i.test(why)) {
-    if (/^cooked by your friend$/i.test(why)) {
-      return "inspired by your friend's cooking style";
-    }
-    if (/^recently cooked$/i.test(why)) {
-      return "inspired by your friend's recent cooking style";
-    }
-    return `it is ${why}`;
-  }
-  if (/^(matches|shares|picked|fits|based on)/i.test(why)) {
-    if (/^picked /i.test(why)) {
-      return `it was ${why}`;
-    }
-    if (/^based on /i.test(why)) {
-      return `it is ${why}`;
-    }
-    return `it ${why}`;
-  }
-  if (/^features /i.test(why)) {
-    return `it ${why}`;
-  }
-
-  return why;
-}
 
 export default function RecipeDetailScreen({ navigation, route }) {
   const recipe = route?.params?.recipe || {};
@@ -68,7 +29,7 @@ export default function RecipeDetailScreen({ navigation, route }) {
   const author = recipe.username || null;
   const inspiredBy = recipe.inspired_by || null;
   const inspiredByUsername = recipe.inspired_by_username || null;
-  const why = formatSuggestionReason(recipe.why_suggested);
+  const why = formatSuggestionReasonBody(recipe.why_suggested);
 
   const ingredients = toIngredientList(recipe.ingredients);
   const ingredientsHave = Array.isArray(recipe.ingredientsHave) ? recipe.ingredientsHave : [];
@@ -156,11 +117,23 @@ export default function RecipeDetailScreen({ navigation, route }) {
           {why ? (
             <View style={styles.whyBox}>
               <Ionicons name="sparkles" size={16} color={colors.primary} />
-              <Text style={styles.whyText}>Suggested because {why}.</Text>
+              <View style={styles.whyContent}>
+                <Text style={styles.whyHeader}>Why was this suggested?</Text>
+                <Text style={styles.whyText}>{why}</Text>
+              </View>
             </View>
           ) : null}
 
-          {hasRecipeContent(recipe) ? (
+          {recipe.description ? (
+            <>
+              <Text style={styles.sectionTitle}>The recipe:</Text>
+              <View style={styles.notesCard}>
+                <Text style={styles.notesText}>{recipe.description}</Text>
+              </View>
+            </>
+          ) : null}
+
+          {author && hasRecipeContent(recipe) ? (
             <RecipeSection recipe={recipe} style={styles.recipeSection} />
           ) : null}
 
@@ -333,12 +306,20 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 8,
   },
-  whyText: {
+  whyContent: {
     flex: 1,
+    marginLeft: 8,
+  },
+  whyHeader: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.chipCoralText,
+    marginBottom: 4,
+  },
+  whyText: {
     fontSize: 14,
     color: colors.chipCoralText,
     lineHeight: 20,
-    marginLeft: 8,
   },
   recipeSection: {
     marginTop: 16,

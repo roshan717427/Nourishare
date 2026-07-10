@@ -31,54 +31,10 @@ import {
 } from '../utils/aiSuggestionsApi';
 import { friendlyAiError } from '../utils/errorMessages';
 import { extractFirstName } from '../utils/personalityCopy';
+import { formatSuggestionReasonBody } from '../utils/suggestionReason';
 
 const CARD_WIDTH = 200;
 const IMAGE_HEIGHT = 150;
-
-function formatSuggestionReason(raw) {
-  if (!raw) return null;
-  const why = `${raw}`.trim();
-  if (!why) return null;
-
-  if (/^(it |your friend )/i.test(why)) {
-    return why;
-  }
-  if (/^a great /i.test(why)) {
-    return `it is ${why}`;
-  }
-  if (/^(highly rated|well-?rated|popular recipe|liked by)/i.test(why)) {
-    return `it is ${why}`;
-  }
-  if (/^(cooked by|recently cooked)/i.test(why)) {
-    if (/^cooked by your friend$/i.test(why)) {
-      return "inspired by your friend's cooking style";
-    }
-    if (/^recently cooked$/i.test(why)) {
-      return "inspired by your friend's recent cooking style";
-    }
-    return `it is ${why}`;
-  }
-  if (/^(matches|shares|picked|fits|based on|similar to|uses similar)/i.test(why)) {
-    if (/^picked /i.test(why)) {
-      return `it was ${why}`;
-    }
-    if (/^based on /i.test(why)) {
-      return `it is ${why}`;
-    }
-    if (/^(similar to|uses similar)/i.test(why)) {
-      return `it ${why}`;
-    }
-    return `it ${why}`;
-  }
-  if (/^in the same /i.test(why)) {
-    return `it is ${why}`;
-  }
-  if (/^features /i.test(why)) {
-    return `it ${why}`;
-  }
-
-  return why;
-}
 
 function SectionHeader({ eyebrow, title, icon, accentColor, tintBg }) {
   return (
@@ -120,7 +76,7 @@ function RecipeCard({
   reasonTextColor,
   showPantry,
 }) {
-  const why = formatSuggestionReason(recipe.why_suggested);
+  const why = formatSuggestionReasonBody(recipe.why_suggested);
   const difficulty = recipe.difficulty_level
     ? recipe.difficulty_level.charAt(0).toUpperCase() + recipe.difficulty_level.slice(1)
     : null;
@@ -162,7 +118,7 @@ function RecipeCard({
             }}
             activeOpacity={0.85}
             accessibilityRole="button"
-            accessibilityLabel={isInNextUp ? 'Already in Next Up' : 'Add to Next Up'}
+            accessibilityLabel={isInNextUp ? 'Already in Cook Next' : 'Add to Cook Next'}
           >
             <Ionicons
               name={isInNextUp ? 'checkmark' : 'add'}
@@ -216,9 +172,17 @@ function RecipeCard({
         {why ? (
           <View style={[styles.reasonBox, { backgroundColor: reasonTint }]}>
             <Ionicons name="sparkles" size={12} color={reasonTextColor} style={styles.reasonIcon} />
-            <Text style={[styles.reasonText, { color: reasonTextColor }]} numberOfLines={2}>
-              Suggested because {why}.
-            </Text>
+            <View style={styles.reasonContent}>
+              <Text style={[styles.reasonHeader, { color: reasonTextColor }]}>
+                Why was this suggested?
+              </Text>
+              <Text
+                style={[styles.reasonText, { color: reasonTextColor }]}
+                numberOfLines={3}
+              >
+                {why}
+              </Text>
+            </View>
           </View>
         ) : (
           <Text style={styles.recipeSubtitle} numberOfLines={1}>
@@ -302,6 +266,7 @@ function mapApiSuggestions(items) {
       subtitle: s.subtitle || formatSubtitle(s),
       image,
       ingredients: s.ingredients,
+      description: s.description,
       steps: s.steps || undefined,
       difficulty_level: s.difficulty_level || s.difficulty,
       cooking_time: s.cooking_time || s.time,
@@ -488,12 +453,12 @@ export default function AISuggestionsScreen({ navigation }) {
 
   const handleAddToNextUp = (recipe) => {
     if (isInNextUp(recipe.id)) {
-      Alert.alert('Already in Next Up', `"${recipe.name}" is already on your list.`);
+      Alert.alert('Already in Cook Next', `"${recipe.name}" is already on your list.`);
       return;
     }
     const added = addToNextUp(recipe);
     if (added) {
-      Alert.alert('Saved to Next Up', `"${recipe.name}" is on your private cooking queue.`);
+      Alert.alert('Saved to Cook Next', `"${recipe.name}" is on your private cooking queue.`);
     }
   };
 
@@ -1201,8 +1166,15 @@ const styles = StyleSheet.create({
     marginTop: 1,
     marginRight: 6,
   },
-  reasonText: {
+  reasonContent: {
     flex: 1,
+  },
+  reasonHeader: {
+    fontSize: 11,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  reasonText: {
     fontSize: 12,
     lineHeight: 17,
     fontStyle: 'italic',

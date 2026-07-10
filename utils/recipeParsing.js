@@ -14,8 +14,17 @@ const KNOWN_INGREDIENTS = [
   'onion', 'salt', 'pepper', 'butter', 'flour', 'sugar', 'egg', 'milk', 'oil',
 ];
 
+const INGREDIENT_ALIASES = {
+  'naan bread': 'naan',
+  'pita bread': 'pita',
+  'chai tea': 'chai',
+  // optional: 'pita bread': 'pita', 'chai tea': 'chai', etc.
+};
+
 function normalizeItem(item) {
-  return `${item}`.trim().replace(/^[-–—•·]+\s*/, '');
+  const cleaned = `${item}`.trim().replace(/^[-–—•·]+\s*/, '');
+  const key = cleaned.toLowerCase();
+  return INGREDIENT_ALIASES[key] || cleaned;
 }
 
 function hasDelimiters(value) {
@@ -141,5 +150,5 @@ export function getRecipeSteps(recipe) {
       recipe.recipeInstructions
   );
   if (explicit.length > 0) return explicit;
-  return toStepList(recipe.cooking_notes || recipe.notes || recipe.description);
+  return toStepList(recipe.cooking_notes || recipe.notes);
 }
