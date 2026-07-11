@@ -10,6 +10,7 @@ import {
   Platform,
   Animated,
   TextInput,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import BottomNavigation from '../components/BottomNavigation';
 import { useAuth } from '../context/AuthContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNextUp } from '../context/NextUpContext';
 import { colors, radii, spacing, shadows } from '../constants/theme';
 import {
@@ -298,6 +300,9 @@ export default function AISuggestionsScreen({ navigation }) {
   const [hasLoadedCache, setHasLoadedCache] = useState(false);
 
   const pulseAnim = useRef(new Animated.Value(0)).current;
+  const insets = useSafeAreaInsets();
+  const scrollRef = useRef(null);
+  const pantryStripRef = useRef(null);
 
   const applySuggestionsData = useCallback((data) => {
     const preferenceItems = mapApiSuggestions(data.preference_suggestions || [], 'preference');
@@ -495,27 +500,40 @@ export default function AISuggestionsScreen({ navigation }) {
   );
 
   const renderPantryStrip = () => (
-    <View style={[styles.pantryStrip, shadows.cardSoft]}>
-      <View style={styles.pantryHeader}>
-        <Ionicons name="basket-outline" size={20} color={colors.primary} />
-        <Text style={styles.pantryTitle}>What's in your pantry?</Text>
-      </View>
-      <TextInput
-        style={styles.pantryInput}
-        placeholder="e.g. chicken, rice, garlic, soy sauce"
-        placeholderTextColor={colors.textMuted}
-        value={pantryText}
-        onChangeText={setPantryText}
-        multiline
-      />
-      <View style={styles.pantryActions}>
-        <TouchableOpacity
-          style={styles.pantrySkipButton}
-          onPress={handleSkipPantry}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.pantrySkipText}>Skip</Text>
-        </TouchableOpacity>
+    <View ref={pantryStripRef} collapsable={false}>
+      <View style={[styles.pantryStrip, shadows.cardSoft]}>
+        <View style={styles.pantryHeader}>
+          <Ionicons name="basket-outline" size={20} color={colors.primary} />
+          <Text style={styles.pantryTitle}>What's in your pantry?</Text>
+        </View>
+        <TextInput
+          style={styles.pantryInput}
+          placeholder="e.g. chicken, rice, garlic, soy sauce"
+          placeholderTextColor={colors.textMuted}
+          value={pantryText}
+          onChangeText={setPantryText}
+          multiline
+          onFocus={() => {
+            setTimeout(() => {
+              pantryStripRef.current?.measureLayout(
+                scrollRef.current?.getInnerViewNode?.() ?? scrollRef.current,
+                (_x, y) => {
+                  scrollRef.current?.scrollTo({ y: Math.max(0, y - 24), animated: true });
+                },
+                () => {}
+              );
+            }, 300);
+          }}
+        />
+        <View style={styles.pantryActions}>
+          <TouchableOpacity
+            style={styles.pantrySkipButton}
+            onPress={handleSkipPantry}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.pantrySkipText}>Skip</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -592,10 +610,20 @@ export default function AISuggestionsScreen({ navigation }) {
         <View style={styles.headerSpacer} />
       </LinearGradient>
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
+        >
+        <ScrollView
+          ref={scrollRef}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 }]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          automaticallyAdjustKeyboardInsets
+        >
+
         <View style={[styles.greetingCard, shadows.cardSoft]}>
           <LinearGradient
             colors={[colors.cardWarm, colors.card]}
@@ -701,7 +729,7 @@ export default function AISuggestionsScreen({ navigation }) {
           </>
         ) : null}
       </ScrollView>
-
+      </KeyboardAvoidingView>
       <BottomNavigation navigation={navigation} activeTab="AI" />
     </View>
   );
