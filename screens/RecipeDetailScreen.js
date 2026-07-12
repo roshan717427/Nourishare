@@ -171,6 +171,7 @@ export default function RecipeDetailScreen({ navigation, route }) {
             </>
           ) : null}
 
+          {/*
           <Text style={styles.sectionTitle}>Ingredients</Text>
           {ingredients.length > 0 ? (
             <View style={styles.ingredientsCard}>
@@ -186,6 +187,7 @@ export default function RecipeDetailScreen({ navigation, route }) {
               Ingredient list isn't available for this recipe yet.
             </Text>
           )}
+          */}
 
           <Text style={styles.sectionTitle}>How to cook</Text>
           {steps.length > 0 ? (

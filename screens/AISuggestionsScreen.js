@@ -158,42 +158,57 @@ function RecipeCard({
           />
         </View>
 
-        {why ? (
-          <View style={[styles.reasonBox, { backgroundColor: reasonTint }]}>
-            <Ionicons name="sparkles" size={12} color={reasonTextColor} style={styles.reasonIcon} />
-            <View style={styles.reasonContent}>
-              <Text style={[styles.reasonHeader, { color: reasonTextColor }]}>
-                Why was this suggested?
-              </Text>
-              <Text
-                style={[styles.reasonText, { color: reasonTextColor }]}
-                numberOfLines={3}
-              >
-                {why}
-              </Text>
-            </View>
-          </View>
-        ) : (
+        {recipe.subtitle ? (
           <Text style={styles.recipeSubtitle} numberOfLines={1}>
             {recipe.subtitle}
           </Text>
-        )}
-
-        {showPantry && (recipe.ingredientsHave?.length > 0 || recipe.ingredientsNeed?.length > 0) ? (
-          <View style={styles.pantryBlock}>
-            {recipe.ingredientsHave?.length > 0 ? (
-              <Text style={styles.pantryHave} numberOfLines={2}>
-                You have: {recipe.ingredientsHave.join(', ')}
-              </Text>
-            ) : null}
-            {recipe.ingredientsNeed?.length > 0 ? (
-              <Text style={styles.pantryNeed} numberOfLines={2}>
-                You need: {recipe.ingredientsNeed.join(', ')}
-              </Text>
-            ) : null}
-          </View>
         ) : null}
-      </View>
+
+{showPantry && (recipe.ingredientsHave?.length > 0 || recipe.ingredients_have?.length > 0 || recipe.ingredientsNeed?.length > 0 || recipe.ingredients_need?.length > 0) ? (() => {
+          // Fallback guard to seamlessly handle both camelCase and snake_case backend keys
+          const rawHave = recipe.ingredientsHave || recipe.ingredients_have || [];
+          const rawNeed = recipe.ingredientsNeed || recipe.ingredients_need || [];
+
+          // 1. Fetch and clean up the active user input search token
+          // Replace 'userInputQuery' with your actual state reference variable if named differently
+          const queryToken = (typeof userInputQuery === 'string' ? userInputQuery : '').trim().toLowerCase();
+
+          let verifiedHave = [...rawHave];
+          let verifiedNeed = [...rawNeed];
+
+          // 2. Enforce strict matching rules if a user input query exists
+          if (queryToken.length > 0) {
+            // Strictly include in 'Have' ONLY if it perfectly matches the user's input item
+            verifiedHave = rawHave.filter(item => item.trim().toLowerCase() === queryToken);
+
+            // Re-route everything else that doesn't strictly match into 'Need'
+            const excludedHaveItems = rawHave.filter(item => item.trim().toLowerCase() !== queryToken);
+            
+            // Merge excluded items (like 'chicken broth') into 'Need' without creating duplicates
+            excludedHaveItems.forEach(item => {
+              if (!verifiedNeed.some(needItem => needItem.trim().toLowerCase() === item.trim().toLowerCase())) {
+                verifiedNeed.push(item);
+              }
+            });
+          }
+
+          return (
+            <View style={styles.pantryBlock}>
+              {verifiedHave.length > 0 ? (
+                <Text style={styles.pantryHave} numberOfLines={2}>
+                  You have: {verifiedHave.join(', ')}
+                </Text>
+              ) : null}
+
+              {verifiedNeed.length > 0 ? (
+                <Text style={styles.pantryNeed} numberOfLines={2}>
+                  You need: {verifiedNeed.join(', ')}
+                </Text>
+              ) : null}
+            </View>
+          );
+        })() : null}
+      </View> {/* Explicitly closes <View style={styles.recipeBody}> */}
     </TouchableOpacity>
   );
 }
@@ -277,7 +292,7 @@ function parsePantryInput(text) {
 }
 
 function buildGreeting(firstName) {
-  return `Hey ${firstName}! Tap Generate to receive generated recipes based on your preferences, what friends cooked, and optionally ingredients you currently have. Continue logging meals so I can learn your tastes, and keep expanding your network to find inspiration!`;
+  return `Hey ${firstName}! Tap the button to receive recipes based on your preferences, what friends cooked, and optionally ingredients you currently have. Continue logging meals so I can learn your tastes, and keep expanding your network to find inspiration!`;
 }
 
 export default function AISuggestionsScreen({ navigation }) {
@@ -379,7 +394,7 @@ export default function AISuggestionsScreen({ navigation }) {
   const handleHideRecipe = (recipe, section) => {
     Alert.alert(
       'Hide this suggestion?',
-      `"${recipe.name}" will be hidden from your list. You can see it again in a future generation.`,
+      `"${recipe.name}" will be hidden from your list. You may see it again in a future generation.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
