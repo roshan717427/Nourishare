@@ -126,6 +126,23 @@ function NextUpRecipeCard({ recipe, selected, onPress, onLongPress }) {
 }
 
 function ShoppingListModal({ visible, onClose, ingredients, loading, rangeLabel }) {
+  // Tracking state map to store checked status using the unique ingredient name string as a key
+  const [checkedItems, setCheckedItems] = useState({});
+
+  // Reset checked rows when modal closes or shifts datasets
+  useEffect(() => {
+    if (!visible) {
+      setCheckedItems({});
+    }
+  }, [visible, ingredients]);
+
+  const toggleCheck = (ingredientName) => {
+    setCheckedItems((prev) => ({
+      ...prev,
+      [ingredientName]: !prev[ingredientName],
+    }));
+  };
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.modalBackdrop}>
@@ -151,21 +168,50 @@ function ShoppingListModal({ visible, onClose, ingredients, loading, rangeLabel 
             </View>
           ) : (
             <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
-              {ingredients.map((item) => (
-                <View key={item.ingredient} style={styles.shoppingRow}>
-                  <View style={styles.shoppingBullet} />
-                  <View style={styles.shoppingTextWrap}>
-                    <Text style={styles.shoppingIngredient}>{item.ingredient}</Text>
-                    {item.recipes?.length > 0 ? (
-                      <Text style={styles.shoppingRecipes} numberOfLines={2}>
-                        For: {item.recipes.join(', ')}
+              {ingredients.map((item) => {
+                const isChecked = !!checkedItems[item.ingredient];
+                return (
+                  <View 
+                    key={item.ingredient} 
+                    style={[
+                      styles.shoppingRow, 
+                      isChecked && styles.shoppingRowChecked // Dynamically inject green background style
+                    ]}
+                  >
+                    {/* Small interactive checkmark button */}
+                    <TouchableOpacity
+                      onPress={() => toggleCheck(item.ingredient)}
+                      activeOpacity={0.7}
+                      style={[
+                        styles.checkButton,
+                        isChecked && styles.checkButtonActive
+                      ]}
+                    >
+                      <Ionicons 
+                        name={isChecked ? "checkmark-circle" : "ellipse-outline"} 
+                        size={20} 
+                        color={isChecked ? colors.chipTealText || '#115e59' : colors.textMuted || '#999'} 
+                      />
+                    </TouchableOpacity>
+
+                    <View style={styles.shoppingTextWrap}>
+                      <Text style={[
+                        styles.shoppingIngredient,
+                        isChecked && styles.shoppingIngredientChecked // Optional crossed-out style logic
+                      ]}>
+                        {item.ingredient}
                       </Text>
-                    ) : null}
+                      {item.recipes?.length > 0 ? (
+                        <Text style={styles.shoppingRecipes} numberOfLines={2}>
+                          For: {item.recipes.join(', ')}
+                        </Text>
+                      ) : null}
+                    </View>
                   </View>
-                </View>
-              ))}
+                );
+              })}
               <Text style={styles.shoppingDisclaimer}>
-                Quantities are not combined. Ingredient lines are grouped by name only.
+                Check your pantry before shopping! This list is generated from your scheduled recipes and doesn't account for what you already have.
               </Text>
             </ScrollView>
           )}
@@ -650,6 +696,36 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+    /* Append or merge these style rule objects directly inside your stylesheet block */
+    shoppingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border || '#e5e7eb',
+      borderRadius: radii.md || 8,
+      marginVertical: 2,
+      transition: 'background-color 0.2s ease',
+    },
+    shoppingRowChecked: {
+      backgroundColor: '#ecfdf5', // Beautiful soft light green highlight (Emerald 50 tone)
+      borderBottomColor: '#d1fae5',
+    },
+    checkButton: {
+      marginRight: 12,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 2,
+    },
+    checkButtonActive: {
+      transform: [{ scale: 1.05 }],
+    },
+    shoppingIngredientChecked: {
+      textDecorationLine: 'line-through', // Crosses out item text cleanly when tapped
+      color: colors.textMuted || '#666',
+      fontWeight: '400',
+    },  
   headerGradient: {
     flexDirection: 'row',
     alignItems: 'center',
