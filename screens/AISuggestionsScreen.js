@@ -158,11 +158,11 @@ function RecipeCard({
           />
         </View>
 
-        {recipe.subtitle ? (
+        {/* {recipe.subtitle ? (
           <Text style={styles.recipeSubtitle} numberOfLines={1}>
             {recipe.subtitle}
           </Text>
-        ) : null}
+        ) : null} */}
 
 {showPantry && (recipe.ingredientsHave?.length > 0 || recipe.ingredients_have?.length > 0 || recipe.ingredientsNeed?.length > 0 || recipe.ingredients_need?.length > 0) ? (() => {
           // Fallback guard to seamlessly handle both camelCase and snake_case backend keys
@@ -1085,11 +1085,12 @@ const styles = StyleSheet.create({
   recipeCard: {
     width: CARD_WIDTH,
     marginRight: spacing.md,
-    backgroundColor: colors.card,
-    borderRadius: radii.xl,
+    backgroundColor: colors.card || '#ffffff',
+    borderRadius: radii.xl || 12,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: colors.border,
+    height: 'auto',
   },
   recipeImageWrap: {
     position: 'relative',
@@ -1157,9 +1158,9 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   recipeBody: {
-    paddingHorizontal: 14,
-    paddingTop: 12,
-    paddingBottom: 14,
+    justifyContent: 'flex-start',
+    flexGrow: 0,
+    padding: 12,
   },
   recipeName: {
     fontSize: 16,
@@ -1171,9 +1172,11 @@ const styles = StyleSheet.create({
   },
   metaRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
     flexWrap: 'wrap',
     gap: 6,
-    marginBottom: 10,
+    marginBottom: 4,
   },
   metaChip: {
     flexDirection: 'row',
