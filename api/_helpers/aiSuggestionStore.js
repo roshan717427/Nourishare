@@ -181,6 +181,22 @@ async function hideRecipe(db, username, recipeId) {
   return { found: true };
 }
 
+async function saveCheckedIngredient(db, username, dateRangeKey, ingredientName, isChecked) {
+  const ref = db.collection('ai_usage').doc(username)
+    .collection('shopping_states').doc(dateRangeKey);
+    
+  await ref.set({
+    [ingredientName]: isChecked
+  }, { merge: true });
+}
+
+async function loadCheckedIngredients(db, username, dateRangeKey) {
+  const doc = await db.collection('ai_usage').doc(username)
+    .collection('shopping_states').doc(dateRangeKey).get();
+    
+  return doc.exists ? doc.data() : {};
+}
+
 module.exports = {
   DAILY_GENERATION_LIMIT,
   utcDateKey,

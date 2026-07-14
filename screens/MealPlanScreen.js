@@ -137,22 +137,41 @@ function NextUpRecipeCard({ recipe, selected, onPress, onLongPress }) {
   );
 }
 
-function ShoppingListModal({ visible, onClose, ingredients, loading, rangeLabel }) {
-  // Tracking state map to store checked status using the unique ingredient name string as a key
+function ShoppingListModal({ visible, onClose, ingredients, loading, rangeLabel, db, username, rangeKey }) {
   const [checkedItems, setCheckedItems] = useState({});
 
-  // Reset checked rows when modal closes or shifts datasets
+  // 1. Hydrate saved checkmarks from Firestore whenever the modal opens
   useEffect(() => {
-    if (!visible) {
-      setCheckedItems({});
+    if (visible && username && rangeKey) {
+      const hydrateStates = async () => {
+        try {
+          // Call your persistent storage helper
+          const savedStates = await loadCheckedIngredients(db, username, rangeKey);
+          setCheckedItems(savedStates || {});
+        } catch (err) {
+          console.error("Failed to load persistent checked items:", err);
+        }
+      };
+      hydrateStates();
     }
-  }, [visible, ingredients]);
+  }, [visible, ingredients, username, rangeKey]);
 
-  const toggleCheck = (ingredientName) => {
+  // 2. Save the checkmark state immediately to Firestore when toggled
+  const toggleCheck = async (ingredientName) => {
+    const nextState = !checkedItems[ingredientName];
+    
+    // Optimistically update frontend UI instantly for buttery smoothness
     setCheckedItems((prev) => ({
       ...prev,
-      [ingredientName]: !prev[ingredientName],
+      [ingredientName]: nextState,
     }));
+
+    try {
+      // Sync change directly to your database profile record background layer
+      await saveCheckedIngredient(db, username, rangeKey, ingredientName, nextState);
+    } catch (err) {
+      console.error("Failed to persist checked ingredient state:", err);
+    }
   };
 
   return (
@@ -689,13 +708,15 @@ export default function MealPlanScreen({ navigation }) {
           </ScrollView>
         )}
       </View>
-
       <ShoppingListModal
         visible={shoppingVisible}
         onClose={() => setShoppingVisible(false)}
         ingredients={shoppingItems}
         loading={shoppingLoading}
         rangeLabel={rangeLabel}
+        db={db} // Passes down your active Firestore config client
+        username={username} // Anchors the user session profile
+        rangeKey={`${range.startDate}_to_${range.endDate}`} // Sets unique weekly date string (e.g. "2026-07-13_to_2026-07-20")
       />
     </View>
   );
