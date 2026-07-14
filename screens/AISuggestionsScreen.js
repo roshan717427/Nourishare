@@ -441,15 +441,45 @@ export default function AISuggestionsScreen({ navigation }) {
     return () => animation.stop();
   }, [loading, generating, pulseAnim]);
 
+  // Locate the focus hook inside your primary AI Suggestions Screen File
   useFocusEffect(
     useCallback(() => {
-      loadCached();
-      // Always re-show the pantry section when the user returns to the AI tab,
-      // even if they skipped it last time, in case they changed their mind.
-      setPantrySkipped(false);
-      return undefined;
-    }, [loadCached])
+      let isMounted = true;
+
+      const refreshSuggestionsData = async () => {
+        try {
+          // 1. Force state loading wheel overlays to mount
+          // Replace 'setIsBusy' with your actual layout loading state hook if named differently
+          if (typeof setIsBusy === 'function') setIsBusy(true); 
+
+          // 2. Fetch fresh, un-cached data models from your Vercel backend
+          const freshPayload = await loadCachedSuggestions(db, username);
+          
+          if (isMounted && freshPayload) {
+            // 3. Destructure and force overwrite the local cache state boundaries
+            // This overrides 'generations_remaining' down to the newly reset 0 index values
+            setPantrySuggestions(freshPayload.pantry_suggestions || []);
+            setPreferenceSuggestions(freshPayload.preference_suggestions || []);
+            setFriendSuggestions(freshPayload.friend_suggestions || []);
+            
+            // Crucial: Update your generation limit states explicitly
+            setGenerationsRemaining(freshPayload.generations_remaining ?? 3);
+          }
+        } catch (err) {
+          console.error("Failed to re-sync suggestions state:", err);
+        } finally {
+          if (isMounted && typeof setIsBusy === 'function') setIsBusy(false);
+        }
+      };
+
+      refreshSuggestionsData();
+
+      return () => {
+        isMounted = false;
+      };
+    }, [username]) // Anchoring on username ensures states clear cleanly across account swaps
   );
+
 
   const handleSkipPantry = () => {
     setPantryText('');
