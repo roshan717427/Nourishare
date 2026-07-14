@@ -236,33 +236,45 @@ function normalizeGeminiRecipes(rawItems, section) {
   }
 
   return rawItems.map((s) => {
-    // FIX: New Gemini model payloads nested strings differently 
-    // Fallback checks handle 'title', 'recipeTitle', and custom key arrays
-    const name = (s.name || s.recipe_name || s.title || s.recipeTitle || 'Recipe').trim();
-    
-    // Safely captures instruction content strings regardless of key variances
-    const instructions = s.recipe_instructions || s.instructions || s.steps || '';
-    
-    // Safely reads the reasoning string even if the model nests it under 'reason' or 'rationale'
-    const rationaleText = s.why_suggested || s.reason || s.rationale || s.explanation || '';
+    // 1. Defend against null/undefined recipe items safely
+    const item = s || {};
+
+    // 2. Safely parse string fields with absolute fallback support
+    const name = (item.name || item.recipe_name || item.title || item.recipeTitle || 'Recipe').trim();
+    const instructions = item.recipe_instructions || item.instructions || item.steps || '';
+    const rationaleText = item.why_suggested || item.reason || item.rationale || item.explanation || '';
+
+    // 3. FIX: Absolute safe extraction for array fields to prevent unhandled TypeErrors
+    let finalHave = [];
+    if (Array.isArray(item.ingredients_have)) {
+      finalHave = item.ingredients_have;
+    } else if (Array.isArray(item.ingredientsHave)) {
+      finalHave = item.ingredientsHave;
+    }
+
+    let finalNeed = [];
+    if (Array.isArray(item.ingredients_need)) {
+      finalNeed = item.ingredients_need;
+    } else if (Array.isArray(item.ingredientsNeed)) {
+      finalNeed = item.ingredientsNeed;
+    }
 
     return {
-      section: s.section || section,
+      section: item.section || section,
       name,
       recipe_name: name,
-      ingredients: s.ingredients || '',
-      cooking_time: s.cooking_time || s.time || '',
-      difficulty_level: s.difficulty_level || s.difficulty || 'medium',
-      description: s.description || s.summary || '',
+      ingredients: item.ingredients || '',
+      cooking_time: item.cooking_time || item.time || '',
+      difficulty_level: item.difficulty_level || item.difficulty || 'medium',
+      description: item.description || item.summary || '',
       steps: instructions,
       why_suggested: rationaleText,
-      image: s.image || null,
-      ingredients_have: Array.isArray(s.ingredients_have) ? s.ingredients_have : (Array.isArray(s.ingredientsHave) ? s.ingredientsHave : []),
-      ingredients_need: Array.isArray(s.ingredients_need) ? s.ingredients_need : (Array.isArray(s.ingredientsNeed) ? s.ingredientsNeed : []),
+      image: item.image || null,
+      ingredients_have: finalHave,
+      ingredients_need: finalNeed,
     };
   });
 }
-
 
 module.exports = {
   gatherGenerationContext,
