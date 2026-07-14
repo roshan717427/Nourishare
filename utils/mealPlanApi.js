@@ -112,3 +112,22 @@ export function groupEntriesByDate(entries) {
   }
   return map;
 }
+
+// Add these to the bottom of your existing mealPlanApi.js file
+export async function saveCheckedIngredientApi(username, dateRangeKey, ingredientName, isChecked) {
+  // Leverages your active backend Vercel hosting setup
+  const response = await fetch(`/api/shoppingState?action=save`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, rangeKey: dateRangeKey, ingredient: ingredientName, isChecked }),
+  });
+  return response.ok;
+}
+
+export async function loadCheckedIngredientsApi(username, dateRangeKey) {
+  const response = await fetch(`/api/shoppingState?action=load&username=${username}&rangeKey=${dateRangeKey}`);
+  if (!response.ok) return {};
+  const data = await response.json();
+  return data.states || {};
+}
+

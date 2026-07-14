@@ -32,6 +32,8 @@ import {
   removeMealPlanEntry,
   scheduleRecipe,
   startOfWeek,
+  saveCheckedIngredientApi,
+  loadCheckedIngredientsApi,
 } from '../utils/mealPlanApi';
 import { suggestionImageSource } from '../utils/suggestionImages';
 import { friendlyError } from '../utils/errorMessages';
@@ -137,16 +139,15 @@ function NextUpRecipeCard({ recipe, selected, onPress, onLongPress }) {
   );
 }
 
-function ShoppingListModal({ visible, onClose, ingredients, loading, rangeLabel, db, username, rangeKey }) {
+function ShoppingListModal({ visible, onClose, ingredients, loading, rangeLabel, username, rangeKey }) {
   const [checkedItems, setCheckedItems] = useState({});
 
-  // 1. Hydrate saved checkmarks from Firestore whenever the modal opens
+  // 1. Fetch saved checkmarks securely via Vercel when modal opens
   useEffect(() => {
     if (visible && username && rangeKey) {
       const hydrateStates = async () => {
         try {
-          // Call your persistent storage helper
-          const savedStates = await loadCheckedIngredients(db, username, rangeKey);
+          const savedStates = await loadCheckedIngredientsApi(username, rangeKey);
           setCheckedItems(savedStates || {});
         } catch (err) {
           console.error("Failed to load persistent checked items:", err);
@@ -156,19 +157,18 @@ function ShoppingListModal({ visible, onClose, ingredients, loading, rangeLabel,
     }
   }, [visible, ingredients, username, rangeKey]);
 
-  // 2. Save the checkmark state immediately to Firestore when toggled
+  // 2. Persist checkmark state securely via Vercel when toggled
   const toggleCheck = async (ingredientName) => {
     const nextState = !checkedItems[ingredientName];
     
-    // Optimistically update frontend UI instantly for buttery smoothness
+    // Optimistic UI update for fluid animations
     setCheckedItems((prev) => ({
       ...prev,
       [ingredientName]: nextState,
     }));
 
     try {
-      // Sync change directly to your database profile record background layer
-      await saveCheckedIngredient(db, username, rangeKey, ingredientName, nextState);
+      await saveCheckedIngredientApi(username, rangeKey, ingredientName, nextState);
     } catch (err) {
       console.error("Failed to persist checked ingredient state:", err);
     }
@@ -714,7 +714,6 @@ export default function MealPlanScreen({ navigation }) {
         ingredients={shoppingItems}
         loading={shoppingLoading}
         rangeLabel={rangeLabel}
-        db={db} // Passes down your active Firestore config client
         username={username} // Anchors the user session profile
         rangeKey={`${range.startDate}_to_${range.endDate}`} // Sets unique weekly date string (e.g. "2026-07-13_to_2026-07-20")
       />
