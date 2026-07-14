@@ -270,7 +270,8 @@ function mapApiSuggestions(items, section) {
       section: resolvedSection,
       name,
       subtitle: s.subtitle || formatSubtitle(s),
-      image,
+      image: resolvedImage || s.image,
+      photoUrl: resolvedImage || s.photoUrl,
       ingredients: s.ingredients,
       description: s.description,
       steps: s.steps || undefined,
@@ -465,6 +466,13 @@ export default function AISuggestionsScreen({ navigation }) {
       Alert.alert('Already in Cook Next', `"${recipe.name}" is already on your list.`);
       return;
     }
+
+    const recipeWithImages = {
+      ...recipe,
+      image: recipe.image,       // Resolves your local asset properties
+      photoUrl: recipe.photoUrl, // Resolves backup web path identifiers
+    };
+
     const added = addToNextUp(recipe);
     if (added) {
       Alert.alert('Saved to Cook Next', `"${recipe.name}" is on your private cooking queue.`);

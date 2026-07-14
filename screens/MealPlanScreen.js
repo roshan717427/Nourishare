@@ -33,6 +33,7 @@ import {
   scheduleRecipe,
   startOfWeek,
 } from '../utils/mealPlanApi';
+import { suggestionImageSource } from '../utils/suggestionImages';
 import { friendlyError } from '../utils/errorMessages';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -99,6 +100,17 @@ function DayCell({
 }
 
 function NextUpRecipeCard({ recipe, selected, onPress, onLongPress }) {
+  // 1. Determine if the image parameter is a web URL string or a local AI placeholder code
+  const rawImage = recipe.image || recipe.photoUrl;
+  const isWebUrl = typeof rawImage === 'string' && /^https?:\/\//i.test(rawImage);
+
+  // 2. Resolve the dynamic image asset wrapper source
+  // If it's a web URL, wrap it in a URI object wrapper. If it's an AI key string, resolve it using your asset hook utility!
+  // Note: Ensure 'suggestionImageSource' is imported at the top of your MealPlanScreen file from '../utils/suggestionImages'
+  const resolvedImageSource = isWebUrl 
+    ? { uri: rawImage } 
+    : (typeof suggestionImageSource === 'function' ? suggestionImageSource(rawImage) : null);
+
   return (
     <TouchableOpacity
       style={[styles.nextUpCard, selected && styles.nextUpCardSelected, shadows.cardSoft]}
@@ -107,8 +119,8 @@ function NextUpRecipeCard({ recipe, selected, onPress, onLongPress }) {
       delayLongPress={250}
       activeOpacity={0.85}
     >
-      {recipe.image ? (
-        <Image source={{ uri: recipe.image }} style={styles.nextUpImage} />
+      {resolvedImageSource ? (
+        <Image source={resolvedImageSource} style={styles.nextUpImage} />
       ) : (
         <View style={[styles.nextUpImage, styles.nextUpImagePlaceholder]}>
           <Ionicons name="restaurant-outline" size={20} color={colors.textMuted} />
