@@ -230,28 +230,39 @@ function applyPantryFlags(recipe, pantryTokens) {
   };
 }
 
-function normalizeGeminiRecipes(parsed, pantryIngredients) {
-  const pantryTokens = (pantryIngredients || []).map((p) => p.toLowerCase());
-  const recipes = Array.isArray(parsed?.recipes) ? parsed.recipes : [];
-  return recipes
-    .filter((r) => r && (r.name || r.recipe_name))
-    .map((r) =>
-      applyPantryFlags(
-        {
-          section: r.section || 'preference',
-          name: (r.name || r.recipe_name).trim(),
-          ingredients: r.ingredients || '',
-          cooking_time: r.cooking_time || '',
-          difficulty_level: (r.difficulty_level || 'medium').toLowerCase(),
-          description: r.description || '',
-          why_suggested: r.why_suggested || r.reason || '',
-          steps: r.steps || '',
-        },
-        pantryTokens
-      )
-    )
-    .slice(0, 6);
+function normalizeGeminiRecipes(rawItems, section) {
+  if (!Array.isArray(rawItems) || rawItems.length === 0) {
+    return [];
+  }
+
+  return rawItems.map((s) => {
+    // FIX: New Gemini model payloads nested strings differently 
+    // Fallback checks handle 'title', 'recipeTitle', and custom key arrays
+    const name = (s.name || s.recipe_name || s.title || s.recipeTitle || 'Recipe').trim();
+    
+    // Safely captures instruction content strings regardless of key variances
+    const instructions = s.recipe_instructions || s.instructions || s.steps || '';
+    
+    // Safely reads the reasoning string even if the model nests it under 'reason' or 'rationale'
+    const rationaleText = s.why_suggested || s.reason || s.rationale || s.explanation || '';
+
+    return {
+      section: s.section || section,
+      name,
+      recipe_name: name,
+      ingredients: s.ingredients || '',
+      cooking_time: s.cooking_time || s.time || '',
+      difficulty_level: s.difficulty_level || s.difficulty || 'medium',
+      description: s.description || s.summary || '',
+      steps: instructions,
+      why_suggested: rationaleText,
+      image: s.image || null,
+      ingredients_have: Array.isArray(s.ingredients_have) ? s.ingredients_have : (Array.isArray(s.ingredientsHave) ? s.ingredientsHave : []),
+      ingredients_need: Array.isArray(s.ingredients_need) ? s.ingredients_need : (Array.isArray(s.ingredientsNeed) ? s.ingredientsNeed : []),
+    };
+  });
 }
+
 
 module.exports = {
   gatherGenerationContext,
