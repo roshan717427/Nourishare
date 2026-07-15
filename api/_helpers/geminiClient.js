@@ -116,6 +116,7 @@ async function generateRecipesWithGemini(apiKey, prompt) {
 
       if (typeof raw === 'string') {
         raw = raw.trim();
+        raw = raw.replace(/^\s*\d+\s*:\s*(?=\{)/gm, '');
       }
 
       // 4. Safely execute the parsing sequence on the sanitized string data

@@ -165,7 +165,8 @@ Rules:
 - Each recipe needs: name, ingredients (comma-separated string), cooking_time (e.g. "25 min"), difficulty_level (easy|medium|hard), description (1 sentence), steps (4-8 short cooking steps, semicolon-separated), why_suggested (short reason without leading "it").
 - Use concise ingredient names; avoid redundant words (e.g. "naan" not "naan bread", since naan means bread).
 - Do NOT include URLs or recipe links; only provide steps.
-- Return ONLY valid JSON in this shape:
+- Do NOT include array indices, line numbers, or prefix keys like "0:", "1:", or "2:" inside your JSON output structure.
+- Return ONLY valid, minified JSON in this exact shape:
 {
   "recipes": [
     {
