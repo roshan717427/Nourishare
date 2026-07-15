@@ -216,19 +216,29 @@ function applyPantryFlags(recipe, pantryTokens) {
   const recipeTokens = tokenizeIngredients(recipe.ingredients);
   const have = [];
   const need = [];
+
   for (const token of recipeTokens) {
+    const cleanToken = token.trim().toLowerCase();
+    
+    // BACKEND FIX: Change from fuzzy .includes() matching to strict token matching
     const matched = pantryTokens.some(
-      (p) => p.includes(token) || token.includes(p)
+      (p) => p.trim().toLowerCase() === cleanToken
     );
-    if (matched) have.push(token);
-    else need.push(token);
+
+    if (matched) {
+      have.push(token);
+    } else {
+      need.push(token);
+    }
   }
+
   return {
     ...recipe,
     ingredients_have: have,
     ingredients_need: need,
   };
 }
+
 
 function normalizeGeminiRecipes(rawItems, section) {
   if (!Array.isArray(rawItems) || rawItems.length === 0) {
@@ -244,7 +254,7 @@ function normalizeGeminiRecipes(rawItems, section) {
     const instructions = item.recipe_instructions || item.instructions || item.steps || '';
     const rationaleText = item.why_suggested || item.reason || item.rationale || item.explanation || '';
 
-    // 3. FIX: Absolute safe extraction for array fields to prevent unhandled TypeErrors
+    // 3. Absolute safe extraction for array fields to prevent unhandled TypeErrors
     let finalHave = [];
     if (Array.isArray(item.ingredients_have)) {
       finalHave = item.ingredients_have;

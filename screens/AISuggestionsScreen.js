@@ -76,6 +76,7 @@ function RecipeCard({
   reasonTint,
   reasonTextColor,
   showPantry,
+  searchQuery,
 }) {
   const why = formatSuggestionReasonBody(recipe.why_suggested);
   const difficulty = recipe.difficulty_level
@@ -171,7 +172,7 @@ function RecipeCard({
 
           // 1. Fetch and clean up the active user input search token
           // Replace 'userInputQuery' with your actual state reference variable if named differently
-          const queryToken = (typeof userInputQuery === 'string' ? userInputQuery : '').trim().toLowerCase();
+          const queryToken = (typeof searchQuery === 'string' ? searchQuery : '').trim().toLowerCase();
 
           let verifiedHave = [...rawHave];
           let verifiedNeed = [...rawNeed];
@@ -225,7 +226,6 @@ function SkeletonCard({ pulseAnim }) {
       <View style={styles.recipeBody}>
         <Animated.View style={[styles.skeletonLine, styles.skeletonLineTitle, { opacity }]} />
         <Animated.View style={[styles.skeletonLine, styles.skeletonLineShort, { opacity }]} />
-        <Animated.View style={[styles.skeletonLine, styles.skeletonLineReason, { opacity }]} />
       </View>
     </View>
   );

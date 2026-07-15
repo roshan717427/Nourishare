@@ -27,6 +27,8 @@ const {
   cacheGeneratedRecipes,
   hideRecipe,
   DAILY_GENERATION_LIMIT,
+  saveCheckedIngredient,  
+  loadCheckedIngredients,
 } = require('./_helpers/aiSuggestionStore');
 const { generateRecipesWithGemini } = require('./_helpers/geminiClient');
 const {
@@ -155,7 +157,7 @@ async function generateSuggestions(username, pantryRaw) {
   if (apiKey) {
     try {
       const parsed = await generateRecipesWithGemini(apiKey, context.prompt);
-      normalized = normalizeGeminiRecipes(parsed, context.pantryIngredients);
+      normalized = normalizeGeminiRecipes(parsed, 'preference'); 
     } catch (err) {
       if (err.code === 'gemini_rate_limit_rpm' || err.code === 'gemini_rate_limit_rpd') {
         console.warn('Gemini rate limited, using fallback suggestions:', err.message);
@@ -317,6 +319,33 @@ async function handleHide(req, res) {
   res.status(200).json({ status: 'success', message: 'Recipe hidden' });
 }
 
+async function handleShoppingState(req, res) {
+  const action = normalizeAction(req); // 'save' or 'load'
+  
+  if (action === 'save') {
+    const { username, rangeKey, ingredient, isChecked } = req.body || {};
+    if (!username || !rangeKey || !ingredient) {
+      return res.status(400).json({ status: 'error', error: 'missing_parameters' });
+    }
+    
+    await saveCheckedIngredient(db, username, rangeKey, ingredient, isChecked);
+    return res.status(200).json({ status: 'success' });
+  } 
+  
+  if (action === 'load') {
+    const username = req.query?.username || req.body?.username;
+    const rangeKey = req.query?.rangeKey || req.body?.rangeKey;
+    if (!username || !rangeKey) {
+      return res.status(400).json({ status: 'error', error: 'missing_parameters' });
+    }
+    
+    const states = await loadCheckedIngredients(db, username, rangeKey);
+    return res.status(200).json({ status: 'success', states });
+  }
+
+  return methodNotAllowed(res);
+}
+
 module.exports = async (req, res) => {
   if (!db) {
     dbUnavailable(res);
@@ -325,6 +354,11 @@ module.exports = async (req, res) => {
 
   const action = normalizeAction(req);
   const method = (req.method || 'GET').toUpperCase();
+
+  if (action === 'save' || action === 'load') {
+    return handleShoppingState(req, res);
+  }
+
 
   if (method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');

@@ -207,4 +207,6 @@ module.exports = {
   cacheGeneratedRecipes,
   hideRecipe,
   splitBySection,
+  saveCheckedIngredient, 
+  loadCheckedIngredients,
 };

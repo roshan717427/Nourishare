@@ -84,14 +84,42 @@ async function generateRecipesWithGemini(apiKey, prompt) {
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt += 1) {
     try {
-      const raw = await callGeminiOnce(apiKey, prompt);
-      const parsed = JSON.parse(raw);
+      let raw = await callGeminiOnce(apiKey, prompt);
+      
+      // 1. BACKEND FIX: Strip out Markdown formatting syntax wrappers if present
+      if (typeof raw === 'string' && raw.includes('```')) {
+        const markdownRegex = /```(?:json)?([\s\S]*?)```/i;
+        const match = raw.match(markdownRegex);
+        if (match && match[1]) {
+          raw = match[1];
+        }
+      }
+
+      // 2. Trim all whitespace lines to ensure clean array bracket alignments
+      if (typeof raw === 'string') {
+        raw = raw.trim();
+      }
+
+      // 3. Securely execute the parsing sequence on the sanitized string data
+      let parsed = JSON.parse(raw);
+
+      // 4. Handle object wrapper variations if Gemini nests the array array
+      if (parsed && !Array.isArray(parsed)) {
+        if (Array.isArray(parsed.recipes)) {
+          parsed = parsed.recipes;
+        } else if (Array.isArray(parsed.suggestions)) {
+          parsed = parsed.suggestions;
+        } else if (Array.isArray(parsed.data)) {
+          parsed = parsed.data;
+        }
+      }
+
       return parsed;
     } catch (err) {
       lastError = err;
       const isRpm429 = err.code === 'gemini_rate_limit_rpm';
       const isRetryable =
-        isRpm429 || err.code === 'gemini_unavailable' || (err.status && err.status >= 500);
+        isRpm429 || err.code === 'gemini_unavailable' || (err.status && err.status >= 500) || err instanceof SyntaxError; // Added SyntaxError so it can retry if parsing glitches cleanly
 
       if (!isRetryable || attempt >= MAX_RETRIES - 1) {
         throw err;
@@ -104,6 +132,7 @@ async function generateRecipesWithGemini(apiKey, prompt) {
 
   throw lastError;
 }
+
 
 module.exports = {
   GEMINI_MODEL,
