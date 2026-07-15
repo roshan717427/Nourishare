@@ -84,9 +84,28 @@ async function generateRecipesWithGemini(apiKey, prompt) {
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt += 1) {
     try {
-      let raw = await callGeminiOnce(apiKey, prompt);
+      // 1. Fetch your raw network result instance from your callGeminiOnce routine
+      const response = await callGeminiOnce(apiKey, prompt);
       
-      // 1. BACKEND FIX: Strip out Markdown formatting syntax wrappers if present
+      let raw = '';
+
+      // 2. BACKEND FIX: Safely parse through Gemini 3.5's new candidate array structure
+      // This completely strips away Google's new automated "Thinking Context" blocks
+      if (response && response.candidates && response.candidates[0]?.content?.parts) {
+        const parts = response.candidates[0].content.parts;
+        // Find the specific part block containing your generated text code payload
+        const textPart = parts.find(p => p.text) || parts[0];
+        raw = textPart?.text || '';
+      } else if (typeof response?.text === 'function') {
+        // Safe backward-compatibility fallback wrapper
+        raw = response.text();
+      } else if (typeof response === 'string') {
+        raw = response;
+      }
+
+      console.log("Extracted Safe Text for Parsing:", raw);
+
+      // 3. Strip out Markdown code block parameters if present
       if (typeof raw === 'string' && raw.includes('```')) {
         const markdownRegex = /```(?:json)?([\s\S]*?)```/i;
         const match = raw.match(markdownRegex);
@@ -95,15 +114,14 @@ async function generateRecipesWithGemini(apiKey, prompt) {
         }
       }
 
-      // 2. Trim all whitespace lines to ensure clean array bracket alignments
       if (typeof raw === 'string') {
         raw = raw.trim();
       }
 
-      // 3. Securely execute the parsing sequence on the sanitized string data
+      // 4. Safely execute the parsing sequence on the sanitized string data
       let parsed = JSON.parse(raw);
 
-      // 4. Handle object wrapper variations if Gemini nests the array array
+      // 5. Handle object wrapper variations
       if (parsed && !Array.isArray(parsed)) {
         if (Array.isArray(parsed.recipes)) {
           parsed = parsed.recipes;
@@ -119,7 +137,7 @@ async function generateRecipesWithGemini(apiKey, prompt) {
       lastError = err;
       const isRpm429 = err.code === 'gemini_rate_limit_rpm';
       const isRetryable =
-        isRpm429 || err.code === 'gemini_unavailable' || (err.status && err.status >= 500) || err instanceof SyntaxError; // Added SyntaxError so it can retry if parsing glitches cleanly
+        isRpm429 || err.code === 'gemini_unavailable' || (err.status && err.status >= 500) || err instanceof SyntaxError;
 
       if (!isRetryable || attempt >= MAX_RETRIES - 1) {
         throw err;
@@ -132,7 +150,6 @@ async function generateRecipesWithGemini(apiKey, prompt) {
 
   throw lastError;
 }
-
 
 module.exports = {
   GEMINI_MODEL,
