@@ -166,6 +166,7 @@ Rules:
 - Use concise ingredient names; avoid redundant words (e.g. "naan" not "naan bread", since naan means bread).
 - Do NOT include URLs or recipe links; only provide steps.
 - Do NOT include array indices, line numbers, or prefix keys like "0:", "1:", or "2:" inside your JSON output structure.
+- Crucial: Ensure every single property key and string value is explicitly wrapped in standard double quotes. Do NOT return JavaScript object literals.
 - Return ONLY valid, minified JSON in this exact shape:
 {
   "recipes": [
