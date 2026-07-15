@@ -4,7 +4,7 @@
  * GEMINI_API_KEY must be set server-side (Vercel env). Restrict the key in
  * Google AI Studio by IP / HTTP referrer — never expose it to the client.
  */
-const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_MODEL = 'gemini-3.5-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 const MAX_RETRIES = 3;
