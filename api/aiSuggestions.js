@@ -157,7 +157,8 @@ async function generateSuggestions(username, pantryRaw) {
   if (apiKey) {
     try {
       const parsed = await generateRecipesWithGemini(apiKey, context.prompt);
-      normalized = normalizeGeminiRecipes(parsed, 'preference'); 
+      const rawArray = Array.isArray(parsed) ? parsed : (parsed.recipes || []);
+      normalized = normalizeGeminiRecipes(rawArray, null); 
     } catch (err) {
       if (err.code === 'gemini_rate_limit_rpm' || err.code === 'gemini_rate_limit_rpd') {
         console.warn('Gemini rate limited, using fallback suggestions:', err.message);
