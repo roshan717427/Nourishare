@@ -84,73 +84,60 @@ async function generateRecipesWithGemini(apiKey, prompt) {
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt += 1) {
     try {
-      // 1. Fetch your raw network result instance from your callGeminiOnce routine
       const response = await callGeminiOnce(apiKey, prompt);
       
-      let raw = '';
+      let raw = response;
 
-      // 2. BACKEND FIX: Safely parse through Gemini 3.5's new candidate array structure
-      // This completely strips away Google's new automated "Thinking Context" blocks
+      // 1. Traverse through Gemini's response object if nested
       if (response && response.candidates && response.candidates[0]?.content?.parts) {
         const parts = response.candidates[0].content.parts;
-        // Find the specific part block containing your generated text code payload
         const textPart = parts.find(p => p.text) || parts[0];
         raw = textPart?.text || '';
       } else if (typeof response?.text === 'function') {
-        // Safe backward-compatibility fallback wrapper
         raw = response.text();
-      } else if (typeof response === 'string') {
-        raw = response;
       }
 
-      console.log("Extracted Safe Text for Parsing:", raw);
+      console.log("Raw object type check:", typeof raw);
 
-      // 3. Strip out Markdown code block parameters if present
-      if (typeof raw === 'string' && raw.includes('```')) {
-        const markdownRegex = /```(?:json)?([\s\S]*?)```/i;
-        const match = raw.match(markdownRegex);
-        if (match && match[1]) {
-          raw = match[1];
-        }
+      // ==========================================
+      // CRUCIAL BACKEND FIX: Return immediately if it's already an object!
+      // This prevents JSON.parse from choking on an already parsed array structure.
+      // ==========================================
+      if (raw && typeof raw === 'object') {
+        console.log("Data is already a JavaScript object. Skipping string sanitization.");
+        let objectExtract = raw.recipes ? raw.recipes : raw;
+        return Array.isArray(objectExtract) ? objectExtract : (objectExtract.recipes || objectExtract.suggestions || []);
       }
 
+      // 2. Fallback processing ONLY if it arrives as a true text string
       if (typeof raw === 'string') {
         raw = raw.trim();
         
-        // 1. Normalize smart curly apostrophes/quotes down to standard straight characters
+        if (raw.includes('```')) {
+          const markdownRegex = /```(?:json)?([\s\S]*?)```/i;
+          const match = raw.match(markdownRegex);
+          if (match && match[1]) {
+            raw = match[1].trim();
+          }
+        }
+        
+        // Clean up string variations safely
         raw = raw.replace(/[\u201C\u201D]/g, '"').replace(/[\u2018\u2019]/g, "'");
-
-        // 2. FIXED KEY QUOTER: Only adds double quotes to keys if they do NOT already have them!
-        // This stops your data strings from being corrupted with double-quotes (""key"":)
         raw = raw.replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, (match, p1, p2) => {
-          // If the key is already wrapped in a double quote, leave it alone entirely
           if (p1.trim().endsWith('"')) return match;
           return `${p1}"${p2}":`;
         });
-
-        // 3. Convert single-quoted string values to strictly formatted double-quoted string values
         raw = raw.replace(/:\s*'([\s\S]*?)'(\s*[,}])/g, ': "$1"$2');
-
-        // 4. Eliminate any trailing commas sitting before closing braces or brackets
         raw = raw.replace(/,\s*([\]}])/g, '$1');
+
+        console.log("Strictly Sanitized JSON String for Parsing:", raw);
+        
+        let parsed = JSON.parse(raw);
+        let finalRecipes = parsed.recipes ? parsed.recipes : parsed;
+        return Array.isArray(finalRecipes) ? finalRecipes : (finalRecipes.recipes || finalRecipes.suggestions || []);
       }
 
-      console.log("Strictly Sanitized JSON String for Parsing:", raw);
-      // 4. Safely execute the parsing sequence on the sanitized string data
-      let parsed = JSON.parse(raw);
-
-      // 5. Handle object wrapper variations
-      if (parsed && !Array.isArray(parsed)) {
-        if (Array.isArray(parsed.recipes)) {
-          parsed = parsed.recipes;
-        } else if (Array.isArray(parsed.suggestions)) {
-          parsed = parsed.suggestions;
-        } else if (Array.isArray(parsed.data)) {
-          parsed = parsed.data;
-        }
-      }
-
-      return parsed;
+      throw new Error("Unsupported recipe response data profile format");
     } catch (err) {
       lastError = err;
       const isRpm429 = err.code === 'gemini_rate_limit_rpm';
