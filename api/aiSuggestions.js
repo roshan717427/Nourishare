@@ -279,10 +279,28 @@ async function handleGenerate(req, res) {
 
   try {
     const result = await generateSuggestions(username, pantryRaw);
+    
+    console.log(">>> Sending unified recipe objects back to TestFlight app client <<<");
+
+    // FIX: Send down a clean combination of the formatted result variables 
+    // without clobbering the snake_case suggestions arrays!
     res.status(200).json({
-      ...result,
+      status: 'success',
+      generated_count: result.generated_count || 6,
+      has_logs: result.has_logs,
+      has_friends: result.has_friends,
       generations_used_today: reservation.count,
       generations_remaining: Math.max(0, DAILY_GENERATION_LIMIT - reservation.count),
+      daily_limit: DAILY_GENERATION_LIMIT,
+      
+      // Explicitly pass both cases down to keep the screen mapping hooks aligned
+      friendSuggestions: result.friendSuggestions,
+      preferenceSuggestions: result.preferenceSuggestions,
+      pantrySuggestions: result.pantrySuggestions,
+
+      friend_suggestions: result.friend_suggestions,
+      preference_suggestions: result.preference_suggestions,
+      pantry_suggestions: result.pantry_suggestions,
     });
   } catch (err) {
     // Generation failed after the slot was reserved — refund it so the user is

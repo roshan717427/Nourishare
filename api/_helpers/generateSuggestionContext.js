@@ -292,4 +292,6 @@ module.exports = {
   gatherGenerationContext,
   normalizeGeminiRecipes,
   applyPantryFlags,
+  buildGeminiPrompt,    
+  tokenizeIngredients, 
 };

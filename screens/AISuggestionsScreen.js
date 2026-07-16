@@ -263,15 +263,21 @@ function mapApiSuggestions(items, section) {
   return items.map((s, index) => {
     const name = s.name || s.recipe_name || 'Recipe';
     const resolvedSection = s.section || section;
+    
+    // FIX: Match this variable name exactly on the rows below
     const image = resolveSuggestionImage(s, resolvedSection);
+    
     return {
       ...s,
       id: s.id || s.recipe_id || `s-${index}`,
       section: resolvedSection,
       name,
       subtitle: s.subtitle || formatSubtitle(s),
-      image: resolvedImage || s.image,
-      photoUrl: resolvedImage || s.photoUrl,
+      
+      // FIX: Changed 'resolvedImage' to 'image' to fix the runtime crash
+      image: image || s.image,
+      photoUrl: image || s.photoUrl,
+      
       ingredients: s.ingredients,
       description: s.description,
       steps: s.steps || undefined,
@@ -445,40 +451,28 @@ export default function AISuggestionsScreen({ navigation }) {
   useFocusEffect(
     useCallback(() => {
       let isMounted = true;
-
       const refreshSuggestionsData = async () => {
         try {
-          // 1. Force state loading wheel overlays to mount
-          // Replace 'setIsBusy' with your actual layout loading state hook if named differently
-          if (typeof setIsBusy === 'function') setIsBusy(true); 
-
-          // 2. Fetch fresh, un-cached data models from your Vercel backend
-          const freshPayload = await loadCachedSuggestions(db, username);
+          // FIX: Activated your real loading state hook
+          setLoading(true);
           
+          // FIX: Removed 'db' parameter since loadCachedSuggestions handles it natively via username
+          const freshPayload = await loadCachedSuggestions(username);
           if (isMounted && freshPayload) {
-            // 3. Destructure and force overwrite the local cache state boundaries
-            // This overrides 'generations_remaining' down to the newly reset 0 index values
-            setPantrySuggestions(freshPayload.pantry_suggestions || []);
-            setPreferenceSuggestions(freshPayload.preference_suggestions || []);
-            setFriendSuggestions(freshPayload.friend_suggestions || []);
-            
-            // Crucial: Update your generation limit states explicitly
-            setGenerationsRemaining(freshPayload.generations_remaining ?? 3);
+            applySuggestionsData(freshPayload);
           }
-        } catch (err) {
-          console.error("Failed to re-sync suggestions state:", err);
-        } finally {
-          if (isMounted && typeof setIsBusy === 'function') setIsBusy(false);
+        } catch (err) { 
+          console.error("Failed to re-sync suggestions state:", err); 
+        } finally { 
+          // FIX: Toggled loading back to false cleanly
+          setLoading(false); 
         }
       };
-
       refreshSuggestionsData();
-
-      return () => {
-        isMounted = false;
-      };
-    }, [username]) // Anchoring on username ensures states clear cleanly across account swaps
+      return () => { isMounted = false; };
+    }, [username, applySuggestionsData])
   );
+
 
 
   const handleSkipPantry = () => {
@@ -1301,3 +1295,7 @@ const styles = StyleSheet.create({
     marginBottom: 0,
   },
 });
+
+
+
+
