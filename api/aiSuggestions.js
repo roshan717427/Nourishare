@@ -151,20 +151,31 @@ async function generateSuggestions(username, pantryRaw) {
   const generationId = `gen_${Date.now()}`;
   const apiKey = process.env.GEMINI_API_KEY;
 
-  let normalized;
+  let normalized = []; // Initialize as an empty array explicitly
   let source = 'gemini';
 
   if (apiKey) {
     try {
+      // 1. Force the function to explicitly await the raw Gemini object processing
       const parsed = await generateRecipesWithGemini(apiKey, context.prompt);
-      const rawArray = Array.isArray(parsed) ? parsed : (parsed.recipes || []);
-      normalized = normalizeGeminiRecipes(rawArray, null); 
+      
+      console.log(">>> Gemini Execution Successfully Returned Data <<<");
+
+      // 2. Safely parse the recipes array profile
+      const rawArray = parsed && !Array.isArray(parsed) ? (parsed.recipes || parsed.suggestions || []) : (parsed || []);
+      
+      // 3. Map your section parameters
+      normalized = normalizeGeminiRecipes(rawArray, 'preference');
+      
+      console.log(`>>> Successfully normalized ${normalized.length} recipes <<<`);
+
     } catch (err) {
       if (err.code === 'gemini_rate_limit_rpm' || err.code === 'gemini_rate_limit_rpd') {
         console.warn('Gemini rate limited, using fallback suggestions:', err.message);
       } else {
         console.error('Gemini generation failed, falling back:', err.message);
       }
+      // Await your local system fallback array loop
       normalized = await fetchRuleBasedFallback(username, context.pantryIngredients);
       source = 'rule_based_fallback';
     }
@@ -173,13 +184,16 @@ async function generateSuggestions(username, pantryRaw) {
     source = 'rule_based_fallback';
   }
 
-  if (!normalized.length) {
+  // 4. Critical guard: If data arrays drop to zero, throw an explicit error to release daily quotas
+  if (!normalized || !normalized.length) {
     const error = new Error('No recipes could be generated');
     error.code = 'generation_empty';
     throw error;
   }
 
   const withImages = attachImages(normalized);
+  
+  // 5. Await your Firestore database operations so Vercel doesn't freeze prematurely!
   await cacheGeneratedRecipes(db, username, withImages, generationId);
 
   const cached = await loadCachedSuggestions(db, username);
