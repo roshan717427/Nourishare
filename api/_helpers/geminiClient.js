@@ -117,24 +117,25 @@ async function generateRecipesWithGemini(apiKey, prompt) {
       if (typeof raw === 'string') {
         raw = raw.trim();
         
-        // 1. Strip out array indices (e.g., 0:, 1:, 2:) completely from brackets
-        raw = raw.replace(/^\s*\d+\s*:\s*(?=\{)/gm, '');
-        
-        // 2. Normalize smart curly apostrophes/quotes down to standard straight characters
+        // 1. Normalize smart curly apostrophes/quotes down to standard straight characters
         raw = raw.replace(/[\u201C\u201D]/g, '"').replace(/[\u2018\u2019]/g, "'");
 
-        // 3. Inject double quotes onto any unquoted JavaScript object property keys
-        raw = raw.replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":');
+        // 2. FIXED KEY QUOTER: Only adds double quotes to keys if they do NOT already have them!
+        // This stops your data strings from being corrupted with double-quotes (""key"":)
+        raw = raw.replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, (match, p1, p2) => {
+          // If the key is already wrapped in a double quote, leave it alone entirely
+          if (p1.trim().endsWith('"')) return match;
+          return `${p1}"${p2}":`;
+        });
 
-        // 4. Convert single-quoted string values to strictly formatted double-quoted string values
-        // Matches values like : 'value', or : 'value'}
+        // 3. Convert single-quoted string values to strictly formatted double-quoted string values
         raw = raw.replace(/:\s*'([\s\S]*?)'(\s*[,}])/g, ': "$1"$2');
 
-        // 5. Eliminate any trailing commas sitting before closing braces or brackets
+        // 4. Eliminate any trailing commas sitting before closing braces or brackets
         raw = raw.replace(/,\s*([\]}])/g, '$1');
       }
 
-      console.log("Sanitized JSON String for Parsing:", raw);
+      console.log("Strictly Sanitized JSON String for Parsing:", raw);
       // 4. Safely execute the parsing sequence on the sanitized string data
       let parsed = JSON.parse(raw);
 
