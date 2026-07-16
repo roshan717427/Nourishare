@@ -204,7 +204,16 @@ async function generateSuggestions(username, pantryRaw) {
     generated_count: withImages.length,
     has_logs: context.has_logs,
     has_friends: context.has_friends,
-    ...cached,
+    generations_remaining: cached.generations_remaining ?? 3,
+    generations_used_today: cached.generations_used_today ?? 0,
+    daily_limit: cached.daily_limit ?? 3,
+    
+    // CamelCase options for standard context model states
+    friendSuggestions: attachImages(cached.friend_suggestions),
+    preferenceSuggestions: attachImages(cached.preference_suggestions),
+    pantrySuggestions: attachImages(cached.pantry_suggestions),
+
+    // Snake_case options for direct screen component maps
     friend_suggestions: attachImages(cached.friend_suggestions),
     preference_suggestions: attachImages(cached.preference_suggestions),
     pantry_suggestions: attachImages(cached.pantry_suggestions),
