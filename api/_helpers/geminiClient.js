@@ -88,7 +88,6 @@ async function generateRecipesWithGemini(apiKey, prompt) {
       
       let raw = response;
 
-      // 1. Traverse through Gemini's response object if nested
       if (response && response.candidates && response.candidates[0]?.content?.parts) {
         const parts = response.candidates[0].content.parts;
         const textPart = parts.find(p => p.text) || parts[0];
@@ -97,19 +96,14 @@ async function generateRecipesWithGemini(apiKey, prompt) {
         raw = response.text();
       }
 
-      console.log("Raw object type check:", typeof raw);
-
       // ==========================================
-      // CRUCIAL BACKEND FIX: Return immediately if it's already an object!
-      // This prevents JSON.parse from choking on an already parsed array structure.
+      // THE FIX: Return the FULL root payload object instantly!
       // ==========================================
       if (raw && typeof raw === 'object') {
-        console.log("Data is already a JavaScript object. Skipping string sanitization.");
-        let objectExtract = raw.recipes ? raw.recipes : raw;
-        return Array.isArray(objectExtract) ? objectExtract : (objectExtract.recipes || objectExtract.suggestions || []);
+        console.log("Response is already an object. Returning parent structure.");
+        return raw; 
       }
 
-      // 2. Fallback processing ONLY if it arrives as a true text string
       if (typeof raw === 'string') {
         raw = raw.trim();
         
@@ -120,24 +114,13 @@ async function generateRecipesWithGemini(apiKey, prompt) {
             raw = match[1].trim();
           }
         }
-        
-        // Clean up string variations safely
-        raw = raw.replace(/[\u201C\u201D]/g, '"').replace(/[\u2018\u2019]/g, "'");
-        raw = raw.replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, (match, p1, p2) => {
-          if (p1.trim().endsWith('"')) return match;
-          return `${p1}"${p2}":`;
-        });
-        raw = raw.replace(/:\s*'([\s\S]*?)'(\s*[,}])/g, ': "$1"$2');
-        raw = raw.replace(/,\s*([\]}])/g, '$1');
 
-        console.log("Strictly Sanitized JSON String for Parsing:", raw);
-        
+        // Return the clean parsed object directly
         let parsed = JSON.parse(raw);
-        let finalRecipes = parsed.recipes ? parsed.recipes : parsed;
-        return Array.isArray(finalRecipes) ? finalRecipes : (finalRecipes.recipes || finalRecipes.suggestions || []);
+        return parsed;
       }
 
-      throw new Error("Unsupported recipe response data profile format");
+      throw new Error("Unsupported data profile format");
     } catch (err) {
       lastError = err;
       const isRpm429 = err.code === 'gemini_rate_limit_rpm';
@@ -155,6 +138,7 @@ async function generateRecipesWithGemini(apiKey, prompt) {
 
   throw lastError;
 }
+
 
 module.exports = {
   GEMINI_MODEL,
