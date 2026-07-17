@@ -56,9 +56,16 @@ export default function FinishProfileScreen() {
       });
     } catch (err) {
       const code = err?.code || '';
+
+      // 🛠️ FRONTEND FIX: Use your centralized file utilities to extract a friendly message!
+      // This injects a specific context string override exclusively for 429 errors on this screen.
       let message = friendlyError(err, {
         fallback: 'Could not finish setting up your profile. Please try again.',
+        overrides: {
+          429: 'You can only change your username twice every 14 days. Please try again later.'
+        }
       });
+
       if (code === 'auth/username-already-exists') {
         message = 'That username is already taken.';
       } else if (code === 'auth/invalid-username') {

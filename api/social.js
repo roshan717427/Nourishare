@@ -571,7 +571,7 @@ async function handleFeed(req, res) {
   const userMap = {};
   userDocs.forEach(doc => {
     if (doc.exists) {
-      userMap[doc.id] = toPublicUser(doc);
+      userMap[doc.id] = toPublicProfile(doc.data()); // 🔘 Stable, case-validated reference alignment
     }
   });
 

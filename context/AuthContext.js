@@ -326,6 +326,13 @@ export function AuthProvider({ children }) {
       } catch (err) {
         console.log('Could not set auth displayName:', err.message);
       }
+      const currentToken = await registerForPushNotificationsAsync();
+      if (currentToken) {
+        await authFetch(`${API_URL}/social?action=registerPushToken`, {
+          method: 'POST',
+          body: JSON.stringify({ username: normalized, token: currentToken }),
+        });
+      }
       setUser(mapFirebaseUser(auth.currentUser, normalized));
     }
     profileReadyRef.current = true;

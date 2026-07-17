@@ -17,6 +17,121 @@ try {
 } catch (error) {
   console.error('Firebase initialization error:', error);
 }
+/**
+ * Cascade-migrates a user handle across all top-level social tracking graphs, 
+ * notification collections, post likes, comment threads, and push token tables.
+ */
+async function cascadeUsernameSocialMigration(db, oldUsername, newUsername, migratedProfileData) {
+  const batch = db.batch();
+  const now = new Date().toISOString();
+
+  console.log(`>>> Starting social migration cascade: ${oldUsername} -> ${newUsername} <<<`);
+
+  // 1. MIGRATE INBOUND FOLLOWERS & OUTBOUND FOLLOWING
+  const followersSnapshot = await db.collection('followers').doc(oldUsername).collection('user_followers').get();
+  followersSnapshot.forEach((doc) => {
+    const newRef = db.collection('followers').doc(newUsername).collection('user_followers').doc(doc.id);
+    batch.set(newRef, doc.data() || { timestamp: now });
+    batch.delete(doc.ref);
+
+    const peerFollowingRef = db.collection('following').doc(doc.id).collection('user_following').doc(oldUsername);
+    const newPeerFollowingRef = db.collection('following').doc(doc.id).collection('user_following').doc(newUsername);
+    batch.set(newPeerFollowingRef, { timestamp: now });
+    batch.delete(peerFollowingRef);
+  });
+  batch.delete(db.collection('followers').doc(oldUsername));
+
+  const followingSnapshot = await db.collection('following').doc(oldUsername).collection('user_following').get();
+  followingSnapshot.forEach((doc) => {
+    const newRef = db.collection('following').doc(newUsername).collection('user_following').doc(doc.id);
+    batch.set(newRef, doc.data() || { timestamp: now });
+    batch.delete(doc.ref);
+
+    const peerFollowerRef = db.collection('followers').doc(doc.id).collection('user_followers').doc(oldUsername);
+    const newPeerFollowerRef = db.collection('followers').doc(doc.id).collection('user_followers').doc(newUsername);
+    batch.set(newPeerFollowerRef, { timestamp: now });
+    batch.delete(peerFollowerRef);
+  });
+  batch.delete(db.collection('following').doc(oldUsername));
+
+  // 2. MIGRATE INCOMING & OUTBOUND FOLLOW REQUESTS
+  const incomingReqs = await db.collection('follow_requests').doc(oldUsername).collection('requests').get();
+  incomingReqs.forEach((doc) => {
+    const newRef = db.collection('follow_requests').doc(newUsername).collection('requests').doc(doc.id);
+    batch.set(newRef, doc.data() || { status: 'pending', createdAt: now });
+    batch.delete(doc.ref);
+
+    const peerOutgoingRef = db.collection('follow_requests_outgoing').doc(doc.id).collection('pending').doc(oldUsername);
+    const newPeerOutgoingRef = db.collection('follow_requests_outgoing').doc(doc.id).collection('pending').doc(newUsername);
+    batch.set(newPeerOutgoingRef, { createdAt: now });
+    batch.delete(peerOutgoingRef);
+  });
+  batch.delete(db.collection('follow_requests').doc(oldUsername));
+
+  // 3. MIGRATE RECIPE LOGS OWNERSHIP REFERENCES
+  const userLogsSnapshot = await db.collection('logs').where('username', '==', oldUsername).get();
+  userLogsSnapshot.forEach((logDoc) => {
+    batch.update(logDoc.ref, { username: newUsername });
+  });
+
+  // 4. CASCADE UPDATE POST LIKES REFERENCES
+  const allPostLikesSnapshot = await db.collectionGroup('users').get();
+  allPostLikesSnapshot.forEach((likeDoc) => {
+    if (likeDoc.id === oldUsername && likeDoc.ref.path.includes('post_likes')) {
+      const pathParts = likeDoc.ref.path.split('/');
+      const postId = pathParts[pathParts.length - 3]; 
+      const newLikeRef = db.collection('post_likes').doc(postId).collection('users').doc(newUsername);
+      batch.set(newLikeRef, likeDoc.data() || { timestamp: now });
+      batch.delete(likeDoc.ref);
+    }
+  });
+
+  // 5. CASCADE UPDATE COMMENTS THREAD OWNERSHIP
+  const allCommentsSnapshot = await db.collectionGroup('items').get();
+  allCommentsSnapshot.forEach((commentDoc) => {
+    const commentData = commentDoc.data() || {};
+    if (commentData.username === oldUsername && commentDoc.ref.path.includes('post_comments')) {
+      batch.update(commentDoc.ref, { username: newUsername });
+    }
+  });
+
+  // 6. CASCADE UPDATE COMMENT LIKES REFERENCES
+  const allCommentLikesSnapshot = await db.collectionGroup('users').get();
+  allCommentLikesSnapshot.forEach((likeDoc) => {
+    if (likeDoc.id === oldUsername && likeDoc.ref.path.includes('comment_likes')) {
+      const pathParts = likeDoc.ref.path.split('/');
+      const commentId = pathParts[pathParts.length - 3]; 
+      const newCommentLikeRef = db.collection('comment_likes').doc(commentId).collection('users').doc(newUsername);
+      batch.set(newCommentLikeRef, likeDoc.data() || { timestamp: now });
+      batch.delete(likeDoc.ref);
+    }
+  });
+
+  // 7. CASCADE STANDALONE PUSH TOKENS DOCUMENT
+  const oldPushTokensDocRef = db.collection('push_tokens').doc(oldUsername);
+  const oldPushTokensDoc = await oldPushTokensDocRef.get();
+  if (oldPushTokensDoc.exists) {
+    const newPushTokensDocRef = db.collection('push_tokens').doc(newUsername);
+    batch.set(newPushTokensDocRef, oldPushTokensDoc.data() || {});
+    batch.delete(oldPushTokensDocRef);
+  }
+
+  // 8. MIGRATE INCOMING USER NOTIFICATION INBOX ENTRIES
+  const notificationsSnapshot = await db.collection('notifications').doc(oldUsername).collection('items').get();
+  notificationsSnapshot.forEach((doc) => {
+    batch.set(db.collection('notifications').doc(newUsername).collection('items').doc(doc.id), doc.data() || {});
+    batch.delete(doc.ref);
+  });
+  batch.delete(db.collection('notifications').doc(oldUsername));
+
+  // 9. RE-CREATE THE MAIN USER DOCUMENT AND DELETE THE OLD ONE
+  const newUsernameRef = db.collection('users').doc(newUsername);
+  batch.set(newUsernameRef, migratedProfileData);
+  batch.delete(db.collection('users').doc(oldUsername));
+
+  await batch.commit();
+  console.log(`>>> Username migration social connections cascade complete: ${newUsername} <<<`);
+}
 
 module.exports = async (req, res) => {
   if (req.method !== 'PATCH') {
@@ -56,11 +171,16 @@ module.exports = async (req, res) => {
     return normalized;
   };
 
-  const auth = await requireAuthForUsername(req, res, req.body.username);
+  const oldUsername = normalizeUsername(req.body.username);
+  const auth = await requireAuthForUsername(req, res, oldUsername);
   if (!auth) return;
 
-  const { username, ...rawUpdates } = req.body;
-  const updates = pickProfileUpdates(normalizeProfileUpdates(rawUpdates));
+  const { username, newUsername, ...rawUpdates } = req.body;
+  const updates = pickProfileUpdates(normalizeProfileUpdates(rawUpdates)) || {};
+
+  const requestedNewUsername = normalizeUsername(newUsername);
+  const wantsUsernameChange = requestedNewUsername && requestedNewUsername !== oldUsername;
+
   if (!updates) {
     res.status(400).json({ error: 'Invalid profile update fields' });
     return;
@@ -78,10 +198,81 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const userRef = db.collection('users').doc(auth.username);
+    const userRef = db.collection('users').doc(oldUsername);
     const userDoc = await userRef.get();
     if (!userDoc.exists) {
       res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+        const currentProfileData = userDoc.data() || {};
+
+    // =========================================================================
+    // SECTION 3: ATOMIC USERNAME MIGRATION ROUTINE LAYER
+    // =========================================================================
+    if (wantsUsernameChange) {
+      const newUsernameRef = db.collection('users').doc(requestedNewUsername);
+      const newUsernameDoc = await newUsernameRef.get();
+      
+      // Uniqueness check: stop execution if requested handle is occupied
+      if (newUsernameDoc.exists) {
+        res.status(409).json({ error: 'Username already taken' });
+        return;
+      }
+
+      // ---------------------------------------------------------------------
+      // 🚨 GUARDRAIL: Limit username updates to a maximum of 2 times per 14 days
+      // ---------------------------------------------------------------------
+      const nowMs = Date.now();
+      const fourteenDaysAgoMs = nowMs - 14 * 24 * 60 * 60 * 1000; // Time milestone limit boundary
+
+      // Extract your legacy arrays or initialize as empty
+      let changeHistory = Array.isArray(currentProfileData.usernameChangeHistory) 
+        ? currentProfileData.usernameChangeHistory 
+        : [];
+
+      // Clean up your history: Filter out any change timestamps older than 14 days
+      changeHistory = changeHistory.filter((timestampStr) => {
+        const timestampMs = Date.parse(timestampStr);
+        return !isNaN(timestampMs) && timestampMs > fourteenDaysAgoMs;
+      });
+
+      // If they have already changed it twice within the clean window, block the transaction
+      if (changeHistory.length >= 2) {
+        res.status(429).json({ 
+          error: 'Rate limit exceeded',
+          message: 'You can only change your username twice every 14 days.' 
+        });
+        return;
+      }
+
+      // Append the current update time event record to your tracking queue
+      changeHistory.push(new Date().toISOString());
+      // ---------------------------------------------------------------------
+
+      // Compile and merge the updated profile parameters safely
+      const displayName = updates.name || currentProfileData.name || '';
+      const migratedProfileData = {
+        ...currentProfileData,
+        ...updates,
+        username: requestedNewUsername,
+        nameLower: displayName.toLowerCase(),
+        usernameChangeHistory: changeHistory, // Save the updated rate limit array
+        updatedAt: new Date().toISOString()
+      };
+
+      // Preserve portfolio showcase highlights if present
+      if (Array.isArray(currentProfileData.portfolio_favorites)) {
+        migratedProfileData.portfolio_favorites = currentProfileData.portfolio_favorites;
+      }
+
+      // Fire off your background cascading social map update loop
+      await cascadeUsernameSocialMigration(db, oldUsername, requestedNewUsername, migratedProfileData);
+      
+      res.status(200).json({ 
+        message: 'Username and social charts successfully migrated', 
+        username: requestedNewUsername 
+      });
       return;
     }
 

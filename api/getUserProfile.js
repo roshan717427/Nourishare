@@ -209,7 +209,20 @@ module.exports = async (req, res) => {
         data = await repairOwnProfile(db, username, auth, data);
       }
     }
+    if (wantsOwnProfile) {
+      const cleanName = String(data.name || '').trim();
+      const lowerUsername = String(username || '').toLowerCase();
+      
+      const missingFirstName = !data.firstName || !String(data.firstName).trim();
+      const missingLastName = !data.lastName || !String(data.lastName).trim();
+      const nameIsUsername = cleanName.toLowerCase() === lowerUsername;
+      const isCorruptedName = !cleanName || cleanName.includes('@') || nameIsUsername;
 
+      if (missingFirstName || missingLastName || isCorruptedName) {
+        console.log(`>>> Intercepted legacy user '${username}'. Missing parts or name matches username. Redirecting to FinishProfileScreen... <<<`);
+        return res.status(404).json({ error: 'Profile setup incomplete', needsSetup: true });
+      }
+    }
     // Compute live stats so the profile reflects real activity:
     //  - total_recipes / avg_rating from the `logs` collection (source of truth;
     //    self-heals any drift in the cookingStats counter maintained by
