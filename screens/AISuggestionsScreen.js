@@ -330,9 +330,16 @@ export default function AISuggestionsScreen({ navigation }) {
     const preferenceItems = mapApiSuggestions(data.preference_suggestions || [], 'preference');
     const friendItems = mapApiSuggestions(data.friend_suggestions || [], 'friend');
     const pantryItems = mapApiSuggestions(data.pantry_suggestions || [], 'pantry');
+    const [resolvedName, setResolvedName] = useState(username);
     setPreferenceSuggestions(preferenceItems);
     setFriendSuggestions(friendItems);
     setPantrySuggestions(pantryItems);
+    if (data && data.firstName) {
+      setResolvedName(data.firstName);
+    } else if (data && data.name) {
+      const extracted = data.name.trim().split(/\s+/)[0];
+      if (extracted) setResolvedName(extracted);
+    }
     if (typeof data.generations_remaining === 'number') {
       setGenerationsRemaining(data.generations_remaining);
     }
@@ -520,7 +527,7 @@ export default function AISuggestionsScreen({ navigation }) {
     ? generating
       ? 'Cooking up fresh AI recipe ideas...'
       : 'Loading your saved suggestions...'
-    : buildGreeting(firstName);
+    : buildGreeting(resolvedName);
 
   const generateDisabled = generating || generationsRemaining <= 0;
 
