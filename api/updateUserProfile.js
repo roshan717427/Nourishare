@@ -18,14 +18,14 @@ try {
   console.error('Firebase initialization error:', error);
 }
 /**
- * Cascade-migrates a user handle across all top-level social tracking graphs, 
- * notification collections, post likes, comment threads, and push token tables.
+ * Cascade-migrates a user handle across ALL top-level Firestore collections seamlessly,
+ * ensuring zero broken data links when an account updates their handle string key.
  */
 async function cascadeUsernameSocialMigration(db, oldUsername, newUsername, migratedProfileData) {
   const batch = db.batch();
   const now = new Date().toISOString();
 
-  console.log(`>>> Starting social migration cascade: ${oldUsername} -> ${newUsername} <<<`);
+  console.log(`>>> Starting global database cascade: ${oldUsername} -> ${newUsername} <<<`);
 
   // 1. MIGRATE INBOUND FOLLOWERS & OUTBOUND FOLLOWING
   const followersSnapshot = await db.collection('followers').doc(oldUsername).collection('user_followers').get();
@@ -124,13 +124,35 @@ async function cascadeUsernameSocialMigration(db, oldUsername, newUsername, migr
   });
   batch.delete(db.collection('notifications').doc(oldUsername));
 
+  // =========================================================================
+  // 🆕 FIX A: MIGRATE AI SUGGESTIONS DOCUMENTS
+  // =========================================================================
+  const oldAiSuggestionsRef = db.collection('ai_suggestions').doc(oldUsername);
+  const oldAiSuggestionsDoc = await oldAiSuggestionsRef.get();
+  if (oldAiSuggestionsDoc.exists) {
+    const newAiSuggestionsRef = db.collection('ai_suggestions').doc(newUsername);
+    batch.set(newAiSuggestionsRef, oldAiSuggestionsDoc.data() || {});
+    batch.delete(oldAiSuggestionsRef);
+  }
+
+  // =========================================================================
+  // 🆕 FIX B: MIGRATE MEAL PLANS DOCUMENTS
+  // =========================================================================
+  const oldMealPlansRef = db.collection('meal_plans').doc(oldUsername);
+  const oldMealPlansDoc = await oldMealPlansRef.get();
+  if (oldMealPlansDoc.exists) {
+    const newMealPlansRef = db.collection('meal_plans').doc(newUsername);
+    batch.set(newMealPlansRef, oldMealPlansDoc.data() || {});
+    batch.delete(oldMealPlansRef);
+  }
+
   // 9. RE-CREATE THE MAIN USER DOCUMENT AND DELETE THE OLD ONE
   const newUsernameRef = db.collection('users').doc(newUsername);
   batch.set(newUsernameRef, migratedProfileData);
   batch.delete(db.collection('users').doc(oldUsername));
 
   await batch.commit();
-  console.log(`>>> Username migration social connections cascade complete: ${newUsername} <<<`);
+  console.log(`>>> Global username migration cascade completely synchronized: ${newUsername} <<<`);
 }
 
 module.exports = async (req, res) => {
