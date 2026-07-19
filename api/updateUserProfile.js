@@ -192,7 +192,7 @@ module.exports = async (req, res) => {
     }
   });
 
-  if (Object.keys(updates).length === 0) {
+  if (Object.keys(updates).length === 0 && !wantsUsernameChange) {
     res.status(400).json({ error: 'No valid fields to update' });
     return;
   }

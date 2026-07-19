@@ -297,6 +297,7 @@ export default function ProfileScreen({ navigation, route }) {
   const [savingProfile, setSavingProfile] = useState(false);
   const [editName, setEditName] = useState('');
   const [editPhotoUri, setEditPhotoUri] = useState(null);
+  const [editUsernameText, setEditUsernameText] = useState('');
   const [editPrimaryTrait, setEditPrimaryTrait] = useState('');
   const [editSecondaryTraits, setEditSecondaryTraits] = useState('');
   const [editTopCuisines, setEditTopCuisines] = useState('');
@@ -535,6 +536,7 @@ export default function ProfileScreen({ navigation, route }) {
     const p = profile?.kitchen_personality || {};
     setEditName(profile?.name || '');
     setEditPhotoUri(null);
+    setEditUsernameText(profile?.username || user?.username || '');
     setEditPrimaryTrait(p.primary_trait || '');
     setEditSecondaryTraits((p.secondary_traits || []).join(', '));
     setEditTopCuisines(
@@ -589,14 +591,22 @@ export default function ProfileScreen({ navigation, route }) {
         top_cuisines: capitalizeList(topCuisines),
         favorite_ingredients: capitalizeList(parseCommaList(editFavoriteIngredients)),
       };
+
+      // 1. SAFE CONDITION CALCULATION: Prevent ReferenceErrors
+      const oldUsername = user.username;
+      const cleanNewUsername = editUsernameText.trim().toLowerCase();
+      const wantsUsernameChange = cleanNewUsername && cleanNewUsername !== oldUsername;
+
       const payload = {
-        username: user.username,
+        username: oldUsername,
+        newUsername: cleanNewUsername, // Pass your new target parameter down to Vercel cleanly
         name: editName.trim(),
         kitchen_personality,
         personality_edited_by_user: true,
         top_cuisines_user_set: true,
         favorite_ingredients_user_set: true,
       };
+      
       if (editPhotoUri) {
         payload.profilePhotoUrl = editPhotoUri;
       }
@@ -606,14 +616,23 @@ export default function ProfileScreen({ navigation, route }) {
         headers: await withAuthHeaders(),
         body: JSON.stringify(payload),
       });
+      
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
         throw httpError(response, data);
       }
+
+      // 2. RE-SYNC CENTRAL AUTH LIFECYCLE: Update context session states instantly
+      if (wantsUsernameChange && typeof markProfileReady === 'function') {
+        markProfileReady(cleanNewUsername);
+      }
+
+      // 3. RE-SYNC LOCAL PROFILE UI HOOK STATE: Overwrite old handles dynamically
       setProfile((prev) =>
         prev
           ? {
               ...prev,
+              username: wantsUsernameChange ? cleanNewUsername : prev.username, // Updates your UI string instantly!
               name: editName.trim(),
               ...(editPhotoUri ? { profilePhotoUrl: editPhotoUri } : {}),
               kitchen_personality: {
@@ -626,7 +645,14 @@ export default function ProfileScreen({ navigation, route }) {
             }
           : prev
       );
+
+      // Re-trigger social graphs fetch updates if the context provides it
+      if (typeof refreshSocialState === 'function') {
+        await refreshSocialState();
+      }
+
       closeEditProfile();
+      
       if (topCuisinesTruncated) {
         Alert.alert(
           'Top cuisines limited to 3',
@@ -634,10 +660,18 @@ export default function ProfileScreen({ navigation, route }) {
         );
       }
     } catch (err) {
-      Alert.alert(
-        'Could not save profile',
-        friendlyError(err, { fallback: 'We couldn\u2019t save your profile. Please try again.' })
-      );
+      console.error("Profile save pipeline failed:", err);
+
+      // 4. MAP DICTIONARY OVERRIDES: Force user-friendly 14-day limit popup modals
+      const localizedErrorCopy = friendlyError(err, {
+        fallback: 'We couldn\u2019t save your profile. Please try again.',
+        overrides: {
+          409: 'That username is already taken by another cook.',
+          429: 'You can only change your username twice every 14 days. Please try again later.'
+        }
+      });
+
+      Alert.alert('Could not save profile', localizedErrorCopy);
     } finally {
       setSavingProfile(false);
     }
@@ -1151,11 +1185,17 @@ export default function ProfileScreen({ navigation, route }) {
 
               <Text style={styles.modalLabel}>Username</Text>
               <TextInput
-                style={[styles.modalInput, styles.modalInputReadOnly]}
-                value={`@${profile?.username || user?.username || ''}`}
-                editable={false}
+                style={styles.modalInput}
+                value={editUsernameText}
+                onChangeText={(text) => setEditUsernameText(text.toLowerCase().trim().replace(/[^a-z0-9_.]/g, ''))}
+                placeholder="Username handle"
+                placeholderTextColor={colors.textMuted}
+                autoCapitalize="none"
+                autoCorrect={false}
               />
-              <Text style={styles.modalFieldHint}>Username cannot be changed.</Text>
+              <Text style={styles.modalFieldHint}>
+                You can change your username handle up to twice every 14 days.
+              </Text>
 
               <Text style={styles.modalSectionHeading}>Kitchen personality</Text>
 
