@@ -198,7 +198,25 @@ module.exports = async (req, res) => {
 
     if (!doc.exists) {
       if (isOwnRequest) {
-        data = await ensureOwnProfileDoc(db, username, auth);
+        // 🛠️ BACKEND FIX: Check if this user's email is already registered to a different username document ID!
+        const userEmail = auth.decoded.email ? auth.decoded.email.toLowerCase() : null;
+        let emailConflictSnap = { empty: true };
+        
+        if (userEmail) {
+          emailConflictSnap = await db.collection('users').where('email', '==', userEmail).limit(1).get();
+        }
+
+        if (!emailConflictSnap.empty) {
+          // An account with this email already exists under a migrated username! Abort duplication.
+          const migratedUserDoc = emailConflictSnap.docs[0];
+          data = migratedUserDoc.data() || {};
+          username = migratedUserDoc.id; // Correct the pointer handle to the new username ID
+          
+          console.log(`>>> Redirecting session from old username '${oldUsername}' to newly migrated handle '${username}' <<<`);
+        } else {
+          // If the email is truly nowhere to be found, it's a normal first-time setup path
+          data = await ensureOwnProfileDoc(db, username, auth);
+        }
       } else {
         res.status(404).json({ error: 'User not found' });
         return;

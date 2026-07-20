@@ -321,18 +321,16 @@ export function AuthProvider({ children }) {
     if (auth.currentUser) {
       usernameOverrides.current[auth.currentUser.uid] = normalized;
       try {
-        await updateProfile(auth.currentUser, { displayName: profile.name });
+        // Force the central Firebase profile data to overwrite its old display parameters
+        await updateProfile(auth.currentUser, { displayName: normalized }); // Set to new username handle!
         await auth.currentUser.reload();
+        
+        // CRUCIAL: Force-refresh the security token token to clear the old name from device storage memory!
+        await auth.currentUser.getIdToken(true);
       } catch (err) {
-        console.log('Could not set auth displayName:', err.message);
+        console.log('Could not refresh auth token states:', err.message);
       }
-      const currentToken = await registerForPushNotificationsAsync();
-      if (currentToken) {
-        await authFetch(`${API_URL}/social?action=registerPushToken`, {
-          method: 'POST',
-          body: JSON.stringify({ username: normalized, token: currentToken }),
-        });
-      }
+      
       setUser(mapFirebaseUser(auth.currentUser, normalized));
     }
     profileReadyRef.current = true;

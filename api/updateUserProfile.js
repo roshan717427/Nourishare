@@ -118,7 +118,9 @@ async function cascadeUsernameSocialMigration(db, oldUsername, newUsername, migr
   // 8. RE-CREATE THE MAIN USER DOCUMENT AND DELETE THE OLD ONE
   const newUsernameRef = db.collection('users').doc(newUsername);
   batch.set(newUsernameRef, migratedProfileData);
-  batch.delete(db.collection('users').doc(oldUsername));
+
+  const legacyDocRef = db.collection('users').doc(String(oldUsername).trim().toLowerCase());
+  batch.delete(legacyDocRef);
 
   await batch.commit();
   console.log(`>>> Global username migration cascade completely synchronized: ${newUsername} <<<`);
