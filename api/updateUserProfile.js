@@ -25,7 +25,7 @@ async function cascadeUsernameSocialMigration(db, oldUsername, newUsername, migr
   const batch = db.batch();
   const now = new Date().toISOString();
 
-  console.log(`>>> Starting global database cascade: ${oldUsername} -> ${newUsername} <<<`);
+  console.log(`>>> Starting optimized global database cascade: ${oldUsername} -> ${newUsername} <<<`);
 
   // 1. MIGRATE INBOUND FOLLOWERS & OUTBOUND FOLLOWING
   const followersSnapshot = await db.collection('followers').doc(oldUsername).collection('user_followers').get();
@@ -68,46 +68,13 @@ async function cascadeUsernameSocialMigration(db, oldUsername, newUsername, migr
   });
   batch.delete(db.collection('follow_requests').doc(oldUsername));
 
-  // 3. MIGRATE RECIPE LOGS OWNERSHIP REFERENCES
+  // 3. MIGRATE RECIPE LOGS OWNERSHIP REFERENCES (Direct where query — super fast)
   const userLogsSnapshot = await db.collection('logs').where('username', '==', oldUsername).get();
   userLogsSnapshot.forEach((logDoc) => {
     batch.update(logDoc.ref, { username: newUsername });
   });
 
-  // 4. CASCADE UPDATE POST LIKES REFERENCES
-  const allPostLikesSnapshot = await db.collectionGroup('users').get();
-  allPostLikesSnapshot.forEach((likeDoc) => {
-    if (likeDoc.id === oldUsername && likeDoc.ref.path.includes('post_likes')) {
-      const pathParts = likeDoc.ref.path.split('/');
-      const postId = pathParts[pathParts.length - 3]; 
-      const newLikeRef = db.collection('post_likes').doc(postId).collection('users').doc(newUsername);
-      batch.set(newLikeRef, likeDoc.data() || { timestamp: now });
-      batch.delete(likeDoc.ref);
-    }
-  });
-
-  // 5. CASCADE UPDATE COMMENTS THREAD OWNERSHIP
-  const allCommentsSnapshot = await db.collectionGroup('items').get();
-  allCommentsSnapshot.forEach((commentDoc) => {
-    const commentData = commentDoc.data() || {};
-    if (commentData.username === oldUsername && commentDoc.ref.path.includes('post_comments')) {
-      batch.update(commentDoc.ref, { username: newUsername });
-    }
-  });
-
-  // 6. CASCADE UPDATE COMMENT LIKES REFERENCES
-  const allCommentLikesSnapshot = await db.collectionGroup('users').get();
-  allCommentLikesSnapshot.forEach((likeDoc) => {
-    if (likeDoc.id === oldUsername && likeDoc.ref.path.includes('comment_likes')) {
-      const pathParts = likeDoc.ref.path.split('/');
-      const commentId = pathParts[pathParts.length - 3]; 
-      const newCommentLikeRef = db.collection('comment_likes').doc(commentId).collection('users').doc(newUsername);
-      batch.set(newCommentLikeRef, likeDoc.data() || { timestamp: now });
-      batch.delete(likeDoc.ref);
-    }
-  });
-
-  // 7. CASCADE STANDALONE PUSH TOKENS DOCUMENT
+  // 4. CASCADE STANDALONE PUSH TOKENS DOCUMENT
   const oldPushTokensDocRef = db.collection('push_tokens').doc(oldUsername);
   const oldPushTokensDoc = await oldPushTokensDocRef.get();
   if (oldPushTokensDoc.exists) {
@@ -116,7 +83,7 @@ async function cascadeUsernameSocialMigration(db, oldUsername, newUsername, migr
     batch.delete(oldPushTokensDocRef);
   }
 
-  // 8. MIGRATE INCOMING USER NOTIFICATION INBOX ENTRIES
+  // 5. MIGRATE INCOMING USER NOTIFICATION INBOX ENTRIES
   const notificationsSnapshot = await db.collection('notifications').doc(oldUsername).collection('items').get();
   notificationsSnapshot.forEach((doc) => {
     batch.set(db.collection('notifications').doc(newUsername).collection('items').doc(doc.id), doc.data() || {});
@@ -124,14 +91,11 @@ async function cascadeUsernameSocialMigration(db, oldUsername, newUsername, migr
   });
   batch.delete(db.collection('notifications').doc(oldUsername));
 
-  // =========================================================================
-  // 🆕 FIXED: SAFE AI SUGGESTIONS MIGRATION
-  // =========================================================================
+  // 6. SAFE AI SUGGESTIONS MIGRATION
   const oldAiSuggestionsRef = db.collection('ai_suggestions').doc(oldUsername);
   const oldAiSuggestionsDoc = await oldAiSuggestionsRef.get();
   if (oldAiSuggestionsDoc.exists) {
     const aiData = oldAiSuggestionsDoc.data();
-    // Guard against empty maps which crash batch updates
     if (aiData && Object.keys(aiData).length > 0) {
       const newAiSuggestionsRef = db.collection('ai_suggestions').doc(newUsername);
       batch.set(newAiSuggestionsRef, aiData);
@@ -139,14 +103,11 @@ async function cascadeUsernameSocialMigration(db, oldUsername, newUsername, migr
     }
   }
 
-  // =========================================================================
-  // 🆕 FIXED: SAFE MEAL PLANS MIGRATION
-  // =========================================================================
+  // 7. SAFE MEAL PLANS MIGRATION
   const oldMealPlansRef = db.collection('meal_plans').doc(oldUsername);
   const oldMealPlansDoc = await oldMealPlansRef.get();
   if (oldMealPlansDoc.exists) {
     const mealData = oldMealPlansDoc.data();
-    // Guard against empty maps which crash batch updates
     if (mealData && Object.keys(mealData).length > 0) {
       const newMealPlansRef = db.collection('meal_plans').doc(newUsername);
       batch.set(newMealPlansRef, mealData);
@@ -154,7 +115,7 @@ async function cascadeUsernameSocialMigration(db, oldUsername, newUsername, migr
     }
   }
 
-  // 9. RE-CREATE THE MAIN USER DOCUMENT AND DELETE THE OLD ONE
+  // 8. RE-CREATE THE MAIN USER DOCUMENT AND DELETE THE OLD ONE
   const newUsernameRef = db.collection('users').doc(newUsername);
   batch.set(newUsernameRef, migratedProfileData);
   batch.delete(db.collection('users').doc(oldUsername));
