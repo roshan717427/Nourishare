@@ -610,7 +610,8 @@ export default function AISuggestionsScreen({ navigation }) {
           contentContainerStyle={styles.cardRow}
           decelerationRate="fast"
         >
-          {pantrySuggestions.map((recipe) => (
+        {Array.isArray(pantrySuggestions) && pantrySuggestions.length > 0 ? (
+          pantrySuggestions.map((item) => (
             <RecipeCard
               key={recipe.id}
               recipe={recipe}
@@ -623,7 +624,10 @@ export default function AISuggestionsScreen({ navigation }) {
               onHidePress={() => handleHideRecipe(recipe, 'pantry')}
               onPress={() => openRecipe(recipe)}
             />
-          ))}
+          ))
+        ) : (
+          <Text style={styles.emptySectionText}>No pantry-based suggestions yet.</Text>
+        )}
         </ScrollView>
       )}
     </>
@@ -725,7 +729,8 @@ export default function AISuggestionsScreen({ navigation }) {
                     contentContainerStyle={styles.cardRow}
                     decelerationRate="fast"
                   >
-                    {preferenceSuggestions.map((recipe) => (
+                  {Array.isArray(preferenceSuggestions) && preferenceSuggestions.length > 0 ? (
+                    preferenceSuggestions.map((item) => (
                       <RecipeCard
                         key={recipe.id}
                         recipe={recipe}
@@ -738,7 +743,10 @@ export default function AISuggestionsScreen({ navigation }) {
                         onHidePress={() => handleHideRecipe(recipe, 'preference')}
                         onPress={() => openRecipe(recipe)}
                       />
-                    ))}
+                    ))
+                  ) : (
+                    <Text style={styles.emptySectionText}>No preference-based suggestions yet.</Text>
+                  )}
                   </ScrollView>
                 )}
               </>
@@ -762,7 +770,8 @@ export default function AISuggestionsScreen({ navigation }) {
                     contentContainerStyle={styles.cardRow}
                     decelerationRate="fast"
                   >
-                    {friendSuggestions.map((recipe) => (
+                  {Array.isArray(friendSuggestions) && friendSuggestions.length > 0 ? (
+                    friendSuggestions.map((item) => (
                       <RecipeCard
                         key={recipe.id}
                         recipe={recipe}
@@ -775,7 +784,10 @@ export default function AISuggestionsScreen({ navigation }) {
                         onHidePress={() => handleHideRecipe(recipe, 'friend')}
                         onPress={() => openRecipe(recipe)}
                       />
-                    ))}
+                    ))
+                  ) : (
+                    <Text style={styles.emptySectionText}>No recipe ideas from your friends yet.</Text>
+                  )}
                   </ScrollView>
                 )}
               </>
