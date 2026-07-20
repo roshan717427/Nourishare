@@ -125,25 +125,33 @@ async function cascadeUsernameSocialMigration(db, oldUsername, newUsername, migr
   batch.delete(db.collection('notifications').doc(oldUsername));
 
   // =========================================================================
-  // 🆕 FIX A: MIGRATE AI SUGGESTIONS DOCUMENTS
+  // 🆕 FIXED: SAFE AI SUGGESTIONS MIGRATION
   // =========================================================================
   const oldAiSuggestionsRef = db.collection('ai_suggestions').doc(oldUsername);
   const oldAiSuggestionsDoc = await oldAiSuggestionsRef.get();
   if (oldAiSuggestionsDoc.exists) {
-    const newAiSuggestionsRef = db.collection('ai_suggestions').doc(newUsername);
-    batch.set(newAiSuggestionsRef, oldAiSuggestionsDoc.data() || {});
-    batch.delete(oldAiSuggestionsRef);
+    const aiData = oldAiSuggestionsDoc.data();
+    // Guard against empty maps which crash batch updates
+    if (aiData && Object.keys(aiData).length > 0) {
+      const newAiSuggestionsRef = db.collection('ai_suggestions').doc(newUsername);
+      batch.set(newAiSuggestionsRef, aiData);
+      batch.delete(oldAiSuggestionsRef);
+    }
   }
 
   // =========================================================================
-  // 🆕 FIX B: MIGRATE MEAL PLANS DOCUMENTS
+  // 🆕 FIXED: SAFE MEAL PLANS MIGRATION
   // =========================================================================
   const oldMealPlansRef = db.collection('meal_plans').doc(oldUsername);
   const oldMealPlansDoc = await oldMealPlansRef.get();
   if (oldMealPlansDoc.exists) {
-    const newMealPlansRef = db.collection('meal_plans').doc(newUsername);
-    batch.set(newMealPlansRef, oldMealPlansDoc.data() || {});
-    batch.delete(oldMealPlansRef);
+    const mealData = oldMealPlansDoc.data();
+    // Guard against empty maps which crash batch updates
+    if (mealData && Object.keys(mealData).length > 0) {
+      const newMealPlansRef = db.collection('meal_plans').doc(newUsername);
+      batch.set(newMealPlansRef, mealData);
+      batch.delete(oldMealPlansRef);
+    }
   }
 
   // 9. RE-CREATE THE MAIN USER DOCUMENT AND DELETE THE OLD ONE
