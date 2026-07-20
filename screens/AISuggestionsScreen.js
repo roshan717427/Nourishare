@@ -305,14 +305,13 @@ function buildGreeting(firstName) {
 export default function AISuggestionsScreen({ navigation }) {
   const { user } = useAuth();
   const { addToNextUp, isInNextUp } = useNextUp();
-  const username = user?.username || 'current_user';
-  const firstName = extractFirstName(user?.name) || username;
 
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [preferenceSuggestions, setPreferenceSuggestions] = useState([]);
   const [friendSuggestions, setFriendSuggestions] = useState([]);
   const [pantrySuggestions, setPantrySuggestions] = useState([]);
+  const [resolvedName, setResolvedName] = useState(username || 'Cook');
   const [generationsRemaining, setGenerationsRemaining] = useState(3);
   const [dailyLimit, setDailyLimit] = useState(3);
   const [statusMessage, setStatusMessage] = useState('');
@@ -326,31 +325,53 @@ export default function AISuggestionsScreen({ navigation }) {
   const scrollRef = useRef(null);
   const pantryStripRef = useRef(null);
 
+  const username = user?.username || 'current_user';
+  const firstName = user?.name && typeof user.name === 'string' 
+  ? user.name.trim().split(/\s+/)[0] 
+  : (user?.username || 'Cook');
+
   const applySuggestionsData = useCallback((data) => {
-    const preferenceItems = mapApiSuggestions(data.preference_suggestions || [], 'preference');
-    const friendItems = mapApiSuggestions(data.friend_suggestions || [], 'friend');
-    const pantryItems = mapApiSuggestions(data.pantry_suggestions || [], 'pantry');
-    const [resolvedName, setResolvedName] = useState(username);
+    // 🔘 DEFENSIVE TYPE CHECK: Ignore malformed server returns safely
+    if (!data || typeof data !== 'object') {
+      console.log('>>> Intercepted null or malformed data payload object inside applySuggestionsData <<<');
+      return;
+    }
+
+    // Safely pull array references with fallbacks to avoid map Api exceptions
+    const rawPref = data.preference_suggestions || data.preferenceSuggestions || [];
+    const rawFriend = data.friend_suggestions || data.friendSuggestions || [];
+    const rawPantry = data.pantry_suggestions || data.pantrySuggestions || [];
+
+    const preferenceItems = mapApiSuggestions(Array.isArray(rawPref) ? rawPref : [], 'preference');
+    const friendItems = mapApiSuggestions(Array.isArray(rawFriend) ? rawFriend : [], 'friend');
+    const pantryItems = mapApiSuggestions(Array.isArray(rawPantry) ? rawPantry : [], 'pantry');
+    
     setPreferenceSuggestions(preferenceItems);
     setFriendSuggestions(friendItems);
     setPantrySuggestions(pantryItems);
-    if (data && data.firstName) {
+
+    // =========================================================================
+    // 🛠️ ENFORCE DATA EXTRACTION INSIDE THE LOOP:
+    // =========================================================================
+    // Hydrates your user greeting from the live Firestore collection values seamlessly
+    if (data.firstName) {
       setResolvedName(data.firstName);
-    } else if (data && data.name) {
-      const extracted = data.name.trim().split(/\s+/)[0];
-      if (extracted) setResolvedName(extracted);
+    } else if (data.name) {
+      const extracted = String(data.name).trim().split(/\s+/);
+      if (extracted && extracted[0]) setResolvedName(extracted[0]);
     }
+    // =========================================================================
+
     if (typeof data.generations_remaining === 'number') {
       setGenerationsRemaining(data.generations_remaining);
     }
     if (typeof data.daily_limit === 'number') {
       setDailyLimit(data.daily_limit);
     }
-    const hasVisible =
-      preferenceItems.length > 0 ||
-      friendItems.length > 0 ||
-      pantryItems.length > 0;
+
+    const hasVisible = preferenceItems.length > 0 || friendItems.length > 0 || pantryItems.length > 0;
     const hasCachedTotal = (data.total_cached || 0) > 0;
+    
     if (hasVisible || hasCachedTotal) {
       setHasStartedGeneration(true);
     }
@@ -434,6 +455,7 @@ export default function AISuggestionsScreen({ navigation }) {
   };
 
   useEffect(() => {
+    if (!user || !user.username) return;
     if (!loading && !generating) return undefined;
 
     const animation = Animated.loop(
@@ -611,7 +633,7 @@ export default function AISuggestionsScreen({ navigation }) {
           decelerationRate="fast"
         >
         {Array.isArray(pantrySuggestions) && pantrySuggestions.length > 0 ? (
-          pantrySuggestions.map((item) => (
+          pantrySuggestions.map((recipe) => (
             <RecipeCard
               key={recipe.id}
               recipe={recipe}
@@ -730,7 +752,7 @@ export default function AISuggestionsScreen({ navigation }) {
                     decelerationRate="fast"
                   >
                   {Array.isArray(preferenceSuggestions) && preferenceSuggestions.length > 0 ? (
-                    preferenceSuggestions.map((item) => (
+                    preferenceSuggestions.map((recipe) => (
                       <RecipeCard
                         key={recipe.id}
                         recipe={recipe}
@@ -771,7 +793,7 @@ export default function AISuggestionsScreen({ navigation }) {
                     decelerationRate="fast"
                   >
                   {Array.isArray(friendSuggestions) && friendSuggestions.length > 0 ? (
-                    friendSuggestions.map((item) => (
+                    friendSuggestions.map((recipe) => (
                       <RecipeCard
                         key={recipe.id}
                         recipe={recipe}
