@@ -320,6 +320,19 @@ export default function AISuggestionsScreen({ navigation }) {
   const [hasStartedGeneration, setHasStartedGeneration] = useState(false);
   const [hasLoadedCache, setHasLoadedCache] = useState(false);
 
+  // Watches the central authentication session context and overrides the initial
+  // static 'Cook' placeholder with your actual name parameters as soon as they load!
+  useEffect(() => {
+    if (user?.name && typeof user.name === 'string') {
+      const parts = user.name.trim().split(/\s+/);
+      if (parts && parts[0]) {
+        setResolvedName(parts[0]);
+      }
+    } else if (user?.username) {
+      setResolvedName(user.username);
+    }
+  }, [user]);
+  
   const pulseAnim = useRef(new Animated.Value(0)).current;
   const insets = useSafeAreaInsets();
   const scrollRef = useRef(null);
