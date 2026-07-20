@@ -1518,8 +1518,12 @@ async function handleNotifications(req, res) {
     return res.status(400).json({ error: 'Valid username is required' });
   }
 
-  const auth = await requireAuthForUsername(req, res, username);
+  const auth = await requireAuth(req, res);
   if (!auth) return;
+
+  if (auth.username !== username) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
 
   let snapshot;
   try {
@@ -1566,8 +1570,12 @@ async function handleSentFollowRequests(req, res) {
     return res.status(400).json({ error: 'Valid username is required' });
   }
 
-  const auth = await requireAuthForUsername(req, res, username);
+  const auth = await requireAuth(req, res);
   if (!auth) return;
+
+  if (auth.username !== username) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
 
   const snapshot = await db
     .collection('follow_requests_outgoing')
