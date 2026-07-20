@@ -212,7 +212,7 @@ module.exports = async (req, res) => {
           data = migratedUserDoc.data() || {};
           username = migratedUserDoc.id; // Correct the pointer handle to the new username ID
           
-          console.log(`>>> Redirecting session from old username '${oldUsername}' to newly migrated handle '${username}' <<<`);
+          console.log(`>>> Redirecting session from old username '${username}' to newly migrated handle '${username}' <<<`);
         } else {
           // If the email is truly nowhere to be found, it's a normal first-time setup path
           data = await ensureOwnProfileDoc(db, username, auth);
