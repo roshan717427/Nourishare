@@ -169,8 +169,15 @@ function NextUpCard({ recipe, onPress, onRemove }) { /* fix name later - not urg
 
   return (
     <TouchableOpacity style={styles.nextUpCard} onPress={onPress} activeOpacity={0.85}>
-      {recipe.image ? (
-        <Image source={{ uri: recipe.image }} style={styles.nextUpImage} />
+      {recipe?.image || recipe?.photoUrl ? (
+        <Image 
+          source={
+            recipe?.image || recipe?.photoUrl 
+              ? { uri: recipe.image || recipe.photoUrl } 
+              : require('../assets/default-image.png') // 🔘 Your absolute, offline-ready default!
+          } 
+          style={styles.nextUpImage} // Uses the correct list styling dimensions
+        />
       ) : (
         <View style={[styles.nextUpImage, styles.dishImagePlaceholder]}>
           <Ionicons name="sparkles-outline" size={24} color={colors.textMuted} />

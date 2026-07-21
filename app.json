@@ -18,7 +18,7 @@
     "ios": {
       "bundleIdentifier": "com.roshanpaul.munchable",
       "appleTeamID": "862RFB9H5Y",
-      "buildNumber": "22",
+      "buildNumber": "37",
       "supportsTablet": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,

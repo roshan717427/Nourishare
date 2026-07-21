@@ -364,9 +364,8 @@ export default function AISuggestionsScreen({ navigation }) {
     setPantrySuggestions(pantryItems);
 
     // =========================================================================
-    // 🛠️ ENFORCE DATA EXTRACTION INSIDE THE LOOP:
+    // 🛠️ FIX: FORCE STRING DESERIALIZATION FOR DYNAMIC GREETINGS
     // =========================================================================
-    // Hydrates your user greeting from the live Firestore collection values seamlessly
     if (data.firstName && typeof data.firstName === 'string' && data.firstName.trim()) {
       setResolvedName(data.firstName.trim());
     } else if (data.name && typeof data.name === 'string' && data.name.trim()) {
