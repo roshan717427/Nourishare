@@ -31,7 +31,14 @@ function GalleryTile({
   return (
     <TouchableOpacity style={styles.tile} onPress={onPress} activeOpacity={0.85}>
       {dish.photoUrl ? (
-        <Image source={{ uri: dish.photoUrl }} style={styles.tileImage} />
+        <Image 
+        source={
+          recipe?.image || recipe?.photoUrl 
+            ? { uri: recipe.image || recipe.photoUrl } 
+            : require('../assets/default-image.png') // 🔘 Clean, offline-ready required asset fallback!
+        } 
+        style={styles.cardImage} 
+        />
       ) : (
         <View style={[styles.tileImage, styles.tilePlaceholder]}>
           <Ionicons name="restaurant-outline" size={28} color={colors.textMuted} />

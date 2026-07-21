@@ -320,10 +320,10 @@ export default function AISuggestionsScreen({ navigation }) {
   const [hasStartedGeneration, setHasStartedGeneration] = useState(false);
   const [hasLoadedCache, setHasLoadedCache] = useState(false);
 
-  // Watches the central authentication session context and overrides the initial
-  // static 'Cook' placeholder with your actual name parameters as soon as they load!
   useEffect(() => {
-    if (user?.name && typeof user.name === 'string') {
+    if (user?.firstName && typeof user.firstName === 'string' && user.firstName.trim()) {
+      setResolvedName(user.firstName.trim());
+    } else if (user?.name && typeof user.name === 'string' && user.name.trim()) {
       const parts = user.name.trim().split(/\s+/);
       if (parts && parts[0]) {
         setResolvedName(parts[0]);
@@ -367,11 +367,15 @@ export default function AISuggestionsScreen({ navigation }) {
     // 🛠️ ENFORCE DATA EXTRACTION INSIDE THE LOOP:
     // =========================================================================
     // Hydrates your user greeting from the live Firestore collection values seamlessly
-    if (data.firstName) {
-      setResolvedName(data.firstName);
-    } else if (data.name) {
-      const extracted = String(data.name).trim().split(/\s+/);
-      if (extracted && extracted[0]) setResolvedName(extracted[0]);
+    if (data.firstName && typeof data.firstName === 'string' && data.firstName.trim()) {
+      setResolvedName(data.firstName.trim());
+    } else if (data.name && typeof data.name === 'string' && data.name.trim()) {
+      const parts = data.name.trim().split(/\s+/);
+      if (parts && parts[0]) {
+        setResolvedName(parts[0]); // Extracts the first name word explicitly as a safe string token!
+      }
+    } else if (user?.username) {
+      setResolvedName(user.username); // Fallback to current handle if name data fields are totally blank
     }
     // =========================================================================
 
@@ -532,14 +536,18 @@ export default function AISuggestionsScreen({ navigation }) {
       Alert.alert('Already in Cook Next', `"${recipe.name}" is already on your list.`);
       return;
     }
-
+    // =========================================================================
+    // 🛠️ FIX: BRIDGE PROPERTIES FOR PORTFOLIO THUMBNAILS
+    // =========================================================================
+    // Copies the backend 'photoUrl' field over to the frontend 'image' key
+    // so portfolio timeline list cards can render the thumbnail image instantly!
     const recipeWithImages = {
       ...recipe,
-      image: recipe.image,       // Resolves your local asset properties
-      photoUrl: recipe.photoUrl, // Resolves backup web path identifiers
+      image: recipe.image || recipe.photoUrl || null, // Fallback to photoUrl string directly
+      photoUrl: recipe.photoUrl || recipe.image || null,
     };
+    const added = addToNextUp(recipeWithImages); // Save the complete mapped object!
 
-    const added = addToNextUp(recipe);
     if (added) {
       Alert.alert('Saved to Cook Next', `"${recipe.name}" is on your private cooking queue.`);
     }
