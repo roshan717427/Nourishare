@@ -1743,107 +1743,132 @@ const handlers = {
   registerpushtoken: handleRegisterPushToken,
   unregisterpushtoken: handleUnregisterPushToken,
   recook: handleRecook,
-      // Overwrite your cleansocial function block inside api/social.js with this complete migration setup:
-  cleansocial: async (req, res) => {
-    if (req.method !== 'GET') {
-      return res.status(405).json({ error: 'Method Not Allowed' });
-    }
-    
-    try {
-      const db = getFirestore();
-      const batch = db.batch();
-      const now = new Date().toISOString();
-
-      // =========================================================================
-      // 🛠️ CONFIGURATION: SET YOUR TARGETS EXPLICITLY
-      // =========================================================================
-      const oldTarget = "rosh";
-      const ghostTarget = "ocean_roshan7"; // To clean up any accidental placeholder records
-      
-      // REPLACE WITH YOUR EXACT TRUE NEW USERNAME HANDLE ID STRING (lowercase)
-      const myTrueNewUsername = "ocean_roshan7".trim().toLowerCase(); 
-      // =========================================================================
-
-      let totalMigratedCount = 0;
-
-      // 1. MIGRATE "ai_suggestions" & "ai_usage" & "meal_plans" TOP-LEVEL DOCUMENTS
-      // These collections are keyed directly by the username as the Document ID string.
-      const targetCollections = ['ai_suggestions', 'ai_usage', 'meal_plans'];
-      for (const colName of targetCollections) {
-        // Process old 'rosh' document
-        const oldDocRef = db.collection(colName).doc(oldTarget);
-        const oldDoc = await oldDocRef.get();
-        if (oldDoc.exists) {
-          const newDocRef = db.collection(colName).doc(myTrueNewUsername);
-          batch.set(newDocRef, oldDoc.data() || {});
-          batch.delete(oldDocRef);
-          totalMigratedCount++;
-        }
-
-        // Process any accidental ghost placeholder documents
-        const ghostDocRef = db.collection(colName).doc(ghostTarget);
-        const ghostDoc = await ghostDocRef.get();
-        if (ghostDoc.exists) {
-          const newDocRef = db.collection(colName).doc(myTrueNewUsername);
-          batch.set(newDocRef, ghostDoc.data() || {}, { merge: true });
-          batch.delete(ghostDocRef);
-          totalMigratedCount++;
-        }
+    cleansocial: async (req, res) => {
+      if (req.method !== 'GET') {
+        return res.status(405).json({ error: 'Method Not Allowed' });
       }
-
-      // 2. MIGRATE "post_comments" VIA FIELD FILTERS
-      // Comments use random IDs, but contain a 'username' text field property inside them.
-      const commentsSnapshot = await db.collection('post_comments')
-        .where('username', 'in', [oldTarget, ghostTarget])
-        .get();
       
-      commentsSnapshot.forEach((commentDoc) => {
-        batch.update(commentDoc.ref, { username: myTrueNewUsername });
-        totalMigratedCount++;
-      });
-
-      // 3. MIGRATE LINGERING "post_likes" & "comment_likes" SUB-COLLECTIONS
-      const allSocialDocsSnapshot = await db.collectionGroup('users').get();
-      allSocialDocsSnapshot.forEach((doc) => {
-        const isLegacyMatch = doc.id === oldTarget || doc.id === ghostTarget;
-        if (isLegacyMatch) {
-          const path = doc.ref.path;
+      try {
+        const db = getFirestore();
+        const batch = db.batch();
+        const now = new Date().toISOString();
+  
+        // =========================================================================
+        // 🛠️ CONFIGURATION: TARGET CODES LOCKED
+        // =========================================================================
+        const oldTarget = "rosh";
+        const ghostTarget = "YOUR_NEW_USERNAME"; 
+        const myTrueNewUsername = "ocean_roshan7";
+        // =========================================================================
+  
+        let totalMigratedCount = 0;
+  
+        // 1. SAFE MERGE: "ai_suggestions" & "ai_usage" & "meal_plans"
+        const targetCollections = ['ai_suggestions', 'ai_usage', 'meal_plans'];
+        
+        for (const colName of targetCollections) {
+          const oldRef = db.collection(colName).doc(oldTarget);
+          const oldDoc = await oldRef.get();
           
-          if (path.includes('post_likes')) {
-            const parts = path.split('/');
-            const postId = parts[parts.length - 3];
-            const newRef = db.collection('post_likes').doc(postId).collection('users').doc(myTrueNewUsername);
-            batch.set(newRef, doc.data() || { timestamp: now });
-            batch.delete(doc.ref);
+          const newRef = db.collection(colName).doc(myTrueNewUsername);
+          const newDoc = await newRef.get();
+  
+          if (oldDoc.exists) {
+            const oldData = oldDoc.data() || {};
+            const newData = newDoc.exists ? (newDoc.data() || {}) : {};
+  
+            // Safe execution: Merge and de-duplicate array structures (like preference/friend arrays)
+            const mergedData = { ...oldData, ...newData }; // Keeps new settings while preserving missing historical metrics
+  
+            // Audit and blend specific recipe arrays if they are present inside the collections
+            const arrayKeysToMerge = ['preference_suggestions', 'friend_suggestions', 'pantry_suggestions', 'history', 'items', 'recipes'];
+            arrayKeysToMerge.forEach((key) => {
+              if (Array.isArray(oldData[key]) || Array.isArray(newData[key])) {
+                const oldArray = Array.isArray(oldData[key]) ? oldData[key] : [];
+                const newArray = Array.isArray(newData[key]) ? newData[key] : [];
+                
+                // De-duplicate elements cleanly using their inner IDs so no identical rows stack up
+                const uniqueMap = new Map();
+                [...oldArray, ...newArray].forEach(item => {
+                  if (item && item.id) uniqueMap.set(item.id, item);
+                  else if (item) uniqueMap.set(JSON.stringify(item), item);
+                });
+                mergedData[key] = Array.from(uniqueMap.values());
+              }
+            });
+  
+            // Safeguard numeric limit parameters so you don't lose daily counts
+            if (typeof oldData.total_cached === 'number' || typeof newData.total_cached === 'number') {
+              mergedData.total_cached = Math.max(oldData.total_cached || 0, newData.total_cached || 0);
+            }
+  
+            // Write the fully consolidated record array cleanly to your active account handle
+            batch.set(newRef, mergedData);
+            batch.delete(oldRef); // Wipes the legacy file handle out cleanly
             totalMigratedCount++;
           }
-          
-          if (path.includes('comment_likes')) {
-            const parts = path.split('/');
-            const commentId = parts[parts.length - 3];
-            const newRef = db.collection('comment_likes').doc(commentId).collection('users').doc(myTrueNewUsername);
-            batch.set(newRef, doc.data() || { timestamp: now });
-            batch.delete(doc.ref);
+  
+          // Clean up any accidental testing placeholder files that were generated by accident
+          const ghostRef = db.collection(colName).doc(ghostTarget);
+          const ghostDoc = await ghostRef.get();
+          if (ghostDoc.exists) {
+            batch.delete(ghostRef);
             totalMigratedCount++;
           }
         }
-      });
-
-      // Commit the unified database transaction
-      await batch.commit();
-      
-      console.log(`>>> Full-stack username migration complete! Processed ${totalMigratedCount} records over to ${myTrueNewUsername} <<<`);
-      return res.status(200).json({ 
-        status: 'success', 
-        message: `Successfully transferred all suggestions, usage metrics, meal plans, comments, and historic likes directly to '${myTrueNewUsername}'!`,
-        totalRecordsProcessed: totalMigratedCount
-      });
-      
-    } catch (err) {
-      console.error('Unified handle migration pass failed:', err);
-      return res.status(500).json({ status: 'error', message: err.message });
-    }
-  } 
+  
+        // 2. UPDATE "post_comments" FIELD PROPERTIES
+        const commentsSnapshot = await db.collection('post_comments')
+          .where('username', 'in', [oldTarget, ghostTarget])
+          .get();
+        
+        commentsSnapshot.forEach((commentDoc) => {
+          batch.update(commentDoc.ref, { username: myTrueNewUsername });
+          totalMigratedCount++;
+        });
+  
+        // 3. TRANSFER LINGERING "post_likes" & "comment_likes" SUB-COLLECTIONS
+        const allSocialDocsSnapshot = await db.collectionGroup('users').get();
+        allSocialDocsSnapshot.forEach((doc) => {
+          const isLegacyMatch = doc.id === oldTarget || doc.id === ghostTarget;
+          if (isLegacyMatch) {
+            const path = doc.ref.path;
+            
+            if (path.includes('post_likes')) {
+              const parts = path.split('/');
+              const postId = parts[parts.length - 3];
+              const newLikeRef = db.collection('post_likes').doc(postId).collection('users').doc(myTrueNewUsername);
+              batch.set(newLikeRef, doc.data() || { timestamp: now });
+              batch.delete(doc.ref);
+              totalMigratedCount++;
+            }
+            
+            if (path.includes('comment_likes')) {
+              const parts = path.split('/');
+              const commentId = parts[parts.length - 3];
+              const newCommentLikeRef = db.collection('comment_likes').doc(commentId).collection('users').doc(myTrueNewUsername);
+              batch.set(newCommentLikeRef, doc.data() || { timestamp: now });
+              batch.delete(doc.ref);
+              totalMigratedCount++;
+            }
+          }
+        });
+  
+        // Commit the deep database structural merge
+        await batch.commit();
+        
+        console.log(`>>> Full-stack safety merge complete! Consolidated ${totalMigratedCount} data points into ${myTrueNewUsername} <<<`);
+        return res.status(200).json({ 
+          status: 'success', 
+          message: `Successfully merged and de-duplicated all historical data elements straight into '${myTrueNewUsername}'!`,
+          totalRecordsProcessed: totalMigratedCount
+        });
+        
+      } catch (err) {
+        console.error('Unified handle deep-merge pass failed:', err);
+        return res.status(500).json({ status: 'error', message: err.message });
+      }
+    }  
 };
 
 module.exports = async (req, res) => {
