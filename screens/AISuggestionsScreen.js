@@ -551,7 +551,7 @@ export default function AISuggestionsScreen({ navigation }) {
     if (added) {
       Alert.alert('Saved to Cook Next', `"${recipe.name}" is on your private cooking queue.`);
     }
-  };
+  }; 
 
   const hasAnyRecipes =
     preferenceSuggestions.length > 0 ||
