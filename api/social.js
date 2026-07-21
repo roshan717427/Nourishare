@@ -1692,6 +1692,51 @@ const handlers = {
   registerpushtoken: handleRegisterPushToken,
   unregisterpushtoken: handleUnregisterPushToken,
   recook: handleRecook,
+  cleansocial: async (req, res) => {
+    if (req.method !== 'GET') {
+      return res.status(405).json({ error: 'Method Not Allowed' });
+    }
+    
+    try {
+      const batch = db.batch();
+      const oldTarget = "rosh"; 
+      
+      // 🛠️ REPLACE WITH YOUR EXACT NEW USERNAME HANDLE ID STRING
+      const newTarget = "YOUR_NEW_USERNAME"; 
+      const now = new Date().toISOString();
+
+      // 1. Traverse and migrate lingering post_likes cleanly
+      const allPostLikesSnapshot = await db.collectionGroup('users').get();
+      allPostLikesSnapshot.forEach((likeDoc) => {
+        if (likeDoc.id === oldTarget && likeDoc.ref.path.includes('post_likes')) {
+          const pathParts = likeDoc.ref.path.split('/');
+          const postId = pathParts[pathParts.length - 3]; 
+          const newLikeRef = db.collection('post_likes').doc(postId).collection('users').doc(newTarget);
+          batch.set(newLikeRef, likeDoc.data() || { timestamp: now });
+          batch.delete(likeDoc.ref);
+        }
+      });
+
+      // 2. Traverse and migrate lingering comment_likes cleanly
+      allPostLikesSnapshot.forEach((likeDoc) => {
+        if (likeDoc.id === oldTarget && likeDoc.ref.path.includes('comment_likes')) {
+          const pathParts = likeDoc.ref.path.split('/');
+          const commentId = pathParts[pathParts.length - 3]; 
+          const newCommentLikeRef = db.collection('comment_likes').doc(commentId).collection('users').doc(newTarget);
+          batch.set(newCommentLikeRef, likeDoc.data() || { timestamp: now });
+          batch.delete(likeDoc.ref);
+        }
+      });
+
+      await batch.commit();
+      console.log(`>>> Successfully transferred all legacy historical social handles to ${newTarget} <<<`);
+      return res.status(200).json({ status: 'success', message: 'All historic likes successfully transferred!' });
+      
+    } catch (err) {
+      console.error('Social handle cleanup routine failed:', err);
+      return res.status(500).json({ status: 'error', message: err.message });
+    }
+  }
 };
 
 module.exports = async (req, res) => {
