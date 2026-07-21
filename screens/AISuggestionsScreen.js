@@ -668,6 +668,59 @@ export default function AISuggestionsScreen({ navigation }) {
     </>
   );
 
+    // Place this directly above your primary markdown return() block:
+  const renderTotalIngredientsList = () => {
+    // 1. Gather all recipe data elements from the target categories exclusively
+    const targetedRecipes = [...preferenceSuggestions, ...friendSuggestions];
+    
+    if (targetedRecipes.length === 0) return null;
+
+    // 2. Parse and de-duplicate ingredient strings into a unified Map
+    const unifiedIngredients = new Map();
+
+    targetedRecipes.forEach((recipe) => {
+      // Ensure the ingredients parameter is active and healthy
+      const list = Array.isArray(recipe.ingredients) 
+        ? recipe.ingredients 
+        : typeof recipe.ingredients === 'string'
+          ? recipe.ingredients.split(/[,;\n]+/)
+          : [];
+
+      list.forEach((rawItem) => {
+        const cleanItem = String(rawItem || '').trim();
+        if (!cleanItem) return;
+
+        const lowerKey = cleanItem.toLowerCase();
+        if (!unifiedIngredients.has(lowerKey)) {
+          // Store the original case layout string for clean visual rendering
+          unifiedIngredients.set(lowerKey, cleanItem);
+        }
+      });
+    });
+
+    const finalDisplayArray = Array.from(unifiedIngredients.values());
+    if (finalDisplayArray.length === 0) return null;
+
+    // 3. Render the card display component
+    return (
+      <View style={[styles.totalIngredientsCard, shadows.cardSoft]}>
+        <View style={styles.totalIngredientsHeaderRow}>
+          <Ionicons name="list-circle-outline" size={22} color={colors.primary} />
+          <Text style={styles.totalIngredientsTitle}>Ingredients Needed</Text>
+        </View>
+        <View style={styles.totalIngredientsGrid}>
+          {finalDisplayArray.map((ingredient, index) => (
+            <View key={index} style={styles.totalIngredientsBulletRow}>
+              <View style={styles.totalIngredientsDot} />
+              <Text style={styles.totalIngredientsText}>{ingredient}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+    );
+  };
+
+
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
@@ -741,7 +794,7 @@ export default function AISuggestionsScreen({ navigation }) {
         ) : null}
 
         {!pantrySkipped ? renderPantryStrip() : null}
-
+        {renderTotalIngredientsList()}
         {showPantrySection ? renderPantrySection() : null}
 
         {showSections ? (
