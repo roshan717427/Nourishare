@@ -1743,51 +1743,67 @@ const handlers = {
   registerpushtoken: handleRegisterPushToken,
   unregisterpushtoken: handleUnregisterPushToken,
   recook: handleRecook,
-  cleansocial: async (req, res) => {
-    if (req.method !== 'GET') {
-      return res.status(405).json({ error: 'Method Not Allowed' });
-    }
-    
-    try {
-      const batch = db.batch();
-      const oldTarget = "rosh"; 
+    cleansocial: async (req, res) => {
+      if (req.method !== 'GET') {
+        return res.status(405).json({ error: 'Method Not Allowed' });
+      }
       
-      // 🛠️ REPLACE WITH YOUR EXACT NEW USERNAME HANDLE ID STRING
-      const newTarget = "ocean_roshan7"; 
-      const now = new Date().toISOString();
-
-      // 1. Traverse and migrate lingering post_likes cleanly
-      const allPostLikesSnapshot = await db.collectionGroup('users').get();
-      allPostLikesSnapshot.forEach((likeDoc) => {
-        if (likeDoc.id === oldTarget && likeDoc.ref.path.includes('post_likes')) {
-          const pathParts = likeDoc.ref.path.split('/');
-          const postId = pathParts[pathParts.length - 3]; 
-          const newLikeRef = db.collection('post_likes').doc(postId).collection('users').doc(newTarget);
-          batch.set(newLikeRef, likeDoc.data() || { timestamp: now });
-          batch.delete(likeDoc.ref);
-        }
-      });
-
-      // 2. Traverse and migrate lingering comment_likes cleanly
-      allPostLikesSnapshot.forEach((likeDoc) => {
-        if (likeDoc.id === oldTarget && likeDoc.ref.path.includes('comment_likes')) {
-          const pathParts = likeDoc.ref.path.split('/');
-          const commentId = pathParts[pathParts.length - 3]; 
-          const newCommentLikeRef = db.collection('comment_likes').doc(commentId).collection('users').doc(newTarget);
-          batch.set(newCommentLikeRef, likeDoc.data() || { timestamp: now });
-          batch.delete(likeDoc.ref);
-        }
-      });
-
-      await batch.commit();
-      console.log(`>>> Successfully transferred all legacy historical social handles to ${newTarget} <<<`);
-      return res.status(200).json({ status: 'success', message: 'All historic likes successfully transferred!' });
-      
-    } catch (err) {
-      console.error('Social handle cleanup routine failed:', err);
-      return res.status(500).json({ status: 'error', message: err.message });
-    }
-  }
+      try {
+        const batch = db.batch();
+        const now = new Date().toISOString();
+  
+        // =========================================================================
+        // 🛠️ HARDCODE YOUR TRUE NEW USERNAME HANDLE HERE
+        // =========================================================================
+        const myTrueNewUsername = "ocean_roshan7"; // <-- Put your real handle inside these quotes (e.g. "chef_rosh")
+        // =========================================================================
+  
+        // 1. Gather all documents across your subcollections
+        const allSocialDocsSnapshot = await db.collectionGroup('users').get();
+        let totalMigratedCount = 0;
+  
+        allSocialDocsSnapshot.forEach((doc) => {
+          // Look for any markers named 'rosh' OR the accidental placeholder string
+          const isLegacyMatch = doc.id === "rosh" || doc.id === "YOUR_NEW_USERNAME";
+          
+          if (isLegacyMatch) {
+            const path = doc.ref.path;
+            
+            if (path.includes('post_likes')) {
+              const parts = path.split('/');
+              const postId = parts[parts.length - 3];
+              const newRef = db.collection('post_likes').doc(postId).collection('users').doc(myTrueNewUsername.trim().toLowerCase());
+              
+              batch.set(newRef, doc.data() || { timestamp: now });
+              batch.delete(doc.ref); // Delete the old/ghost node marker safely
+              totalMigratedCount++;
+            }
+            
+            if (path.includes('comment_likes')) {
+              const parts = path.split('/');
+              const commentId = parts[parts.length - 3];
+              const newRef = db.collection('comment_likes').doc(commentId).collection('users').doc(myTrueNewUsername.trim().toLowerCase());
+              
+              batch.set(newRef, doc.data() || { timestamp: now });
+              batch.delete(doc.ref); // Delete the old/ghost node marker safely
+              totalMigratedCount++;
+            }
+          }
+        });
+  
+        await batch.commit();
+        console.log(`>>> Successfully forced migration of ${totalMigratedCount} records over to ${myTrueNewUsername} <<<`);
+        return res.status(200).json({ 
+          status: 'success', 
+          message: `Successfully transferred all historic data directly to '${myTrueNewUsername}'!`,
+          totalRecordsProcessed: totalMigratedCount
+        });
+        
+      } catch (err) {
+        console.error('Explicit handle migration pass failed:', err);
+        return res.status(500).json({ status: 'error', message: err.message });
+      }
+    }  
 };
 
 module.exports = async (req, res) => {
