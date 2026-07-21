@@ -10,9 +10,9 @@ db = getFirestore();
 
 module.exports = async (req, res) => {
   try {
-    const batch = db.batch(); //
+    const batch = db.batch();
     const oldTarget = "rosh";
-    const myTrueNewUsername = "ocean_roshan7";
+    const myTrueNewUsername = "ocean_roshan7"; // Spelled exactly to match your database console folder!
     let count = 0;
 
     const targetCollections = ['ai_suggestions', 'ai_usage', 'meal_plans'];
@@ -24,40 +24,37 @@ module.exports = async (req, res) => {
       const newRef = db.collection(colName).doc(myTrueNewUsername);
       const newDoc = await newRef.get();
 
-      if (oldDoc.exists) {
-        const oldData = oldDoc.data() || {};
-        const newData = newDoc.exists ? (newDoc.data() || {}) : {};
+      // 🛠️ FIX: Read payloads fallback-ready without requiring .exists to be true!
+      const oldData = oldDoc.exists ? (oldDoc.data() || {}) : {};
+      const newData = newDoc.exists ? (newDoc.data() || {}) : {};
 
-        // Merge top level keys
-        const mergedData = { ...oldData, ...newData };
+      // Blend top level attributes cleanly
+      const mergedData = { ...oldData, ...newData };
 
-        // Safe array merge and de-duplication
-        const arrayKeysToMerge = ['preference_suggestions', 'friend_suggestions', 'pantry_suggestions', 'history', 'items', 'recipes'];
-        arrayKeysToMerge.forEach((key) => {
-          if (Array.isArray(oldData[key]) || Array.isArray(newData[key])) {
-            const oldArray = Array.isArray(oldData[key]) ? oldData[key] : [];
-            const newArray = Array.isArray(newData[key]) ? newData[key] : [];
-            
-            const uniqueMap = new Map();
-            [...oldArray, ...newArray].forEach(item => {
-              if (item && item.id) uniqueMap.set(item.id, item);
-              else if (item) uniqueMap.set(JSON.stringify(item), item);
-            });
-            mergedData[key] = Array.from(uniqueMap.values());
-          }
-        });
-
-        if (typeof oldData.total_cached === 'number' || typeof newData.total_cached === 'number') {
-          mergedData.total_cached = Math.max(oldData.total_cached || 0, newData.total_cached || 0);
+      // Safe array extraction and de-duplication
+      const arrayKeysToMerge = ['preference_suggestions', 'friend_suggestions', 'pantry_suggestions', 'history', 'items', 'recipes'];
+      
+      arrayKeysToMerge.forEach((key) => {
+        if (Array.isArray(oldData[key]) || Array.isArray(newData[key])) {
+          const oldArray = Array.isArray(oldData[key]) ? oldData[key] : [];
+          const newArray = Array.isArray(newData[key]) ? newData[key] : [];
+          
+          const uniqueMap = new Map();
+          [...oldArray, ...newArray].forEach(item => {
+            if (item && item.id) uniqueMap.set(item.id, item);
+            else if (item) uniqueMap.set(JSON.stringify(item), item);
+          });
+          mergedData[key] = Array.from(uniqueMap.values());
         }
+      });
 
-        batch.set(newRef, mergedData, { merge: true });
-        batch.delete(oldRef); // Delete old 'rosh' document
-        count++;
-      }
+      // Force write to the new document and clean up the legacy folder anchor point
+      batch.set(newRef, mergedData);
+      batch.delete(oldRef);
+      count++;
     }
 
-    await batch.commit(); //
+    await batch.commit();
     return res.status(200).json({ status: 'success', totalMergedDocuments: count });
   } catch (err) {
     return res.status(500).json({ error: err.message });
