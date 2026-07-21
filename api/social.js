@@ -1129,6 +1129,49 @@ async function handleAddComment(req, res) {
   });
 }
 
+// =========================================================================
+// 🛠️ BACKEND INJECTION: AUTOMATED LAZY-HEALING INTERCEPTOR
+// =========================================================================
+// This checks if the user's active login token email matches a historical like
+// under an old username, and automatically updates the database to their new handle!
+async function checkAndHealUserLikeByEmail(db, postId, authSession) {
+  if (!postId || !authSession || !authSession.email) return;
+
+  const userEmail = authSession.email.toLowerCase();
+  const currentUsername = authSession.username; // Their true, new username handle
+
+  // Scan the post's sub-collection for a document that matches this email but has a different ID
+  const historicLikeSnapshot = await db.collection('post_likes')
+    .doc(postId)
+    .collection('users')
+    .where('email', '==', userEmail)
+    .get();
+
+  if (!historicLikeSnapshot.empty) {
+    historicLikeSnapshot.forEach(async (doc) => {
+      // If the document ID matches an old username (like 'rosh') instead of their current handle, migrate it!
+      if (doc.id !== currentUsername) {
+        const batch = db.batch();
+        const newLikeRef = db.collection('post_likes').doc(postId).collection('users').doc(currentUsername);
+        
+        // Prepare the payload data, falling back to a safe timestamp structure
+        const existingData = doc.data() || {};
+        existingData.email = userEmail;
+        if (!existingData.timestamp) existingData.timestamp = new Date().toISOString();
+
+        batch.set(newLikeRef, existingData);
+        batch.delete(doc.ref); // Delete the old 'rosh' node marker completely
+        
+        await batch.commit();
+        console.log(`>>> Automatically self-healed legacy like for post ${postId}: ${doc.id} -> ${currentUsername} <<<`);
+      }
+    });
+  }
+}
+
+// =========================================================================
+// 🛠️ CONTEXT INJECTION: INTEGRATING FIX 2 INTO YOUR ACTIVE CODE
+// =========================================================================
 async function handleLikes(req, res) {
   if (req.method !== 'GET') return methodNotAllowed(res);
 
@@ -1139,6 +1182,15 @@ async function handleLikes(req, res) {
 
   const auth = await requireAuth(req, res);
   if (!auth) return;
+
+  // 🛠️ CALL THE SELF-HEAL TRIGGER ROUTINE HERE
+  // This executes silently behind the scenes right when the user opens the post view arrays!
+  try {
+    const db = getFirestore(); // Ensure db is accessible in your file scope
+    await checkAndHealUserLikeByEmail(db, postId, auth);
+  } catch (err) {
+    console.error('Background lazy-like healing pass failed safely:', err.message);
+  }
 
   const authorUsername = await resolvePostAuthor(postId);
   if (!authorUsername) {
@@ -1661,7 +1713,6 @@ async function handleRecook(req, res) {
 
   res.status(200).json({ message: 'ok' });
 }
-
 const handlers = {
   follow: handleFollow,
   unfollow: handleUnfollow,
