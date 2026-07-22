@@ -31,6 +31,10 @@ import { friendlyError, friendlyErrorForResponse, httpError } from '../utils/err
 import { colors, radii, spacing, shadows } from '../constants/theme';
 import { buildPersonalityDescription, getTraitCompoundLabel } from '../utils/personalityCopy';
 import { capitalizeList } from '../utils/titleCase';
+import {
+  sectionSuggestionImage,
+  suggestionImageSource,
+} from '../utils/suggestionImages';
 
 const PORTFOLIO_FAVORITES_MAX = 2;
 const TOP_CUISINES_MAX = 3;
@@ -162,22 +166,18 @@ function PortfolioPreview({ favoriteDishes, totalCount, onDishPress, onViewAll }
   );
 }
 
-function NextUpCard({ recipe, onPress, onRemove }) { /* fix name later - not urgent */
+function NextUpCard({ recipe, onPress, onRemove }) {
   const hasPantry =
     (Array.isArray(recipe.ingredientsHave) && recipe.ingredientsHave.length > 0) ||
     (Array.isArray(recipe.ingredientsNeed) && recipe.ingredientsNeed.length > 0);
+  const imageSource = recipe.section
+    ? suggestionImageSource(sectionSuggestionImage(recipe.section))
+    : suggestionImageSource(recipe.image || recipe.photoUrl);
 
   return (
     <TouchableOpacity style={styles.nextUpCard} onPress={onPress} activeOpacity={0.85}>
-      {recipe?.image || recipe?.photoUrl ? (
-        <Image 
-          source={
-            recipe?.image || recipe?.photoUrl 
-              ? { uri: recipe.image || recipe.photoUrl } 
-              : require('../assets/default-image.png') // 🔘 Your absolute, offline-ready default!
-          } 
-          style={styles.nextUpImage} // Uses the correct list styling dimensions
-        />
+      {imageSource ? (
+        <Image source={imageSource} style={styles.nextUpImage} />
       ) : (
         <View style={[styles.nextUpImage, styles.dishImagePlaceholder]}>
           <Ionicons name="sparkles-outline" size={24} color={colors.textMuted} />

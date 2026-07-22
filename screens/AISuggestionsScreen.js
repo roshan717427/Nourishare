@@ -21,6 +21,8 @@ import { useAuth } from '../context/AuthContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNextUp } from '../context/NextUpContext';
 import { colors, radii, spacing, shadows } from '../constants/theme';
+import { API_URL } from '../config/api';
+import { authFetch } from '../utils/apiAuth';
 import {
   resolveSuggestionImage,
   suggestionImageSource,
@@ -32,7 +34,6 @@ import {
 } from '../utils/aiSuggestionsApi';
 import { friendlyAiError } from '../utils/errorMessages';
 import { extractFirstName } from '../utils/personalityCopy';
-import { formatSuggestionReasonBody } from '../utils/suggestionReason';
 
 const CARD_WIDTH = 200;
 const IMAGE_HEIGHT = 150;
@@ -66,6 +67,9 @@ function MetaChip({ icon, label, tint, textColor }) {
   );
 }
 
+// =========================================================================
+// 🛠️ FRONTEND FIX: SECURED COMPONENT RENDERER WITHOUT LAYOUT CRASHES
+// =========================================================================
 function RecipeCard({
   recipe,
   onPress,
@@ -78,11 +82,16 @@ function RecipeCard({
   showPantry,
   searchQuery,
 }) {
-  const why = formatSuggestionReasonBody(recipe.why_suggested);
-  const difficulty = recipe.difficulty_level
+  const difficulty = recipe?.difficulty_level
     ? recipe.difficulty_level.charAt(0).toUpperCase() + recipe.difficulty_level.slice(1)
     : null;
+
+  // Fallback guards to safely handle both camelCase and snake_case arrays
+  const rawHave = recipe?.ingredientsHave || recipe?.ingredients_have || [];
+  const rawNeed = recipe?.ingredientsNeed || recipe?.ingredients_need || [];
   
+  // Calculate visibility cleanly using strict boolean evaluation to prevent raw '0' prints
+  const hasPantryData = !!(showPantry && (rawHave.length > 0 || rawNeed.length > 0));
 
   return (
     <TouchableOpacity
@@ -91,6 +100,7 @@ function RecipeCard({
       activeOpacity={0.88}
     >
       <View style={styles.recipeImageWrap}>
+        {/* 🔄 RESTORED: Return to your baseline image source converter helper */}
         <Image
           source={suggestionImageSource(recipe.image)}
           style={styles.recipeImage}
@@ -131,7 +141,7 @@ function RecipeCard({
             </TouchableOpacity>
           ) : null}
         </View>
-        {recipe.rating ? (
+        {recipe?.rating ? (
           <View style={[styles.ratingBadge, shadows.cardSoft]}>
             <Ionicons name="star" size={11} color={colors.star} />
             <Text style={styles.ratingText}>{recipe.rating}</Text>
@@ -141,7 +151,7 @@ function RecipeCard({
 
       <View style={styles.recipeBody}>
         <Text style={styles.recipeName} numberOfLines={2}>
-          {recipe.name}
+          {recipe?.name || 'Untitled Recipe'}
         </Text>
 
         <View style={styles.metaRow}>
@@ -153,39 +163,23 @@ function RecipeCard({
           />
           <MetaChip
             icon="time-outline"
-            label={recipe.cooking_time}
+            label={recipe?.cooking_time}
             tint={colors.chipAmber}
             textColor={colors.chipAmberText}
           />
         </View>
 
-        {/* {recipe.subtitle ? (
-          <Text style={styles.recipeSubtitle} numberOfLines={1}>
-            {recipe.subtitle}
-          </Text>
-        ) : null} */}
-
-{showPantry && (recipe.ingredientsHave?.length > 0 || recipe.ingredients_have?.length > 0 || recipe.ingredientsNeed?.length > 0 || recipe.ingredients_need?.length > 0) ? (() => {
-          // Fallback guard to seamlessly handle both camelCase and snake_case backend keys
-          const rawHave = recipe.ingredientsHave || recipe.ingredients_have || [];
-          const rawNeed = recipe.ingredientsNeed || recipe.ingredients_need || [];
-
-          // 1. Fetch and clean up the active user input search token
-          // Replace 'userInputQuery' with your actual state reference variable if named differently
+        {/* 🛠️ FIX: Clean, isolated ternary block prevents raw number leakage */}
+        {hasPantryData ? (() => {
           const queryToken = (typeof searchQuery === 'string' ? searchQuery : '').trim().toLowerCase();
 
           let verifiedHave = [...rawHave];
           let verifiedNeed = [...rawNeed];
 
-          // 2. Enforce strict matching rules if a user input query exists
           if (queryToken.length > 0) {
-            // Strictly include in 'Have' ONLY if it perfectly matches the user's input item
             verifiedHave = rawHave.filter(item => item.trim().toLowerCase() === queryToken);
-
-            // Re-route everything else that doesn't strictly match into 'Need'
             const excludedHaveItems = rawHave.filter(item => item.trim().toLowerCase() !== queryToken);
             
-            // Merge excluded items (like 'chicken broth') into 'Need' without creating duplicates
             excludedHaveItems.forEach(item => {
               if (!verifiedNeed.some(needItem => needItem.trim().toLowerCase() === item.trim().toLowerCase())) {
                 verifiedNeed.push(item);
@@ -209,10 +203,12 @@ function RecipeCard({
             </View>
           );
         })() : null}
-      </View> {/* Explicitly closes <View style={styles.recipeBody}> */}
+      </View>
     </TouchableOpacity>
   );
 }
+// =========================================================================
+
 
 function SkeletonCard({ pulseAnim }) {
   const opacity = pulseAnim.interpolate({
@@ -301,17 +297,43 @@ function parsePantryInput(text) {
 function buildGreeting(firstName) {
   return `Hey ${firstName}! Tap the button to receive recipes based on your preferences, what friends cooked, and optionally ingredients you currently have. Continue logging meals so I can learn your tastes, and keep expanding your network to find inspiration!`;
 }
-
+ 
 export default function AISuggestionsScreen({ navigation }) {
+  // 1. EXTRACT ALL INCOMING AUTHENTICATION CONTEXT HOOKS FIRST
   const { user } = useAuth();
   const { addToNextUp, isInNextUp } = useNextUp();
 
+  // =========================================================================
+  // 🛠️ FIX Step A: COMPUTE DERIVED STRINGS IMMEDIATELY TO UNBLOCK INITIAL STATES
+  // =========================================================================
+  const username = user?.username || 'current_user';
+
+  // Prefer capitalized first name from profile; never greet by username handle.
+  const resolveGreetingName = useCallback((source) => {
+    if (!source || typeof source !== 'object') return '';
+    const fromFirst = extractFirstName(source.firstName);
+    if (fromFirst) return fromFirst;
+    const fromName = extractFirstName(source.name);
+    if (
+      fromName &&
+      fromName.toLowerCase() !== String(source.username || username || '').toLowerCase()
+    ) {
+      return fromName;
+    }
+    return '';
+  }, [username]);
+
+  // 2. INITIALIZE ALL STATE HOOKS IN PERFECT ORDER
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [preferenceSuggestions, setPreferenceSuggestions] = useState([]);
   const [friendSuggestions, setFriendSuggestions] = useState([]);
   const [pantrySuggestions, setPantrySuggestions] = useState([]);
-  const [resolvedName, setResolvedName] = useState(username || 'Cook');
+  
+  const [resolvedName, setResolvedName] = useState(
+    () => resolveGreetingName(user) || 'Cook'
+  );
+  
   const [generationsRemaining, setGenerationsRemaining] = useState(3);
   const [dailyLimit, setDailyLimit] = useState(3);
   const [statusMessage, setStatusMessage] = useState('');
@@ -320,37 +342,47 @@ export default function AISuggestionsScreen({ navigation }) {
   const [hasStartedGeneration, setHasStartedGeneration] = useState(false);
   const [hasLoadedCache, setHasLoadedCache] = useState(false);
 
+  // 3. EFFECT TIMING HOOKS NEXT
   useEffect(() => {
-    if (user?.firstName && typeof user.firstName === 'string' && user.firstName.trim()) {
-      setResolvedName(user.firstName.trim());
-    } else if (user?.name && typeof user.name === 'string' && user.name.trim()) {
-      const parts = user.name.trim().split(/\s+/);
-      if (parts && parts[0]) {
-        setResolvedName(parts[0]);
-      }
-    } else if (user?.username) {
-      setResolvedName(user.username);
+    const fromAuth = resolveGreetingName(user);
+    if (fromAuth) {
+      setResolvedName(fromAuth);
+      return;
     }
-  }, [user]);
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await authFetch(`${API_URL}/getUserProfile?me=1`);
+        if (!response.ok || cancelled) return;
+        const profile = await response.json();
+        const fromProfile = resolveGreetingName(profile);
+        if (fromProfile && !cancelled) {
+          setResolvedName(fromProfile);
+        }
+      } catch (err) {
+        console.log('Could not resolve greeting name:', err?.message);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, resolveGreetingName]);
   
+  // 4. ANIMATION REFERENCE REFS AND STRUCTURES
   const pulseAnim = useRef(new Animated.Value(0)).current;
   const insets = useSafeAreaInsets();
   const scrollRef = useRef(null);
   const pantryStripRef = useRef(null);
 
-  const username = user?.username || 'current_user';
-  const firstName = user?.name && typeof user.name === 'string' 
-  ? user.name.trim().split(/\s+/)[0] 
-  : (user?.username || 'Cook');
-
+  // 5. MEMOIZED WORKER CALLS CONTRIBUTE BELOW THIS LINE
   const applySuggestionsData = useCallback((data) => {
-    // 🔘 DEFENSIVE TYPE CHECK: Ignore malformed server returns safely
     if (!data || typeof data !== 'object') {
       console.log('>>> Intercepted null or malformed data payload object inside applySuggestionsData <<<');
       return;
     }
 
-    // Safely pull array references with fallbacks to avoid map Api exceptions
     const rawPref = data.preference_suggestions || data.preferenceSuggestions || [];
     const rawFriend = data.friend_suggestions || data.friendSuggestions || [];
     const rawPantry = data.pantry_suggestions || data.pantrySuggestions || [];
@@ -362,21 +394,6 @@ export default function AISuggestionsScreen({ navigation }) {
     setPreferenceSuggestions(preferenceItems);
     setFriendSuggestions(friendItems);
     setPantrySuggestions(pantryItems);
-
-    // =========================================================================
-    // 🛠️ FIX: FORCE STRING DESERIALIZATION FOR DYNAMIC GREETINGS
-    // =========================================================================
-    if (data.firstName && typeof data.firstName === 'string' && data.firstName.trim()) {
-      setResolvedName(data.firstName.trim());
-    } else if (data.name && typeof data.name === 'string' && data.name.trim()) {
-      const parts = data.name.trim().split(/\s+/);
-      if (parts && parts[0]) {
-        setResolvedName(parts[0]); // Extracts the first name word explicitly as a safe string token!
-      }
-    } else if (user?.username) {
-      setResolvedName(user.username); // Fallback to current handle if name data fields are totally blank
-    }
-    // =========================================================================
 
     if (typeof data.generations_remaining === 'number') {
       setGenerationsRemaining(data.generations_remaining);
@@ -391,7 +408,7 @@ export default function AISuggestionsScreen({ navigation }) {
     if (hasVisible || hasCachedTotal) {
       setHasStartedGeneration(true);
     }
-  }, []);
+  }, [user?.username]); // Memoize perfectly!
 
   const loadCached = useCallback(async () => {
     setLoading(true);
@@ -535,18 +552,7 @@ export default function AISuggestionsScreen({ navigation }) {
       Alert.alert('Already in Cook Next', `"${recipe.name}" is already on your list.`);
       return;
     }
-    // =========================================================================
-    // 🛠️ FIX: BRIDGE PROPERTIES FOR PORTFOLIO THUMBNAILS
-    // =========================================================================
-    // Copies the backend 'photoUrl' field over to the frontend 'image' key
-    // so portfolio timeline list cards can render the thumbnail image instantly!
-    const recipeWithImages = {
-      ...recipe,
-      image: recipe.image || recipe.photoUrl || null, // Fallback to photoUrl string directly
-      photoUrl: recipe.photoUrl || recipe.image || null,
-    };
-    const added = addToNextUp(recipeWithImages); // Save the complete mapped object!
-
+    const added = addToNextUp(recipe);
     if (added) {
       Alert.alert('Saved to Cook Next', `"${recipe.name}" is on your private cooking queue.`);
     }

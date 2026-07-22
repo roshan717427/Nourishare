@@ -22,33 +22,6 @@ import { formatSuggestionReasonBody } from '../utils/suggestionReason';
 export default function RecipeDetailScreen({ navigation, route }) {
   const recipe = route?.params?.recipe || {};
 
-  const renderRecipeIngredients = () => {
-    const list = Array.isArray(recipe?.ingredients)
-      ? recipe.ingredients
-      : typeof recipe?.ingredients === 'string'
-        ? recipe.ingredients.split(/[,;\n]+/)
-        : [];
-
-    if (list.length === 0) return null;
-
-    return (
-      <View style={[styles.detailIngredientsCard, shadows.cardSoft]}>
-        <View style={styles.detailHeaderRow}>
-          <Ionicons name="restaurant-outline" size={20} color={colors.primary} />
-          <Text style={styles.detailIngredientsTitle}>Ingredients Needed</Text>
-        </View>
-        <View style={styles.detailIngredientsGrid}>
-          {list.map((ingredient, index) => (
-            <View key={index} style={styles.detailBulletRow}>
-              <Text style={styles.detailBulletDot}>🔸</Text>
-              <Text style={styles.detailIngredientText}>{String(ingredient).trim()}</Text>
-            </View>
-          ))}
-        </View>
-      </View>
-    );
-  };
-
   const name = recipe.name || recipe.recipe_name || 'Recipe';
   const image = recipe.section
     ? sectionSuggestionImage(recipe.section)
@@ -196,25 +169,25 @@ export default function RecipeDetailScreen({ navigation, route }) {
                 </>
               ) : null}
             </>
-          ) : null}
-
-          {/*
-          <Text style={styles.sectionTitle}>Ingredients</Text>
-          {ingredients.length > 0 ? (
-            <View style={styles.ingredientsCard}>
-              {ingredients.map((item, idx) => (
-                <View key={`ing-${idx}`} style={styles.bulletRow}>
-                  <View style={styles.bullet} />
-                  <Text style={styles.bulletText}>{item}</Text>
-                </View>
-              ))}
-            </View>
           ) : (
-            <Text style={styles.emptyText}>
-              Ingredient list isn't available for this recipe yet.
-            </Text>
+            <>
+              <Text style={styles.sectionTitle}>Ingredients</Text>
+              {ingredients.length > 0 ? (
+                <View style={styles.ingredientsCard}>
+                  {ingredients.map((item, idx) => (
+                    <View key={`ing-${idx}`} style={styles.bulletRow}>
+                      <View style={styles.bullet} />
+                      <Text style={styles.bulletText}>{item}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <Text style={styles.emptyText}>
+                  Ingredient list isn't available for this recipe yet.
+                </Text>
+              )}
+            </>
           )}
-          */}
 
           <Text style={styles.sectionTitle}>How to cook</Text>
           {steps.length > 0 ? (
@@ -265,50 +238,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  detailIngredientsCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginVertical: 12,
-    marginHorizontal: 16,
-  },
-  detailHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-    gap: 8,
-  },
-  detailIngredientsTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#111',
-  },
-  detailIngredientsGrid: {
-    marginTop: 4,
-    gap: 8,
-  },
-  detailBulletRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    paddingVertical: 2,
-  },
-  detailBulletDot: {
-    fontSize: 12,
-    top: 2,
-  },
-  detailIngredientText: {
-    fontSize: 14,
-    color: '#333',
-    flex: 1,
-    lineHeight: 20,
-  },
-  backButton: {
-    width: 32,
-    height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   headerTitle: {
     flex: 1,
     textAlign: 'center',
@@ -326,6 +255,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.borderLight,
   },
   photoPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backButton: {
+    width: 32,
+    height: 32,
     alignItems: 'center',
     justifyContent: 'center',
   },

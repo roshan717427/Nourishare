@@ -89,17 +89,28 @@ export function AuthProvider({ children }) {
       const resolved = normalizeUsername(profile?.username);
       if (resolved && auth.currentUser) {
         usernameOverrides.current[auth.currentUser.uid] = resolved;
-        // Backfill the auth displayName for accounts that finished profile setup
-        // before this was wired up, so `name` (not username) shows everywhere.
-        if (!auth.currentUser.displayName && profile?.name) {
+        // Prefer the Firestore profile display name over auth displayName.
+        // displayName may have been incorrectly set to the username in older builds.
+        const profileName = typeof profile?.name === 'string' ? profile.name.trim() : '';
+        const currentDisplay = (auth.currentUser.displayName || '').trim();
+        const displayLooksLikeUsername =
+          !currentDisplay || currentDisplay.toLowerCase() === resolved;
+        if (profileName && displayLooksLikeUsername) {
           try {
-            await updateProfile(auth.currentUser, { displayName: profile.name });
+            await updateProfile(auth.currentUser, { displayName: profileName });
             await auth.currentUser.reload();
           } catch (err) {
             console.log('Could not backfill auth displayName:', err.message);
           }
         }
-        setUser(mapFirebaseUser(auth.currentUser, resolved));
+        const mapped = mapFirebaseUser(auth.currentUser, resolved);
+        setUser({
+          ...mapped,
+          name: profileName || mapped.name,
+          firstName:
+            (typeof profile?.firstName === 'string' && profile.firstName.trim()) ||
+            null,
+        });
       }
       profileReadyRef.current = true;
       setProfileStatus('ready');
@@ -321,17 +332,18 @@ export function AuthProvider({ children }) {
     if (auth.currentUser) {
       usernameOverrides.current[auth.currentUser.uid] = normalized;
       try {
-        // Force the central Firebase profile data to overwrite its old display parameters
-        await updateProfile(auth.currentUser, { displayName: normalized }); // Set to new username handle!
-        await auth.currentUser.reload();
-        
-        // CRUCIAL: Force-refresh the security token token to clear the old name from device storage memory!
+        // Keep the person's real display name; only the username handle changes.
         await auth.currentUser.getIdToken(true);
       } catch (err) {
         console.log('Could not refresh auth token states:', err.message);
       }
-      
-      setUser(mapFirebaseUser(auth.currentUser, normalized));
+
+      const mapped = mapFirebaseUser(auth.currentUser, normalized);
+      setUser({
+        ...mapped,
+        name: user?.name || mapped.name,
+        firstName: user?.firstName || null,
+      });
     }
     profileReadyRef.current = true;
     setProfileStatus('ready');

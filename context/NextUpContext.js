@@ -71,21 +71,36 @@ export function NextUpProvider({ children }) {
       if (!recipe?.id || isInNextUp(recipe.id)) {
         return false;
       }
+      // Persist everything RecipeDetail needs. Local section assets (require())
+      // are not JSON-safe as Image sources after reload, so always store `section`
+      // and only keep string URL images.
+      const imageUrl =
+        typeof recipe.image === 'string'
+          ? recipe.image
+          : typeof recipe.photoUrl === 'string'
+            ? recipe.photoUrl
+            : null;
       const entry = {
         id: recipe.id,
         name: recipe.name || recipe.recipe_name || 'Recipe',
         subtitle: recipe.subtitle || '',
-        image: recipe.image || null,
-        difficulty_level: recipe.difficulty_level || null,
-        cooking_time: recipe.cooking_time || null,
+        section: recipe.section || null,
+        image: imageUrl,
+        photoUrl: imageUrl,
+        difficulty_level: recipe.difficulty_level || recipe.difficulty || null,
+        cooking_time: recipe.cooking_time || recipe.time || null,
         rating: recipe.rating || null,
         ingredients: recipe.ingredients || null,
-        cooking_notes: recipe.cooking_notes || null,
+        description: recipe.description || null,
+        why_suggested: recipe.why_suggested || recipe.reason || null,
+        cooking_notes: recipe.cooking_notes || recipe.notes || null,
         steps: recipe.steps || null,
         recipe_link: recipe.recipe_link || recipe.recipeLink || null,
         recipe_instructions: recipe.recipe_instructions || recipe.recipeInstructions || null,
         ingredientsHave: recipe.ingredientsHave || recipe.ingredients_have || null,
         ingredientsNeed: recipe.ingredientsNeed || recipe.ingredients_need || null,
+        ingredientsMightHave:
+          recipe.ingredientsMightHave || recipe.ingredients_might_have || null,
         addedAt: Date.now(),
       };
       setItems((prev) => {
