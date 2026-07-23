@@ -5,9 +5,13 @@
  *   post_likes/{postId}/users/{username}
  *   comment_likes/{commentId}/users/{username}
  * so a rename must move those docs or the old handle remains as a "ghost" like.
+ *
+ * This migrator never does unfiltered collectionGroup().get() scans.
  */
 
 const BATCH_LIMIT = 400;
+const POST_COLLECTIONS = ['logs', 'recipe_posts'];
+const GET_CONCURRENCY = 40;
 
 async function commitOps(db, ops) {
   for (let i = 0; i < ops.length; i += BATCH_LIMIT) {
@@ -32,8 +36,81 @@ function uniqueUsernames(values) {
   return out;
 }
 
+async function listAllPostIds(db) {
+  const ids = new Set();
+  for (const col of POST_COLLECTIONS) {
+    const refs = await db.collection(col).listDocuments();
+    refs.forEach((ref) => ids.add(ref.id));
+  }
+  return [...ids];
+}
+
+async function mapInChunks(items, concurrency, mapper) {
+  const results = [];
+  for (let i = 0; i < items.length; i += concurrency) {
+    const chunk = items.slice(i, i + concurrency);
+    const chunkResults = await Promise.all(chunk.map(mapper));
+    results.push(...chunkResults);
+  }
+  return results;
+}
+
+/**
+ * Move a like doc oldRef -> newRef.
+ * If newRef already exists (duplicate under both handles), delete the old ghost
+ * only and flag the parent for a likes_count recount.
+ */
+function queueLikeMove(ops, seenPaths, oldRef, newRef, data, now, oldName, newExists, onDuplicate) {
+  const key = oldRef.path;
+  if (seenPaths.has(key)) return;
+  seenPaths.add(key);
+
+  if (newExists) {
+    ops.push((batch) => {
+      batch.delete(oldRef);
+    });
+    if (typeof onDuplicate === 'function') onDuplicate();
+    return;
+  }
+
+  const payload = {
+    ...(data || {}),
+    username: newRef.id,
+    migratedAt: now,
+    migratedFrom: oldName,
+  };
+  ops.push((batch) => {
+    batch.set(newRef, payload, { merge: true });
+    batch.delete(oldRef);
+  });
+}
+
+async function recountPostLikes(db, postId) {
+  const usersSnap = await db.collection('post_likes').doc(postId).collection('users').get();
+  const count = usersSnap.size;
+  for (const col of POST_COLLECTIONS) {
+    const postRef = db.collection(col).doc(postId);
+    const postDoc = await postRef.get();
+    if (postDoc.exists) {
+      await postRef.set({ likes_count: count }, { merge: true });
+      return;
+    }
+  }
+}
+
+async function recountCommentLikes(db, postId, commentId) {
+  if (!postId || !commentId) return;
+  const usersSnap = await db.collection('comment_likes').doc(commentId).collection('users').get();
+  const commentRef = db.collection('post_comments').doc(postId).collection('items').doc(commentId);
+  const commentDoc = await commentRef.get();
+  if (!commentDoc.exists) return;
+  await commentRef.set({ likes_count: usersSnap.size }, { merge: true });
+}
+
 /**
  * Move post/comment likes, rewrite comment authors, and retarget cookedWith tags.
+ * Uses targeted reads: list post IDs, direct like doc gets, and filtered queries.
+ * Throws on failure so callers (username rename) abort before deleting the old profile.
  */
 async function migrateEngagementForUsername(db, oldUsername, newUsername) {
   const oldName = String(oldUsername || '')
@@ -45,56 +122,159 @@ async function migrateEngagementForUsername(db, oldUsername, newUsername) {
   if (!oldName || !newName || oldName === newName) return { migrated: 0 };
 
   const ops = [];
+  const seenLikePaths = new Set();
   const now = new Date().toISOString();
+  const recountPostIds = new Set();
+  const recountCommentKeys = new Map(); // commentId -> postId
 
-  // 1) Likes keyed by username doc id under post_likes / comment_likes
-  const likeUsersSnap = await db.collectionGroup('users').get();
-  likeUsersSnap.forEach((doc) => {
-    if (doc.id.toLowerCase() !== oldName) return;
-    const path = doc.ref.path;
-    const data = { ...(doc.data() || {}), migratedAt: now, migratedFrom: oldName };
+  // 1) Post likes: check post_likes/{postId}/users/{oldName} for every known post.
+  //    Also pick up likes that store a username field (new writes).
+  const postIds = await listAllPostIds(db);
 
-    if (path.includes('post_likes/')) {
-      const parts = path.split('/');
-      const postId = parts[1];
-      if (!postId) return;
-      const newRef = db.collection('post_likes').doc(postId).collection('users').doc(newName);
-      ops.push((batch) => {
-        batch.set(newRef, data, { merge: true });
-        batch.delete(doc.ref);
-      });
-      return;
-    }
-
-    if (path.includes('comment_likes/')) {
-      const parts = path.split('/');
-      const commentId = parts[1];
-      if (!commentId) return;
-      const newRef = db
-        .collection('comment_likes')
-        .doc(commentId)
-        .collection('users')
-        .doc(newName);
-      ops.push((batch) => {
-        batch.set(newRef, data, { merge: true });
-        batch.delete(doc.ref);
-      });
-    }
+  await mapInChunks(postIds, GET_CONCURRENCY, async (postId) => {
+    const oldRef = db.collection('post_likes').doc(postId).collection('users').doc(oldName);
+    const newRef = db.collection('post_likes').doc(postId).collection('users').doc(newName);
+    const [oldSnap, newSnap] = await Promise.all([oldRef.get(), newRef.get()]);
+    if (!oldSnap.exists) return;
+    queueLikeMove(
+      ops,
+      seenLikePaths,
+      oldRef,
+      newRef,
+      oldSnap.data(),
+      now,
+      oldName,
+      newSnap.exists,
+      () => recountPostIds.add(postId)
+    );
   });
 
-  // 2) Comment author field on post_comments/{postId}/items/{id}
-  const commentItemsSnap = await db.collectionGroup('items').get();
-  commentItemsSnap.forEach((doc) => {
-    if (!doc.ref.path.includes('post_comments/')) return;
-    const data = doc.data() || {};
-    const author = String(data.username || '')
-      .trim()
-      .toLowerCase();
-    if (author !== oldName) return;
+  try {
+    const likedByFieldSnap = await db
+      .collectionGroup('users')
+      .where('username', '==', oldName)
+      .get();
+    await mapInChunks(likedByFieldSnap.docs, GET_CONCURRENCY, async (doc) => {
+      const path = doc.ref.path;
+      if (path.includes('post_likes/')) {
+        const postId = path.split('/')[1];
+        if (!postId) return;
+        const newRef = db.collection('post_likes').doc(postId).collection('users').doc(newName);
+        const newSnap = await newRef.get();
+        queueLikeMove(
+          ops,
+          seenLikePaths,
+          doc.ref,
+          newRef,
+          doc.data(),
+          now,
+          oldName,
+          newSnap.exists,
+          () => recountPostIds.add(postId)
+        );
+        return;
+      }
+      if (path.includes('comment_likes/')) {
+        const commentId = path.split('/')[1];
+        if (!commentId) return;
+        const newRef = db
+          .collection('comment_likes')
+          .doc(commentId)
+          .collection('users')
+          .doc(newName);
+        const newSnap = await newRef.get();
+        queueLikeMove(
+          ops,
+          seenLikePaths,
+          doc.ref,
+          newRef,
+          doc.data(),
+          now,
+          oldName,
+          newSnap.exists,
+          () => {
+            // postId filled later from commentIdToPostId when known
+            if (!recountCommentKeys.has(commentId)) {
+              recountCommentKeys.set(commentId, null);
+            }
+          }
+        );
+      }
+    });
+  } catch (err) {
+    // Index may not exist yet; post/comment enumeration below still covers doc-id likes.
+    console.warn('username-field like query skipped:', err.message);
+  }
+
+  // 2) Comment authors + comment likes for every comment under known posts.
+  const commentIds = [];
+  const commentIdToPostId = new Map();
+  const seenCommentAuthorPaths = new Set();
+  const queueCommentAuthorMove = (doc) => {
+    if (seenCommentAuthorPaths.has(doc.ref.path)) return;
+    seenCommentAuthorPaths.add(doc.ref.path);
     ops.push((batch) => {
       batch.update(doc.ref, { username: newName });
     });
+  };
+
+  await mapInChunks(postIds, GET_CONCURRENCY, async (postId) => {
+    const itemsSnap = await db.collection('post_comments').doc(postId).collection('items').get();
+    itemsSnap.forEach((doc) => {
+      commentIds.push(doc.id);
+      commentIdToPostId.set(doc.id, postId);
+      const author = String(doc.data()?.username || '')
+        .trim()
+        .toLowerCase();
+      if (author !== oldName) return;
+      queueCommentAuthorMove(doc);
+    });
   });
+
+  // Fallback for comments on deleted posts: field query only (no full scan).
+  try {
+    const orphanCommentsSnap = await db
+      .collectionGroup('items')
+      .where('username', '==', oldName)
+      .get();
+    orphanCommentsSnap.forEach((doc) => {
+      if (!doc.ref.path.includes('post_comments/')) return;
+      const parts = doc.ref.path.split('/');
+      // post_comments/{postId}/items/{commentId}
+      const postId = parts[1];
+      if (postId) commentIdToPostId.set(doc.id, postId);
+      queueCommentAuthorMove(doc);
+      if (!commentIds.includes(doc.id)) commentIds.push(doc.id);
+    });
+  } catch (err) {
+    console.warn('comment author query skipped:', err.message);
+  }
+
+  await mapInChunks(commentIds, GET_CONCURRENCY, async (commentId) => {
+    const oldRef = db.collection('comment_likes').doc(commentId).collection('users').doc(oldName);
+    const newRef = db.collection('comment_likes').doc(commentId).collection('users').doc(newName);
+    const [oldSnap, newSnap] = await Promise.all([oldRef.get(), newRef.get()]);
+    if (!oldSnap.exists) return;
+    const postId = commentIdToPostId.get(commentId) || null;
+    queueLikeMove(
+      ops,
+      seenLikePaths,
+      oldRef,
+      newRef,
+      oldSnap.data(),
+      now,
+      oldName,
+      newSnap.exists,
+      () => recountCommentKeys.set(commentId, postId)
+    );
+  });
+
+  // Fill postIds for any comment-like duplicates found only via username field query.
+  for (const [commentId, postId] of recountCommentKeys) {
+    if (!postId && commentIdToPostId.has(commentId)) {
+      recountCommentKeys.set(commentId, commentIdToPostId.get(commentId));
+    }
+  }
 
   // 3) "Cooked with" tags on meal logs
   const taggedLogsSnap = await db
@@ -113,70 +293,19 @@ async function migrateEngagementForUsername(db, oldUsername, newUsername) {
   });
 
   await commitOps(db, ops);
-  return { migrated: ops.length };
-}
 
-/**
- * Heal likes on a single post for a viewer who renamed accounts.
- * Moves likes from previousUsernames (and email/uid matches) onto the current handle.
- */
-async function healViewerLikesOnPost(db, postId, auth, previousUsernames = []) {
-  if (!postId || !auth?.username) return { healed: 0 };
-
-  const currentUsername = String(auth.username).trim().toLowerCase();
-  const email = String(auth.email || '')
-    .trim()
-    .toLowerCase();
-  const uid = auth.uid || null;
-  const aliases = uniqueUsernames(previousUsernames).filter((name) => name !== currentUsername);
-
-  const likesSnap = await db.collection('post_likes').doc(postId).collection('users').get();
-  if (likesSnap.empty) return { healed: 0 };
-
-  const currentRef = db.collection('post_likes').doc(postId).collection('users').doc(currentUsername);
-  const currentDoc = likesSnap.docs.find((doc) => doc.id.toLowerCase() === currentUsername);
-  const ops = [];
-  let healed = 0;
-
-  for (const doc of likesSnap.docs) {
-    const likeUsername = doc.id.toLowerCase();
-    if (likeUsername === currentUsername) continue;
-
-    const data = doc.data() || {};
-    const emailMatch = email && String(data.email || '').trim().toLowerCase() === email;
-    const uidMatch = uid && data.uid && String(data.uid) === String(uid);
-    const aliasMatch = aliases.includes(likeUsername);
-
-    if (!emailMatch && !uidMatch && !aliasMatch) continue;
-
-    const payload = {
-      ...data,
-      email: email || data.email || null,
-      uid: uid || data.uid || null,
-      migratedAt: new Date().toISOString(),
-      migratedFrom: likeUsername,
-    };
-
-    if (!currentDoc) {
-      ops.push((batch) => {
-        batch.set(currentRef, payload, { merge: true });
-        batch.delete(doc.ref);
-      });
-    } else {
-      // Already liked under the new handle — drop the ghost without changing count.
-      ops.push((batch) => {
-        batch.delete(doc.ref);
-      });
-    }
-    healed += 1;
+  // After deletes land, recount denormalized counters for any duplicate ghost likes removed.
+  for (const postId of recountPostIds) {
+    await recountPostLikes(db, postId);
+  }
+  for (const [commentId, postId] of recountCommentKeys) {
+    await recountCommentLikes(db, postId, commentId);
   }
 
-  if (ops.length) await commitOps(db, ops);
-  return { healed };
+  return { migrated: ops.length };
 }
 
 module.exports = {
   migrateEngagementForUsername,
-  healViewerLikesOnPost,
   uniqueUsernames,
 };

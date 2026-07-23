@@ -112,11 +112,11 @@
  * Likes / comments data model (top-level collections keyed by post document id,
  * which is a globally-unique Firestore auto-id so logs and recipe_posts never
  * collide):
- *   post_likes/{postId}/users/{username}      -> { timestamp }
+ *   post_likes/{postId}/users/{username}      -> { timestamp, uid?, email?, username }
  *   post_comments/{postId}/items/{autoId}     -> { username, name, text, timestamp, likes_count, parentId? }
  *     (parentId, when set, points at another item in the same post's thread,
  *      marking this comment as a one-level-deep reply)
- *   comment_likes/{commentId}/users/{username} -> { timestamp }
+ *   comment_likes/{commentId}/users/{username} -> { timestamp, uid?, email?, username }
  *     (commentId is the post_comments item auto-id, globally unique; a
  *      denormalized likes_count is kept on the comment doc itself)
  * A denormalized `likes_count` / `comments_count` is also maintained on the post
@@ -126,9 +126,7 @@
 const { initializeApp, cert, getApps } = require('firebase-admin/app');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const {
-  healViewerLikesOnPost,
   migrateEngagementForUsername,
-  uniqueUsernames,
 } = require('./_helpers/usernameMigration');
 const { hasProfileData, rankRecommendations } = require('../utils/recommendFollows');
 const { requireAuth, requireAuthForUsername } = require('./_helpers/verifyAuth');
@@ -867,77 +865,14 @@ async function loadLikes(postId) {
     snapshot.docs.map(async (likeDoc) => {
       const likeUsername = likeDoc.id;
       const userDoc = await db.collection('users').doc(likeUsername).get();
-      if (userDoc.exists) {
-        return {
-          username: likeUsername,
-          name: userDoc.data().name || null,
-        };
-      }
-
-      // Username was renamed: credit the like to the current account that owns
-      // this handle in previousUsernames, so "Liked by" still shows a real name.
-      try {
-        const renamedSnap = await db
-          .collection('users')
-          .where('previousUsernames', 'array-contains', likeUsername.toLowerCase())
-          .limit(1)
-          .get();
-        if (!renamedSnap.empty) {
-          const owner = renamedSnap.docs[0];
-          return {
-            username: owner.id,
-            name: owner.data().name || null,
-          };
-        }
-      } catch (err) {
-        console.log('loadLikes previousUsername lookup failed:', err.message);
-      }
-
-      // Keep the like visible until migration/claim runs (fallback to handle).
       return {
         username: likeUsername,
-        name: null,
+        name: userDoc.exists ? userDoc.data().name || null : null,
       };
     })
   );
 
-  // De-dupe if a ghost and current-handle like both resolve to the same person.
-  const byUsername = new Map();
-  resolved.forEach((like) => {
-    if (!like?.username) return;
-    if (!byUsername.has(like.username)) byUsername.set(like.username, like);
-  });
-  return Array.from(byUsername.values());
-}
-
-async function getPreviousUsernamesForUser(username) {
-  try {
-    const doc = await db.collection('users').doc(username).get();
-    if (!doc.exists) return [];
-    return uniqueUsernames(doc.data()?.previousUsernames || []);
-  } catch (err) {
-    console.log('getPreviousUsernamesForUser failed:', err.message);
-    return [];
-  }
-}
-
-async function healViewerLikesForPost(postId, auth) {
-  if (!postId || !auth?.username) return;
-  try {
-    const previousUsernames = await getPreviousUsernamesForUser(auth.username);
-    await healViewerLikesOnPost(
-      db,
-      postId,
-      {
-        username: auth.username,
-        uid: auth.uid || null,
-        email: auth.email || auth.decoded?.email || null,
-      },
-      previousUsernames
-    );
-  } catch (err) {
-    console.error('healViewerLikesForPost failed:', err.message);
-  }
+  return resolved.filter((like) => like?.username);
 }
 
 async function handlePostDetail(req, res) {
@@ -966,8 +901,6 @@ async function handlePostDetail(req, res) {
     return res.status(403).json({ error: 'Follow this user to view their posts' });
   }
 
-  await healViewerLikesForPost(postId, auth);
-
   const post = normalizePost(postDoc, collectionName);
   // Attach author display name for the detail header.
   if (post.username) {
@@ -982,7 +915,6 @@ async function handlePostDetail(req, res) {
     loadLikes(postId),
   ]);
   const likedByMe = viewerUsername ? likes.some(l => l.username === viewerUsername) : false;
-  // Keep denormalized count aligned with the attributed liker list after heals.
   if (typeof post.likes_count !== 'number' || post.likes_count !== likes.length) {
     post.likes_count = likes.length;
   }
@@ -1218,8 +1150,6 @@ async function handleLikes(req, res) {
   const auth = await requireAuth(req, res);
   if (!auth) return;
 
-  await healViewerLikesForPost(postId, auth);
-
   const authorUsername = await resolvePostAuthor(postId);
   if (!authorUsername) {
     return res.status(404).json({ error: 'Post not found' });
@@ -1259,7 +1189,6 @@ async function handleLike(req, res) {
   }
 
   const likeRef = db.collection('post_likes').doc(validPostId).collection('users').doc(auth.username);
-  await healViewerLikesForPost(validPostId, auth);
   const existing = await likeRef.get();
   let count = postDoc.data().likes_count || 0;
   if (!existing.exists) {
@@ -1267,6 +1196,7 @@ async function handleLike(req, res) {
       timestamp: FieldValue.serverTimestamp(),
       uid: auth.uid || null,
       email: auth.email || null,
+      username: auth.username,
     });
     await postRef.set({ likes_count: FieldValue.increment(1) }, { merge: true });
     count += 1;
@@ -1455,6 +1385,7 @@ async function handleLikeComment(req, res) {
       timestamp: FieldValue.serverTimestamp(),
       uid: auth.uid || null,
       email: auth.email || null,
+      username: auth.username,
     });
     await commentRef.set({ likes_count: FieldValue.increment(1) }, { merge: true });
     count += 1;
@@ -1751,65 +1682,6 @@ async function handleRecook(req, res) {
   res.status(200).json({ message: 'ok' });
 }
 
-/**
- * One-time repair for accounts that renamed before engagement migration existed.
- * Body: { username, previousUsername }
- * - previousUsername must no longer own a users/{previousUsername} doc
- * - migrates likes/comments/tags from previousUsername -> current username
- * - stores previousUsername on users/{username}.previousUsernames
- */
-async function handleClaimPreviousUsername(req, res) {
-  if (req.method !== 'POST') return methodNotAllowed(res);
-
-  const { username, previousUsername } = req.body || {};
-  const auth = await requireAuthForUsername(req, res, username);
-  if (!auth) return;
-
-  const previous = normalizeUsername(previousUsername);
-  if (!previous) {
-    return res.status(400).json({ error: 'Valid previousUsername is required' });
-  }
-  if (previous === auth.username) {
-    return res.status(400).json({ error: 'previousUsername must differ from current username' });
-  }
-
-  const previousDoc = await db.collection('users').doc(previous).get();
-  if (previousDoc.exists) {
-    return res.status(409).json({
-      error: 'previousUsername still has an active profile',
-      message: 'That username is still in use, so it cannot be claimed as a prior handle.',
-    });
-  }
-
-  const userRef = db.collection('users').doc(auth.username);
-  const userDoc = await userRef.get();
-  if (!userDoc.exists) {
-    return res.status(404).json({ error: 'User not found' });
-  }
-
-  const existing = uniqueUsernames(userDoc.data()?.previousUsernames || []);
-  const previousUsernames = uniqueUsernames([...existing, previous]);
-
-  await userRef.set({ previousUsernames, updatedAt: new Date().toISOString() }, { merge: true });
-
-  let engagement = { migrated: 0 };
-  try {
-    engagement = await migrateEngagementForUsername(db, previous, auth.username);
-  } catch (err) {
-    console.error('claimPreviousUsername engagement migrate failed:', err.message);
-    return res.status(500).json({
-      error: 'Saved previous username but failed to migrate likes/comments',
-      details: err.message,
-    });
-  }
-
-  res.status(200).json({
-    message: 'Previous username claimed and engagement migrated',
-    previousUsernames,
-    migrated: engagement.migrated,
-  });
-}
-
 const handlers = {
   follow: handleFollow,
   unfollow: handleUnfollow,
@@ -1840,127 +1712,85 @@ const handlers = {
   registerpushtoken: handleRegisterPushToken,
   unregisterpushtoken: handleUnregisterPushToken,
   recook: handleRecook,
-  claimprevioususername: handleClaimPreviousUsername,
+  /**
+   * One-off merge helper (no full-DB scans). Merges ai/meal docs by username,
+   * then runs the targeted engagement migrator for likes/comments/tags.
+   */
   cleansocial: async (req, res) => {
     if (req.method !== 'GET') {
       return res.status(405).json({ error: 'Method Not Allowed' });
     }
-    
+
     try {
-      const db = getFirestore();
-      const batch = db.batch();
-      const now = new Date().toISOString();
+      const firestore = getFirestore();
+      const batch = firestore.batch();
 
-      // =========================================================================
-      // 🛠️ CONFIGURATION: CODES SECURED
-      // =========================================================================
-      const oldTarget = "rosh";
-      const myTrueNewUsername = "ocean_roshan7"; 
-      // =========================================================================
-
+      const oldTarget = 'rosh';
+      const myTrueNewUsername = 'ocean_roshan7';
       let totalMigratedCount = 0;
 
-      // 1. FORCE DYNAMIC DEEP OVERRIDE MERGE: "ai_suggestions" & "ai_usage" & "meal_plans"
       const targetCollections = ['ai_suggestions', 'ai_usage', 'meal_plans'];
-      
       for (const colName of targetCollections) {
-        const oldRef = db.collection(colName).doc(oldTarget);
+        const oldRef = firestore.collection(colName).doc(oldTarget);
         const oldDoc = await oldRef.get();
-        
-        const newRef = db.collection(colName).doc(myTrueNewUsername);
+        if (!oldDoc.exists) continue;
+
+        const newRef = firestore.collection(colName).doc(myTrueNewUsername);
         const newDoc = await newRef.get();
+        const oldData = oldDoc.data() || {};
+        const newData = newDoc.exists ? newDoc.data() || {} : {};
+        const mergedData = { ...oldData, ...newData };
 
-        // 🛠️ FIX: Force the merge path to execute even if the documents are locked or reading properties
-        if (oldDoc.exists) {
-          const oldData = oldDoc.data() || {};
-          const newData = newDoc.exists ? (newDoc.data() || {}) : {};
-
-          // Flatten top level data properties into your new target handle cleanly
-          const mergedData = { ...oldData, ...newData };
-
-          // Intercept and stitch together historic arrays without dropping elements
-          const arrayKeysToMerge = ['preference_suggestions', 'friend_suggestions', 'pantry_suggestions', 'history', 'items', 'recipes'];
-          arrayKeysToMerge.forEach((key) => {
-            if (Array.isArray(oldData[key]) || Array.isArray(newData[key])) {
-              const oldArray = Array.isArray(oldData[key]) ? oldData[key] : [];
-              const newArray = Array.isArray(newData[key]) ? newData[key] : [];
-              
-              const uniqueMap = new Map();
-              [...oldArray, ...newArray].forEach(item => {
-                if (item && item.id) uniqueMap.set(item.id, item);
-                else if (item) uniqueMap.set(JSON.stringify(item), item);
-              });
-              mergedData[key] = Array.from(uniqueMap.values());
-            }
-          });
-
-          if (typeof oldData.total_cached === 'number' || typeof newData.total_cached === 'number') {
-            mergedData.total_cached = Math.max(oldData.total_cached || 0, newData.total_cached || 0);
+        const arrayKeysToMerge = [
+          'preference_suggestions',
+          'friend_suggestions',
+          'pantry_suggestions',
+          'history',
+          'items',
+          'recipes',
+        ];
+        arrayKeysToMerge.forEach((key) => {
+          if (Array.isArray(oldData[key]) || Array.isArray(newData[key])) {
+            const oldArray = Array.isArray(oldData[key]) ? oldData[key] : [];
+            const newArray = Array.isArray(newData[key]) ? newData[key] : [];
+            const uniqueMap = new Map();
+            [...oldArray, ...newArray].forEach((item) => {
+              if (item && item.id) uniqueMap.set(item.id, item);
+              else if (item) uniqueMap.set(JSON.stringify(item), item);
+            });
+            mergedData[key] = Array.from(uniqueMap.values());
           }
+        });
 
-          // Write the fully consolidated record array cleanly to your active account handle
-          batch.set(newRef, mergedData, { merge: true }); // Enforce deep merge at the Firestore writing level!
-          batch.delete(oldRef); // Wipes the legacy file handle out cleanly
-          totalMigratedCount++;
+        if (typeof oldData.total_cached === 'number' || typeof newData.total_cached === 'number') {
+          mergedData.total_cached = Math.max(oldData.total_cached || 0, newData.total_cached || 0);
         }
+
+        batch.set(newRef, mergedData, { merge: true });
+        batch.delete(oldRef);
+        totalMigratedCount += 1;
       }
 
-      // 2. BACKUP LOG ROW: Make sure any lingering comments are caught
-      const allCommentsSnapshot = await db.collectionGroup('items').get();
-      allCommentsSnapshot.forEach((commentDoc) => {
-        if (commentDoc.ref.path.includes('post_comments')) {
-          const commentData = commentDoc.data() || {};
-          const currentCommentUser = String(commentData.username || '').trim().toLowerCase();
-          const targetOld = String(oldTarget || '').trim().toLowerCase();
-
-          if (currentCommentUser === targetOld) {
-            batch.update(commentDoc.ref, { username: myTrueNewUsername });
-            totalMigratedCount++;
-          }
-        }
-      });
-
-      // 3. TRANSFER LINGERING "post_likes" & "comment_likes" SUB-COLLECTIONS
-      const allSocialDocsSnapshot = await db.collectionGroup('users').get();
-      allSocialDocsSnapshot.forEach((doc) => {
-        if (doc.id.toLowerCase() === oldTarget.toLowerCase()) {
-          const path = doc.ref.path;
-          
-          if (path.includes('post_likes')) {
-            const parts = path.split('/');
-            const postId = parts[parts.length - 3];
-            const newLikeRef = db.collection('post_likes').doc(postId).collection('users').doc(myTrueNewUsername);
-            batch.set(newLikeRef, doc.data() || { timestamp: now });
-            batch.delete(doc.ref);
-            totalMigratedCount++;
-          }
-          
-          if (path.includes('comment_likes')) {
-            const parts = path.split('/');
-            const commentId = parts[parts.length - 3];
-            const newCommentLikeRef = db.collection('comment_likes').doc(commentId).collection('users').doc(myTrueNewUsername);
-            batch.set(newCommentLikeRef, doc.data() || { timestamp: now });
-            batch.delete(doc.ref);
-            totalMigratedCount++;
-          }
-        }
-      });
-
-      // Execute the fully unblocked database merge transaction block
       await batch.commit();
-      
-      console.log(`>>> Full-stack direct force merge complete! Consolidated ${totalMigratedCount} data points into ${myTrueNewUsername} <<<`);
-      return res.status(200).json({ 
-        status: 'success', 
-        message: `Successfully forced direct full-stack merge of suggestions, metrics, plans, and remaining likes straight into '${myTrueNewUsername}'!`,
-        totalRecordsProcessed: totalMigratedCount
+
+      const engagement = await migrateEngagementForUsername(
+        firestore,
+        oldTarget,
+        myTrueNewUsername
+      );
+      totalMigratedCount += engagement.migrated || 0;
+
+      return res.status(200).json({
+        status: 'success',
+        message: `Merged account docs and migrated engagement into '${myTrueNewUsername}'`,
+        totalRecordsProcessed: totalMigratedCount,
+        engagementMigrated: engagement.migrated || 0,
       });
-      
     } catch (err) {
-      console.error('Forced unified handle deep-merge pass failed:', err);
+      console.error('cleansocial failed:', err);
       return res.status(500).json({ status: 'error', message: err.message });
     }
-  }   
+  },
 };
 
 module.exports = async (req, res) => {

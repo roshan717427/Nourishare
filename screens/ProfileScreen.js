@@ -27,7 +27,13 @@ import { useNextUp } from '../context/NextUpContext';
 import PortfolioGalleryModal from '../components/PortfolioGalleryModal';
 import { API_URL } from '../config/api';
 import { authFetch, withAuthHeaders, normalizeUsername } from '../utils/apiAuth';
-import { friendlyError, friendlyErrorForResponse, httpError } from '../utils/errorMessages';
+import {
+  friendlyError,
+  friendlyErrorForResponse,
+  httpError,
+  USERNAME_MIGRATION_BUSY,
+  USERNAME_MIGRATION_FAILED,
+} from '../utils/errorMessages';
 import { colors, radii, spacing, shadows } from '../constants/theme';
 import { buildPersonalityDescription, getTraitCompoundLabel } from '../utils/personalityCopy';
 import { capitalizeList } from '../utils/titleCase';
@@ -669,14 +675,23 @@ export default function ProfileScreen({ navigation, route }) {
     } catch (err) {
       console.error("Profile save pipeline failed:", err);
 
-      // 4. MAP DICTIONARY OVERRIDES: Force user-friendly 14-day limit popup modals
-      const localizedErrorCopy = friendlyError(err, {
-        fallback: 'We couldn\u2019t save your profile. Please try again.',
-        overrides: {
-          409: 'That username is already taken by another cook.',
-          429: 'You can only change your username twice every 14 days. Please try again later.'
-        }
-      });
+      const migrationCode = err?.data?.code || err?.data?.error;
+      const migrationBackendMessage = String(err?.data?.message || '');
+      let localizedErrorCopy;
+      if (migrationCode === 'username_migration_failed') {
+        localizedErrorCopy = /busy|try again later/i.test(migrationBackendMessage)
+          ? USERNAME_MIGRATION_BUSY
+          : USERNAME_MIGRATION_FAILED;
+      } else {
+        localizedErrorCopy = friendlyError(err, {
+          fallback: 'We couldn\u2019t save your profile. Please try again.',
+          overrides: {
+            409: 'That username is already taken by another cook.',
+            429: 'You can only change your username twice every 14 days. Please try again later.',
+            503: USERNAME_MIGRATION_FAILED,
+          },
+        });
+      }
 
       Alert.alert('Could not save profile', localizedErrorCopy);
     } finally {

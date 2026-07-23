@@ -12,6 +12,10 @@ export const GENERIC_ERROR = 'Something went wrong. Please try again.';
 export const NETWORK_ERROR = "Couldn't connect. Check your internet and try again.";
 export const SESSION_ERROR = 'Please sign in again to continue.';
 export const SERVER_ERROR = 'Our servers are having trouble. Please try again shortly.';
+export const USERNAME_MIGRATION_FAILED =
+  'We could not finish changing your username. Your username was not changed. Please try again.';
+export const USERNAME_MIGRATION_BUSY =
+  'We could not finish changing your username because the service is temporarily busy. Your username was not changed. Please try again later.';
 
 // AI suggestion generation limits (Gemini + app daily quota)
 export const AI_DAILY_LIMIT =

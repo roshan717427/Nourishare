@@ -5,7 +5,6 @@ const { pickProfileUpdates, normalizeUsername } = require('./_helpers/validateIn
 const { capitalizeList } = require('../utils/titleCase');
 const {
   migrateEngagementForUsername,
-  uniqueUsernames,
 } = require('./_helpers/usernameMigration');
 
 let db;
@@ -30,6 +29,12 @@ async function cascadeUsernameSocialMigration(db, oldUsername, newUsername, migr
   const now = new Date().toISOString();
 
   console.log(`>>> Starting optimized global database cascade: ${oldUsername} -> ${newUsername} <<<`);
+
+  // 0. Engagement first (likes / comments / cookedWith) so a failure aborts before the profile rename.
+  const engagement = await migrateEngagementForUsername(db, oldUsername, newUsername);
+  console.log(
+    `>>> Engagement migration moved ${engagement.migrated} like/comment/tag refs: ${oldUsername} -> ${newUsername} <<<`
+  );
 
   // 1. MIGRATE INBOUND FOLLOWERS & OUTBOUND FOLLOWING
   const followersSnapshot = await db.collection('followers').doc(oldUsername).collection('user_followers').get();
@@ -58,7 +63,7 @@ async function cascadeUsernameSocialMigration(db, oldUsername, newUsername, migr
   });
   batch.delete(db.collection('following').doc(oldUsername));
 
-  // 2. MIGRATE INCOMING & OUTBOUND FOLLOW REQUESTS
+  // 2a. MIGRATE INCOMING FOLLOW REQUESTS (others → this user)
   const incomingReqs = await db.collection('follow_requests').doc(oldUsername).collection('requests').get();
   incomingReqs.forEach((doc) => {
     const newRef = db.collection('follow_requests').doc(newUsername).collection('requests').doc(doc.id);
@@ -71,6 +76,99 @@ async function cascadeUsernameSocialMigration(db, oldUsername, newUsername, migr
     batch.delete(peerOutgoingRef);
   });
   batch.delete(db.collection('follow_requests').doc(oldUsername));
+
+  // 2b. MIGRATE OUTGOING PENDING FOLLOW REQUESTS (this user → others)
+  //     Mirror of incoming: move follow_requests_outgoing/{old}/pending/{target}
+  //     and peer follow_requests/{target}/requests/{old} → {new}.
+  const seenNotificationPaths = new Set();
+  const queueNotificationHandleRewrite = (oldNotifRef, newNotifRef, data) => {
+    if (seenNotificationPaths.has(oldNotifRef.path)) return;
+    seenNotificationPaths.add(oldNotifRef.path);
+    const payload = {
+      ...(data || {}),
+      fromUsername: newUsername,
+    };
+    if (payload.requestId === oldUsername) {
+      payload.requestId = newUsername;
+    }
+    if (oldNotifRef.path === newNotifRef.path) {
+      batch.set(newNotifRef, payload, { merge: true });
+      return;
+    }
+    batch.set(newNotifRef, payload, { merge: true });
+    batch.delete(oldNotifRef);
+  };
+
+  const outgoingPending = await db
+    .collection('follow_requests_outgoing')
+    .doc(oldUsername)
+    .collection('pending')
+    .get();
+  for (const doc of outgoingPending.docs) {
+    const target = doc.id;
+    const newOutgoingRef = db
+      .collection('follow_requests_outgoing')
+      .doc(newUsername)
+      .collection('pending')
+      .doc(target);
+    batch.set(newOutgoingRef, doc.data() || { createdAt: now });
+    batch.delete(doc.ref);
+
+    const peerIncomingRef = db
+      .collection('follow_requests')
+      .doc(target)
+      .collection('requests')
+      .doc(oldUsername);
+    const newPeerIncomingRef = db
+      .collection('follow_requests')
+      .doc(target)
+      .collection('requests')
+      .doc(newUsername);
+    const peerIncomingSnap = await peerIncomingRef.get();
+    batch.set(
+      newPeerIncomingRef,
+      peerIncomingSnap.exists
+        ? peerIncomingSnap.data() || { status: 'pending', createdAt: now }
+        : { status: 'pending', createdAt: now }
+    );
+    batch.delete(peerIncomingRef);
+
+    // Pending follow-request notifications are keyed by fromUsername as the item id.
+    const oldNotifRef = db.collection('notifications').doc(target).collection('items').doc(oldUsername);
+    const newNotifRef = db.collection('notifications').doc(target).collection('items').doc(newUsername);
+    const oldNotifSnap = await oldNotifRef.get();
+    if (oldNotifSnap.exists) {
+      queueNotificationHandleRewrite(oldNotifRef, newNotifRef, oldNotifSnap.data());
+    }
+  }
+  batch.delete(db.collection('follow_requests_outgoing').doc(oldUsername));
+
+  // 2c. Rewrite notification payloads in OTHER users' inboxes that still cite the old handle.
+  //     Targeted collectionGroup on fromUsername (not an unfiltered items scan).
+  //     Covers accepted/declined historical follow_request rows whose outgoing pending
+  //     docs are already gone. Requires fromUsername COLLECTION_GROUP index.
+  try {
+    const notifByFromSnap = await db
+      .collectionGroup('items')
+      .where('fromUsername', '==', oldUsername)
+      .get();
+    notifByFromSnap.forEach((doc) => {
+      if (!doc.ref.path.includes('notifications/')) return;
+      const parts = doc.ref.path.split('/');
+      // notifications/{recipient}/items/{itemId}
+      const recipient = parts[1];
+      if (!recipient || recipient === oldUsername || recipient === newUsername) return;
+      const newNotifRef = db
+        .collection('notifications')
+        .doc(recipient)
+        .collection('items')
+        .doc(newUsername);
+      queueNotificationHandleRewrite(doc.ref, newNotifRef, doc.data());
+    });
+  } catch (err) {
+    // Index may not exist yet; outgoing-pending path above still rewrites active requests.
+    console.warn('fromUsername notification rewrite skipped:', err.message);
+  }
 
   // 3. MIGRATE RECIPE LOGS OWNERSHIP REFERENCES (Direct where query — super fast)
   const userLogsSnapshot = await db.collection('logs').where('username', '==', oldUsername).get();
@@ -127,17 +225,6 @@ async function cascadeUsernameSocialMigration(db, oldUsername, newUsername, migr
   batch.delete(legacyDocRef);
 
   await batch.commit();
-
-  // 9. Migrate likes / comment likes / comment authors / cookedWith tags
-  // (separate batched writes — collection-group scans can exceed one batch)
-  try {
-    const engagement = await migrateEngagementForUsername(db, oldUsername, newUsername);
-    console.log(
-      `>>> Engagement migration moved ${engagement.migrated} like/comment/tag refs: ${oldUsername} -> ${newUsername} <<<`
-    );
-  } catch (engagementErr) {
-    console.error('Engagement migration failed after core cascade:', engagementErr.message);
-  }
 
   console.log(`>>> Global username migration cascade completely synchronized: ${newUsername} <<<`);
 }
@@ -261,12 +348,6 @@ module.exports = async (req, res) => {
 
       // Compile and merge the updated profile parameters safely
       const displayName = updates.name || currentProfileData.name || '';
-      const previousUsernames = uniqueUsernames([
-        ...(Array.isArray(currentProfileData.previousUsernames)
-          ? currentProfileData.previousUsernames
-          : []),
-        oldUsername,
-      ]).filter((name) => name !== requestedNewUsername);
 
       const migratedProfileData = {
         ...currentProfileData,
@@ -274,21 +355,35 @@ module.exports = async (req, res) => {
         username: requestedNewUsername,
         nameLower: displayName.toLowerCase(),
         usernameChangeHistory: changeHistory, // Save the updated rate limit array
-        previousUsernames,
         updatedAt: new Date().toISOString()
       };
+      delete migratedProfileData.previousUsernames;
 
       // Preserve portfolio showcase highlights if present
       if (Array.isArray(currentProfileData.portfolio_favorites)) {
         migratedProfileData.portfolio_favorites = currentProfileData.portfolio_favorites;
       }
 
-      // Fire off your background cascading social map update loop
-      await cascadeUsernameSocialMigration(db, oldUsername, requestedNewUsername, migratedProfileData);
-      
-      res.status(200).json({ 
-        message: 'Username and social charts successfully migrated', 
-        username: requestedNewUsername 
+      try {
+        await cascadeUsernameSocialMigration(db, oldUsername, requestedNewUsername, migratedProfileData);
+      } catch (migrationErr) {
+        console.error('Username migration failed:', migrationErr);
+        const quotaLike = /resource.?exhausted|quota|429|too many requests/i.test(
+          String(migrationErr?.message || migrationErr?.code || '')
+        );
+        res.status(503).json({
+          error: 'username_migration_failed',
+          code: 'username_migration_failed',
+          message: quotaLike
+            ? 'We could not finish changing your username because the service is temporarily busy. Your username was not changed. Please try again later.'
+            : 'We could not finish changing your username. Your username was not changed. Please try again.',
+        });
+        return;
+      }
+
+      res.status(200).json({
+        message: 'Username and social charts successfully migrated',
+        username: requestedNewUsername,
       });
       return;
     }
