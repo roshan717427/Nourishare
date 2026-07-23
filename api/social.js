@@ -125,6 +125,11 @@
  */
 const { initializeApp, cert, getApps } = require('firebase-admin/app');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+const {
+  healViewerLikesOnPost,
+  migrateEngagementForUsername,
+  uniqueUsernames,
+} = require('./_helpers/usernameMigration');
 const { hasProfileData, rankRecommendations } = require('../utils/recommendFollows');
 const { requireAuth, requireAuthForUsername } = require('./_helpers/verifyAuth');
 const {
@@ -858,14 +863,81 @@ async function loadLikes(postId) {
     .collection('users')
     .get();
 
-  const usernames = snapshot.docs.map(d => d.id);
-  const userDocs = await Promise.all(
-    usernames.map(u => db.collection('users').doc(u).get())
+  const resolved = await Promise.all(
+    snapshot.docs.map(async (likeDoc) => {
+      const likeUsername = likeDoc.id;
+      const userDoc = await db.collection('users').doc(likeUsername).get();
+      if (userDoc.exists) {
+        return {
+          username: likeUsername,
+          name: userDoc.data().name || null,
+        };
+      }
+
+      // Username was renamed: credit the like to the current account that owns
+      // this handle in previousUsernames, so "Liked by" still shows a real name.
+      try {
+        const renamedSnap = await db
+          .collection('users')
+          .where('previousUsernames', 'array-contains', likeUsername.toLowerCase())
+          .limit(1)
+          .get();
+        if (!renamedSnap.empty) {
+          const owner = renamedSnap.docs[0];
+          return {
+            username: owner.id,
+            name: owner.data().name || null,
+          };
+        }
+      } catch (err) {
+        console.log('loadLikes previousUsername lookup failed:', err.message);
+      }
+
+      // Keep the like visible until migration/claim runs (fallback to handle).
+      return {
+        username: likeUsername,
+        name: null,
+      };
+    })
   );
-  return userDocs.map((d, i) => ({
-    username: usernames[i],
-    name: d.exists ? d.data().name || null : null,
-  }));
+
+  // De-dupe if a ghost and current-handle like both resolve to the same person.
+  const byUsername = new Map();
+  resolved.forEach((like) => {
+    if (!like?.username) return;
+    if (!byUsername.has(like.username)) byUsername.set(like.username, like);
+  });
+  return Array.from(byUsername.values());
+}
+
+async function getPreviousUsernamesForUser(username) {
+  try {
+    const doc = await db.collection('users').doc(username).get();
+    if (!doc.exists) return [];
+    return uniqueUsernames(doc.data()?.previousUsernames || []);
+  } catch (err) {
+    console.log('getPreviousUsernamesForUser failed:', err.message);
+    return [];
+  }
+}
+
+async function healViewerLikesForPost(postId, auth) {
+  if (!postId || !auth?.username) return;
+  try {
+    const previousUsernames = await getPreviousUsernamesForUser(auth.username);
+    await healViewerLikesOnPost(
+      db,
+      postId,
+      {
+        username: auth.username,
+        uid: auth.uid || null,
+        email: auth.email || auth.decoded?.email || null,
+      },
+      previousUsernames
+    );
+  } catch (err) {
+    console.error('healViewerLikesForPost failed:', err.message);
+  }
 }
 
 async function handlePostDetail(req, res) {
@@ -894,6 +966,8 @@ async function handlePostDetail(req, res) {
     return res.status(403).json({ error: 'Follow this user to view their posts' });
   }
 
+  await healViewerLikesForPost(postId, auth);
+
   const post = normalizePost(postDoc, collectionName);
   // Attach author display name for the detail header.
   if (post.username) {
@@ -908,6 +982,10 @@ async function handlePostDetail(req, res) {
     loadLikes(postId),
   ]);
   const likedByMe = viewerUsername ? likes.some(l => l.username === viewerUsername) : false;
+  // Keep denormalized count aligned with the attributed liker list after heals.
+  if (typeof post.likes_count !== 'number' || post.likes_count !== likes.length) {
+    post.likes_count = likes.length;
+  }
 
   res.status(200).json({ post, comments, likes, likedByMe });
 }
@@ -1129,49 +1207,6 @@ async function handleAddComment(req, res) {
   });
 }
 
-// =========================================================================
-// 🛠️ BACKEND INJECTION: AUTOMATED LAZY-HEALING INTERCEPTOR
-// =========================================================================
-// This checks if the user's active login token email matches a historical like
-// under an old username, and automatically updates the database to their new handle!
-async function checkAndHealUserLikeByEmail(db, postId, authSession) {
-  if (!postId || !authSession || !authSession.email) return;
-
-  const userEmail = authSession.email.toLowerCase();
-  const currentUsername = authSession.username; // Their true, new username handle
-
-  // Scan the post's sub-collection for a document that matches this email but has a different ID
-  const historicLikeSnapshot = await db.collection('post_likes')
-    .doc(postId)
-    .collection('users')
-    .where('email', '==', userEmail)
-    .get();
-
-  if (!historicLikeSnapshot.empty) {
-    historicLikeSnapshot.forEach(async (doc) => {
-      // If the document ID matches an old username (like 'rosh') instead of their current handle, migrate it!
-      if (doc.id !== currentUsername) {
-        const batch = db.batch();
-        const newLikeRef = db.collection('post_likes').doc(postId).collection('users').doc(currentUsername);
-        
-        // Prepare the payload data, falling back to a safe timestamp structure
-        const existingData = doc.data() || {};
-        existingData.email = userEmail;
-        if (!existingData.timestamp) existingData.timestamp = new Date().toISOString();
-
-        batch.set(newLikeRef, existingData);
-        batch.delete(doc.ref); // Delete the old 'rosh' node marker completely
-        
-        await batch.commit();
-        console.log(`>>> Automatically self-healed legacy like for post ${postId}: ${doc.id} -> ${currentUsername} <<<`);
-      }
-    });
-  }
-}
-
-// =========================================================================
-// 🛠️ CONTEXT INJECTION: INTEGRATING FIX 2 INTO YOUR ACTIVE CODE
-// =========================================================================
 async function handleLikes(req, res) {
   if (req.method !== 'GET') return methodNotAllowed(res);
 
@@ -1183,14 +1218,7 @@ async function handleLikes(req, res) {
   const auth = await requireAuth(req, res);
   if (!auth) return;
 
-  // 🛠️ CALL THE SELF-HEAL TRIGGER ROUTINE HERE
-  // This executes silently behind the scenes right when the user opens the post view arrays!
-  try {
-    const db = getFirestore(); // Ensure db is accessible in your file scope
-    await checkAndHealUserLikeByEmail(db, postId, auth);
-  } catch (err) {
-    console.error('Background lazy-like healing pass failed safely:', err.message);
-  }
+  await healViewerLikesForPost(postId, auth);
 
   const authorUsername = await resolvePostAuthor(postId);
   if (!authorUsername) {
@@ -1231,10 +1259,15 @@ async function handleLike(req, res) {
   }
 
   const likeRef = db.collection('post_likes').doc(validPostId).collection('users').doc(auth.username);
+  await healViewerLikesForPost(validPostId, auth);
   const existing = await likeRef.get();
   let count = postDoc.data().likes_count || 0;
   if (!existing.exists) {
-    await likeRef.set({ timestamp: FieldValue.serverTimestamp() });
+    await likeRef.set({
+      timestamp: FieldValue.serverTimestamp(),
+      uid: auth.uid || null,
+      email: auth.email || null,
+    });
     await postRef.set({ likes_count: FieldValue.increment(1) }, { merge: true });
     count += 1;
 
@@ -1418,7 +1451,11 @@ async function handleLikeComment(req, res) {
   const existing = await likeRef.get();
   let count = commentDoc.data().likes_count || 0;
   if (!existing.exists) {
-    await likeRef.set({ timestamp: FieldValue.serverTimestamp() });
+    await likeRef.set({
+      timestamp: FieldValue.serverTimestamp(),
+      uid: auth.uid || null,
+      email: auth.email || null,
+    });
     await commentRef.set({ likes_count: FieldValue.increment(1) }, { merge: true });
     count += 1;
 
@@ -1713,6 +1750,66 @@ async function handleRecook(req, res) {
 
   res.status(200).json({ message: 'ok' });
 }
+
+/**
+ * One-time repair for accounts that renamed before engagement migration existed.
+ * Body: { username, previousUsername }
+ * - previousUsername must no longer own a users/{previousUsername} doc
+ * - migrates likes/comments/tags from previousUsername -> current username
+ * - stores previousUsername on users/{username}.previousUsernames
+ */
+async function handleClaimPreviousUsername(req, res) {
+  if (req.method !== 'POST') return methodNotAllowed(res);
+
+  const { username, previousUsername } = req.body || {};
+  const auth = await requireAuthForUsername(req, res, username);
+  if (!auth) return;
+
+  const previous = normalizeUsername(previousUsername);
+  if (!previous) {
+    return res.status(400).json({ error: 'Valid previousUsername is required' });
+  }
+  if (previous === auth.username) {
+    return res.status(400).json({ error: 'previousUsername must differ from current username' });
+  }
+
+  const previousDoc = await db.collection('users').doc(previous).get();
+  if (previousDoc.exists) {
+    return res.status(409).json({
+      error: 'previousUsername still has an active profile',
+      message: 'That username is still in use, so it cannot be claimed as a prior handle.',
+    });
+  }
+
+  const userRef = db.collection('users').doc(auth.username);
+  const userDoc = await userRef.get();
+  if (!userDoc.exists) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  const existing = uniqueUsernames(userDoc.data()?.previousUsernames || []);
+  const previousUsernames = uniqueUsernames([...existing, previous]);
+
+  await userRef.set({ previousUsernames, updatedAt: new Date().toISOString() }, { merge: true });
+
+  let engagement = { migrated: 0 };
+  try {
+    engagement = await migrateEngagementForUsername(db, previous, auth.username);
+  } catch (err) {
+    console.error('claimPreviousUsername engagement migrate failed:', err.message);
+    return res.status(500).json({
+      error: 'Saved previous username but failed to migrate likes/comments',
+      details: err.message,
+    });
+  }
+
+  res.status(200).json({
+    message: 'Previous username claimed and engagement migrated',
+    previousUsernames,
+    migrated: engagement.migrated,
+  });
+}
+
 const handlers = {
   follow: handleFollow,
   unfollow: handleUnfollow,
@@ -1743,6 +1840,7 @@ const handlers = {
   registerpushtoken: handleRegisterPushToken,
   unregisterpushtoken: handleUnregisterPushToken,
   recook: handleRecook,
+  claimprevioususername: handleClaimPreviousUsername,
   cleansocial: async (req, res) => {
     if (req.method !== 'GET') {
       return res.status(405).json({ error: 'Method Not Allowed' });

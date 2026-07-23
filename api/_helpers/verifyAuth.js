@@ -78,7 +78,7 @@ async function verifyAuth(req) {
     if (!username) {
       return { error: 'invalid_token_identity', status: 401 };
     }
-    return { uid: decoded.uid, username, decoded };
+    return { uid: decoded.uid, username, email: decoded.email || null, decoded };
   } catch {
     return { error: 'invalid_token', status: 401 };
   }

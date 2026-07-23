@@ -9,6 +9,7 @@ import {
   ScrollView,
   Alert,
   View,
+  Image,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';

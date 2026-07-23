@@ -44,7 +44,7 @@ function StoryAvatar({ name, avatar, index, selected, hasSelection, onPress }) {
   const ringColor = selected
     ? colors.primary
     : hasSelection
-      ? colors.textMuted
+      ? '#7ead88'
       : accent;
   const ringWidth = selected ? 3 : 2.5;
 

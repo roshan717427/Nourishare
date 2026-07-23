@@ -3,6 +3,10 @@ const { getFirestore } = require('firebase-admin/firestore');
 const { requireAuthForUsername } = require('./_helpers/verifyAuth');
 const { pickProfileUpdates, normalizeUsername } = require('./_helpers/validateInput');
 const { capitalizeList } = require('../utils/titleCase');
+const {
+  migrateEngagementForUsername,
+  uniqueUsernames,
+} = require('./_helpers/usernameMigration');
 
 let db;
 try {
@@ -123,6 +127,18 @@ async function cascadeUsernameSocialMigration(db, oldUsername, newUsername, migr
   batch.delete(legacyDocRef);
 
   await batch.commit();
+
+  // 9. Migrate likes / comment likes / comment authors / cookedWith tags
+  // (separate batched writes — collection-group scans can exceed one batch)
+  try {
+    const engagement = await migrateEngagementForUsername(db, oldUsername, newUsername);
+    console.log(
+      `>>> Engagement migration moved ${engagement.migrated} like/comment/tag refs: ${oldUsername} -> ${newUsername} <<<`
+    );
+  } catch (engagementErr) {
+    console.error('Engagement migration failed after core cascade:', engagementErr.message);
+  }
+
   console.log(`>>> Global username migration cascade completely synchronized: ${newUsername} <<<`);
 }
 
@@ -245,12 +261,20 @@ module.exports = async (req, res) => {
 
       // Compile and merge the updated profile parameters safely
       const displayName = updates.name || currentProfileData.name || '';
+      const previousUsernames = uniqueUsernames([
+        ...(Array.isArray(currentProfileData.previousUsernames)
+          ? currentProfileData.previousUsernames
+          : []),
+        oldUsername,
+      ]).filter((name) => name !== requestedNewUsername);
+
       const migratedProfileData = {
         ...currentProfileData,
         ...updates,
         username: requestedNewUsername,
         nameLower: displayName.toLowerCase(),
         usernameChangeHistory: changeHistory, // Save the updated rate limit array
+        previousUsernames,
         updatedAt: new Date().toISOString()
       };
 

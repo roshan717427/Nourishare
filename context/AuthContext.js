@@ -62,7 +62,7 @@ export function AuthProvider({ children }) {
   const profileReadyRef = useRef(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (fbUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       const override = fbUser ? usernameOverrides.current[fbUser.uid] : undefined;
       setUser(mapFirebaseUser(fbUser, override));
       setInitializing(false);
@@ -329,20 +329,22 @@ export function AuthProvider({ children }) {
       throw new Error(data.error || 'Failed to create profile');
     }
 
+    const displayName = `${firstName.trim()} ${lastName.trim()}`;
     if (auth.currentUser) {
       usernameOverrides.current[auth.currentUser.uid] = normalized;
       try {
-        // Keep the person's real display name; only the username handle changes.
+        await updateProfile(auth.currentUser, { displayName });
+        await auth.currentUser.reload();
         await auth.currentUser.getIdToken(true);
       } catch (err) {
-        console.log('Could not refresh auth token states:', err.message);
+        console.log('Could not refresh auth profile after setup:', err.message);
       }
 
       const mapped = mapFirebaseUser(auth.currentUser, normalized);
       setUser({
         ...mapped,
-        name: user?.name || mapped.name,
-        firstName: user?.firstName || null,
+        name: displayName,
+        firstName: firstName.trim(),
       });
     }
     profileReadyRef.current = true;
