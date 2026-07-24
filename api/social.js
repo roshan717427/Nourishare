@@ -31,6 +31,10 @@
  *                   resp  { message }
  *   - notifications GET   ?action=notifications&username=<u>
  *                   resp  { notifications: [...], unreadCount }
+ *                   Hides accepted+followed-back items older than 1 day.
+ *   - dismissNotification POST  ?action=dismissNotification
+ *                   body  { username, notificationId }  (id = items doc id / fromUsername)
+ *                   resp  { message }
  *   - sentFollowRequests GET ?action=sentFollowRequests&username=<u>
  *                   resp  { pending: [{ username, createdAt }] }
  *   - unfollow      POST  ?action=unfollow
@@ -124,7 +128,7 @@
  * without extra per-post reads.
  */
 const { initializeApp, cert, getApps } = require('firebase-admin/app');
-const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+const { getFirestore, FieldValue, Timestamp } = require('firebase-admin/firestore');
 const {
   migrateEngagementForUsername,
 } = require('./_helpers/usernameMigration');
@@ -156,6 +160,10 @@ const SEARCH_RESULT_LIMIT = 20;
 const RECOMMENDED_CANDIDATE_LIMIT = 50;
 const RECOMMENDED_RESULT_LIMIT = 6;
 const FEED_LIMIT = 50;
+/** Home feed only shows posts from the last 3 days (older posts stay in profiles/DB). */
+const FEED_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
+/** Accepted + followed-back notifications drop off the list after this. */
+const RESOLVED_NOTIFICATION_HIDE_MS = 24 * 60 * 60 * 1000;
 
 // Fields that must never be exposed to a non-owner / unauthenticated caller.
 // `email`/`uid` enable account enumeration + impersonation; push token fields
@@ -334,6 +342,21 @@ async function handleFollow(req, res) {
       status: 'pending',
     }),
   ]);
+
+  // If this is a follow-back after accepting their request, mark our inbox item resolved.
+  const inboundNotifRef = db
+    .collection('notifications')
+    .doc(auth.username)
+    .collection('items')
+    .doc(targetUser);
+  try {
+    const inboundNotif = await inboundNotifRef.get();
+    if (inboundNotif.exists && inboundNotif.data()?.status === 'accepted') {
+      await inboundNotifRef.set({ followedBackAt: timestamp }, { merge: true });
+    }
+  } catch (err) {
+    console.warn('followedBackAt update skipped:', err.message);
+  }
 
   await sendInteractionNotification({
     recipientUsername: targetUser,
@@ -556,25 +579,51 @@ async function handleFeed(req, res) {
     return res.status(200).json({ recipe_posts: [] });
   }
 
-  // Firestore `in` queries allow at most 10 values, so batch the followed set.
-  // We sort in memory (rather than orderBy) so neither collection needs a
-  // composite index, and so logs (createdAt) and recipe_posts (created_at) can
-  // be merged on a single normalized timestamp.
+  // Firestore `in` queries allow at most 10 values. Bound each query by the
+  // 3-day cutoff + orderBy/limit so we never read a followed user's full history
+  // into the feed (old posts remain in Firestore and on profiles).
   const chunks = chunk(visibleFollowed, 10);
+  const feedCutoffMs = Date.now() - FEED_MAX_AGE_MS;
+  const feedCutoffTs = Timestamp.fromMillis(feedCutoffMs);
   const posts = [];
+
   for (const collectionName of POST_COLLECTIONS) {
+    const timeField = collectionName === 'logs' ? 'createdAt' : 'created_at';
     for (const batch of chunks) {
-      const snapshot = await db
-        .collection(collectionName)
-        .where('username', 'in', batch)
-        .get();
-      snapshot.forEach(doc => posts.push(normalizePost(doc, collectionName)));
+      try {
+        const snapshot = await db
+          .collection(collectionName)
+          .where('username', 'in', batch)
+          .where(timeField, '>=', feedCutoffTs)
+          .orderBy(timeField, 'desc')
+          .limit(FEED_LIMIT)
+          .get();
+        snapshot.forEach((doc) => posts.push(normalizePost(doc, collectionName)));
+      } catch (queryErr) {
+        // Index still building, or mixed timestamp types — fall back to a
+        // bounded in-memory filter (may read more until indexes are ready).
+        console.warn(
+          `feed query fallback (${collectionName}/${timeField}):`,
+          queryErr.message
+        );
+        const snapshot = await db
+          .collection(collectionName)
+          .where('username', 'in', batch)
+          .get();
+        snapshot.forEach((doc) => {
+          const post = normalizePost(doc, collectionName);
+          if (post.created_at_ms > 0 && post.created_at_ms >= feedCutoffMs) {
+            posts.push(post);
+          }
+        });
+      }
     }
   }
 
   posts.sort((a, b) => b.created_at_ms - a.created_at_ms);
   const trimmedPosts = posts
     .filter((post) => !blockedSet.has(String(post.username || '').toLowerCase()))
+    .filter((post) => post.created_at_ms > 0 && post.created_at_ms >= feedCutoffMs)
     .slice(0, FEED_LIMIT);
 
   const uniqueUsernames = [...new Set(trimmedPosts.map(post => post.username).filter(Boolean))];
@@ -1507,10 +1556,25 @@ async function handleAcceptFollowRequest(req, res) {
   }
 
   const timestamp = FieldValue.serverTimestamp();
+  const alreadyFollowingBack = await db
+    .collection('following')
+    .doc(auth.username)
+    .collection('user_following')
+    .doc(fromUser)
+    .get();
+  const notifUpdate = {
+    status: 'accepted',
+    read: true,
+    acceptedAt: timestamp,
+  };
+  if (alreadyFollowingBack.exists) {
+    notifUpdate.followedBackAt = timestamp;
+  }
+
   await Promise.all([
     requestRef.set({ status: 'accepted', acceptedAt: timestamp }, { merge: true }),
     outgoingRef.delete(),
-    notificationRef.set({ status: 'accepted', read: true, acceptedAt: timestamp }, { merge: true }),
+    notificationRef.set(notifUpdate, { merge: true }),
   ]);
 
   const accepterName = await resolveDisplayName(db, auth.username);
@@ -1586,27 +1650,86 @@ async function handleNotifications(req, res) {
     snapshot = await db.collection('notifications').doc(username).collection('items').limit(50).get();
   }
 
+  const now = Date.now();
   const notifications = [];
   let unreadCount = 0;
+  const autoHideRefs = [];
+
   for (const doc of snapshot.docs) {
     const data = doc.data() || {};
     const createdAt = toMillis(data.createdAt);
+    const status = data.status || 'pending';
+    const fromUsername = data.fromUsername || doc.id;
+    const acceptedAt = toMillis(data.acceptedAt);
+    const followedBackAt = toMillis(data.followedBackAt);
+
+    // Accepted + followed back: hide after 1 day (delete stale docs best-effort).
+    if (status === 'accepted') {
+      let hasFollowedBack = followedBackAt > 0;
+      if (!hasFollowedBack) {
+        const followSnap = await db
+          .collection('following')
+          .doc(username)
+          .collection('user_following')
+          .doc(fromUsername)
+          .get();
+        hasFollowedBack = followSnap.exists;
+      }
+      if (hasFollowedBack) {
+        const resolvedAt = followedBackAt || acceptedAt || createdAt;
+        if (resolvedAt > 0 && now - resolvedAt >= RESOLVED_NOTIFICATION_HIDE_MS) {
+          autoHideRefs.push(doc.ref);
+          continue;
+        }
+      }
+    }
+
     if (!data.read) unreadCount += 1;
     notifications.push({
       id: doc.id,
       type: data.type || 'follow_request',
-      fromUsername: data.fromUsername || doc.id,
+      fromUsername,
       fromName: data.fromName || data.fromUsername || doc.id,
       read: !!data.read,
-      status: data.status || 'pending',
+      status,
       createdAt,
+      acceptedAt: acceptedAt || null,
+      followedBackAt: followedBackAt || null,
       requestId: data.requestId || doc.id,
     });
+  }
+
+  if (autoHideRefs.length > 0) {
+    try {
+      for (let i = 0; i < autoHideRefs.length; i += 400) {
+        const batch = db.batch();
+        autoHideRefs.slice(i, i + 400).forEach((ref) => batch.delete(ref));
+        await batch.commit();
+      }
+    } catch (err) {
+      console.warn('auto-hide notification cleanup skipped:', err.message);
+    }
   }
 
   notifications.sort((a, b) => b.createdAt - a.createdAt);
 
   res.status(200).json({ notifications, unreadCount });
+}
+
+async function handleDismissNotification(req, res) {
+  if (req.method !== 'POST') return methodNotAllowed(res);
+
+  const { username, notificationId, fromUsername, from_username } = req.body || {};
+  const auth = await requireAuthForUsername(req, res, username);
+  if (!auth) return;
+
+  const id = normalizeUsername(notificationId || fromUsername || from_username);
+  if (!id) {
+    return res.status(400).json({ error: 'Valid notificationId is required' });
+  }
+
+  await db.collection('notifications').doc(auth.username).collection('items').doc(id).delete();
+  res.status(200).json({ message: 'Notification dismissed' });
 }
 
 async function handleSentFollowRequests(req, res) {
@@ -1861,6 +1984,7 @@ const handlers = {
   acceptfollowrequest: handleAcceptFollowRequest,
   declinefollowrequest: handleDeclineFollowRequest,
   notifications: handleNotifications,
+  dismissnotification: handleDismissNotification,
   sentfollowrequests: handleSentFollowRequests,
   registerpushtoken: handleRegisterPushToken,
   unregisterpushtoken: handleUnregisterPushToken,
