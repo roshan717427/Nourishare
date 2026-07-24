@@ -15,6 +15,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import BottomNavigation from '../components/BottomNavigation';
 import { useAuth } from '../context/AuthContext';
@@ -38,6 +39,11 @@ import { AI_FOOD_SAFETY_DISCLAIMER } from '../constants/aiDisclaimer';
 
 const CARD_WIDTH = 200;
 const IMAGE_HEIGHT = 150;
+const GREETING_DISMISSED_PREFIX = '@nourishare/ai_greeting_dismissed_';
+
+function getGreetingDismissedKey(username) {
+  return `${GREETING_DISMISSED_PREFIX}${username || 'anon'}`;
+}
 
 function SectionHeader({ eyebrow, title, icon, accentColor, tintBg }) {
   return (
@@ -342,8 +348,24 @@ export default function AISuggestionsScreen({ navigation }) {
   const [pantrySkipped, setPantrySkipped] = useState(false);
   const [hasStartedGeneration, setHasStartedGeneration] = useState(false);
   const [hasLoadedCache, setHasLoadedCache] = useState(false);
+  const [greetingDismissed, setGreetingDismissed] = useState(false);
 
   // 3. EFFECT TIMING HOOKS NEXT
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(getGreetingDismissedKey(username));
+        if (!cancelled) setGreetingDismissed(raw === '1');
+      } catch {
+        if (!cancelled) setGreetingDismissed(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [username]);
+
   useEffect(() => {
     const fromAuth = resolveGreetingName(user);
     if (fromAuth) {
@@ -580,6 +602,15 @@ export default function AISuggestionsScreen({ navigation }) {
 
   const generateDisabled = generating || generationsRemaining <= 0;
 
+  const handleDismissGreeting = useCallback(async () => {
+    setGreetingDismissed(true);
+    try {
+      await AsyncStorage.setItem(getGreetingDismissedKey(username), '1');
+    } catch (err) {
+      console.log('Could not persist greeting dismissal:', err?.message);
+    }
+  }, [username]);
+
   const renderGenerateButton = () => (
     <View style={styles.generateWrap}>
       <TouchableOpacity
@@ -730,27 +761,41 @@ export default function AISuggestionsScreen({ navigation }) {
           keyboardDismissMode="interactive"
           automaticallyAdjustKeyboardInsets
         >
-        <View style={[styles.greetingCard, shadows.cardSoft]}>
-          <LinearGradient
-            colors={[colors.cardWarm, colors.card]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.greetingGradient}
-          >
-            <View style={styles.greetingAccent} />
-            <View style={styles.greetingContent}>
-              <View style={styles.greetingIconWrap}>
-                <Ionicons name="bulb-outline" size={18} color={colors.primary} />
-              </View>
-              <Text style={styles.greeting}>{greetingText}</Text>
+        {!greetingDismissed ? (
+          <>
+            <View style={[styles.greetingCard, shadows.cardSoft]}>
+              <TouchableOpacity
+                style={styles.greetingDismissBtn}
+                onPress={handleDismissGreeting}
+                hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel="Dismiss welcome message"
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={18} color={colors.textMuted} />
+              </TouchableOpacity>
+              <LinearGradient
+                colors={[colors.cardWarm, colors.card]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.greetingGradient}
+              >
+                <View style={styles.greetingAccent} />
+                <View style={styles.greetingContent}>
+                  <View style={styles.greetingIconWrap}>
+                    <Ionicons name="bulb-outline" size={18} color={colors.primary} />
+                  </View>
+                  <Text style={styles.greeting}>{greetingText}</Text>
+                </View>
+              </LinearGradient>
             </View>
-          </LinearGradient>
-        </View>
 
-        <View style={styles.aiDisclaimerCard}>
-          <Ionicons name="shield-checkmark-outline" size={16} color={colors.textSecondary} />
-          <Text style={styles.aiDisclaimer}>{AI_FOOD_SAFETY_DISCLAIMER}</Text>
-        </View>
+            <View style={styles.aiDisclaimerCard}>
+              <Ionicons name="shield-checkmark-outline" size={16} color={colors.textSecondary} />
+              <Text style={styles.aiDisclaimer}>{AI_FOOD_SAFETY_DISCLAIMER}</Text>
+            </View>
+          </>
+        ) : null}
 
         {renderGenerateButton()}
 
@@ -1098,6 +1143,19 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: colors.border,
+    position: 'relative',
+  },
+  greetingDismissBtn: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 2,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.cardWarm,
   },
   greetingGradient: {
     flexDirection: 'row',
@@ -1112,6 +1170,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     padding: spacing.md + 2,
+    paddingRight: spacing.md + 30,
     gap: 12,
   },
   greetingIconWrap: {

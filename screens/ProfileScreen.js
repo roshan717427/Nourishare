@@ -29,7 +29,7 @@ import PortfolioGalleryModal from '../components/PortfolioGalleryModal';
 import { openSafetyActions } from '../components/SafetyMenuButton';
 import { blockUser, unblockUser, fetchBlockedUsers } from '../utils/moderationApi';
 import { API_URL } from '../config/api';
-import { PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from '../config/legal';
+import { PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL, SUPPORT_URL } from '../config/legal';
 import { authFetch, withAuthHeaders, normalizeUsername } from '../utils/apiAuth';
 import {
   friendlyError,
@@ -943,7 +943,7 @@ export default function ProfileScreen({ navigation, route }) {
             <Text style={styles.joinedDate}>Joined {joinedYear}</Text>
           ) : null}
 
-          {!isOwnProfile && (
+          {!isOwnProfile ? (
             <View style={{ width: '100%', alignItems: 'center', gap: 10 }}>
               <View style={styles.profileActionRow}>
                 <TouchableOpacity
@@ -1007,10 +1007,10 @@ export default function ProfileScreen({ navigation, route }) {
                 <Text style={styles.blockButtonText}>Report</Text>
               </TouchableOpacity>
             </View>
-          )}
+          ) : null}
         </LinearGradient>
 
-        {isOwnProfile && (
+        {isOwnProfile ? (
           <View style={styles.editProfileSection}>
             <TouchableOpacity
               style={styles.editProfileButton}
@@ -1022,9 +1022,9 @@ export default function ProfileScreen({ navigation, route }) {
               <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
-        )}
+        ) : null}
 
-        {isOwnProfile && (
+        {isOwnProfile ? (
           <View style={styles.section}>
             <View style={styles.cookNextHeader}>
               <View style={styles.cookNextTitleRow}>
@@ -1071,7 +1071,7 @@ export default function ProfileScreen({ navigation, route }) {
               </ScrollView>
             )}
           </View>
-        )}
+        ) : null}
 
         <View style={styles.section}>
           <View style={styles.sectionTitleRow}>
@@ -1212,7 +1212,7 @@ export default function ProfileScreen({ navigation, route }) {
           </View>
         </View>
 
-        {showCookingFrequency && (
+        {showCookingFrequency ? (
           <View style={styles.section}>
             <View style={styles.sectionTitleRow}>
               <Ionicons name="calendar-outline" size={20} color={colors.accentDark} />
@@ -1222,9 +1222,9 @@ export default function ProfileScreen({ navigation, route }) {
             </View>
             <BarChart data={cookingFrequencyData} />
           </View>
-        )}
+        ) : null}
 
-        {isOwnProfile && (
+        {isOwnProfile ? (
           <View style={styles.signOutSection}>
             <TouchableOpacity
               style={styles.signOutButton}
@@ -1235,7 +1235,7 @@ export default function ProfileScreen({ navigation, route }) {
               <Text style={styles.signOutButtonText}>Sign out</Text>
             </TouchableOpacity>
           </View>
-        )}
+        ) : null}
       </ScrollView>
 
       <BottomNavigation navigation={navigation} activeTab={isOwnProfile ? 'Profile' : 'Explore'} />
@@ -1372,6 +1372,17 @@ export default function ProfileScreen({ navigation, route }) {
                 Your cooking stats still update automatically. Custom traits and tags stay as you set them.
               </Text>
 
+              {SUPPORT_URL ? (
+                <TouchableOpacity
+                  style={styles.legalLinkButton}
+                  onPress={() => Linking.openURL(SUPPORT_URL)}
+                  activeOpacity={0.7}
+                  accessibilityRole="link"
+                  accessibilityLabel="Open Support"
+                >
+                  <Text style={styles.legalLinkText}>Support</Text>
+                </TouchableOpacity>
+              ) : null}
               <TouchableOpacity
                 style={styles.legalLinkButton}
                 onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}

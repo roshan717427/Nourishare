@@ -36,7 +36,7 @@ function GalleryTile({
         <View style={[styles.tileImage, styles.tilePlaceholder]}>
           <Ionicons name="restaurant-outline" size={28} color={colors.textMuted} />
         </View>
-      )}}
+      )}
       {showDelete ? (
         <TouchableOpacity
           style={styles.deleteButton}
