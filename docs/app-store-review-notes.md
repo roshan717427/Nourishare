@@ -4,6 +4,7 @@
 
 - [ ] Publish Privacy Policy + Terms of Service as one public Google Doc (“Publish to web” or anyone-with-link view). Confirm the HTTPS URL opens without signing in.
 - [ ] Point `config/legal.js` (`PRIVACY_POLICY_URL` and `TERMS_OF_SERVICE_URL`) at that Google Doc URL (same URL for both is fine).
+- [ ] Publish Support Google Doc from `docs/nourishare-support.md`; set `SUPPORT_URL` in `config/legal.js` and App Store Connect → Support URL to that link.
 - [ ] App Store Connect → App Privacy → set Privacy Policy URL to the Google Doc link.
 - [ ] Age rating questionnaire: target **13+** (UGC with filtering + report/block; no unrestricted mature content).
 - [ ] Review Notes: paste text from [moderation-sop.md](./moderation-sop.md); include demo username/password.
