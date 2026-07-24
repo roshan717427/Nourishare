@@ -10,6 +10,7 @@ import {
   Alert,
   View,
   Image,
+  Linking,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -27,6 +28,8 @@ import {
   validatePersonName,
   validateUsername,
 } from '../utils/signupValidation';
+import { PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL, TERMS_VERSION } from '../config/legal';
+import { findBlockedLanguage, BLOCKED_LANGUAGE_MESSAGE } from '../utils/profanityCheck';
 
 export default function SignUpScreen({ navigation, route }) {
   const { signUp, markProfileReady } = useAuth();
@@ -36,6 +39,7 @@ export default function SignUpScreen({ navigation, route }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSignUp = async () => {
@@ -63,9 +67,24 @@ export default function SignUpScreen({ navigation, route }) {
       Alert.alert('Invalid username', usernameError);
       return;
     }
+    if (
+      findBlockedLanguage(trimmedFirstName) ||
+      findBlockedLanguage(trimmedLastName) ||
+      findBlockedLanguage(trimmedUsername)
+    ) {
+      Alert.alert('Not allowed', BLOCKED_LANGUAGE_MESSAGE);
+      return;
+    }
     const passwordError = validatePassword(password);
     if (passwordError) {
       Alert.alert('Invalid password', passwordError);
+      return;
+    }
+    if (!acceptedTerms) {
+      Alert.alert(
+        'Terms required',
+        'Please accept the Terms of Service to create an account. Explicit images, bullying, and hate speech are not allowed and can result in an immediate ban.'
+      );
       return;
     }
 
@@ -78,6 +97,8 @@ export default function SignUpScreen({ navigation, route }) {
       firstName: trimmedFirstName,
       lastName: trimmedLastName,
       email: trimmedEmail,
+      acceptedTermsAt: new Date().toISOString(),
+      acceptedTermsVersion: TERMS_VERSION,
     };
     
     try {
@@ -256,6 +277,38 @@ export default function SignUpScreen({ navigation, route }) {
             <Text style={styles.helperText}>{PASSWORD_HINT}</Text>
 
             <TouchableOpacity
+              style={styles.termsRow}
+              onPress={() => setAcceptedTerms((prev) => !prev)}
+              activeOpacity={0.8}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: acceptedTerms }}
+              accessibilityLabel="Accept Terms of Service"
+            >
+              <Ionicons
+                name={acceptedTerms ? 'checkbox' : 'square-outline'}
+                size={22}
+                color={acceptedTerms ? colors.primary : colors.textMuted}
+              />
+              <Text style={styles.termsText}>
+                I agree to the{' '}
+                <Text
+                  style={styles.termsLink}
+                  onPress={() => Linking.openURL(TERMS_OF_SERVICE_URL)}
+                >
+                  Terms of Service
+                </Text>
+                {' '}and{' '}
+                <Text
+                  style={styles.termsLink}
+                  onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}
+                >
+                  Privacy Policy
+                </Text>
+                . Explicit images, bullying, and hate speech result in an immediate ban.
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
               style={[styles.signUpButton, isSubmitting && styles.signUpButtonDisabled]}
               onPress={handleSignUp}
               activeOpacity={0.85}
@@ -386,6 +439,23 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: '700',
+  },
+  termsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginBottom: 16,
+  },
+  termsText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 19,
+    color: colors.textSecondary,
+  },
+  termsLink: {
+    color: colors.primary,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
   },
   loginRow: {
     marginTop: 24,

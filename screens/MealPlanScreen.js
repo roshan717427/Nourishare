@@ -21,6 +21,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import { useNextUp } from '../context/NextUpContext';
 import { colors, radii, spacing, shadows } from '../constants/theme';
+import { AI_FOOD_SAFETY_DISCLAIMER } from '../constants/aiDisclaimer';
 import {
   addDays,
   fetchMealPlan,
@@ -571,6 +572,8 @@ export default function MealPlanScreen({ navigation }) {
           onPress={() => navigation.goBack()}
           style={styles.headerButton}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
         >
           <Ionicons name="arrow-back" size={22} color="#fff" />
         </TouchableOpacity>
@@ -582,6 +585,7 @@ export default function MealPlanScreen({ navigation }) {
           onPress={openShoppingList}
           style={styles.headerButton}
           activeOpacity={0.7}
+          accessibilityRole="button"
           accessibilityLabel="Shopping list"
         >
           <Ionicons name="basket-outline" size={22} color="#fff" />
@@ -589,13 +593,30 @@ export default function MealPlanScreen({ navigation }) {
       </LinearGradient>
 
       <View style={styles.weekNav}>
-        <TouchableOpacity onPress={goPrevWeek} style={styles.weekNavBtn} activeOpacity={0.7}>
+        <TouchableOpacity
+          onPress={goPrevWeek}
+          style={styles.weekNavBtn}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Previous week"
+        >
           <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
         </TouchableOpacity>
-        <TouchableOpacity onPress={goToday} activeOpacity={0.7}>
+        <TouchableOpacity
+          onPress={goToday}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Jump to this week"
+        >
           <Text style={styles.weekNavLabel}>{rangeLabel}</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={goNextWeek} style={styles.weekNavBtn} activeOpacity={0.7}>
+        <TouchableOpacity
+          onPress={goNextWeek}
+          style={styles.weekNavBtn}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Next week"
+        >
           <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
         </TouchableOpacity>
       </View>
@@ -677,6 +698,17 @@ export default function MealPlanScreen({ navigation }) {
           <Text style={styles.nextUpTitle}>Cook Next</Text>
           <Text style={styles.nextUpHint}>Tap a recipe, then tap a day</Text>
         </View>
+        {nextUpItems.some(
+          (r) =>
+            r.fromAiSuggestion ||
+            r.section === 'friend' ||
+            r.section === 'preference' ||
+            r.section === 'pantry'
+        ) ? (
+          <Text style={styles.nextUpAiDisclaimer} maxFontSizeMultiplier={1.4}>
+            {AI_FOOD_SAFETY_DISCLAIMER}
+          </Text>
+        ) : null}
         {nextUpLoading ? (
           <ActivityIndicator color={colors.accent} style={{ marginVertical: 12 }} />
         ) : nextUpItems.length === 0 ? (
@@ -923,7 +955,13 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     fontSize: 12,
     color: colors.textMuted,
-    fontWeight: '500',
+  },
+  nextUpAiDisclaimer: {
+    paddingHorizontal: spacing.md + 4,
+    marginBottom: spacing.sm,
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.textSecondary,
   },
   nextUpRow: {
     paddingHorizontal: spacing.md + 4,
@@ -1089,6 +1127,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: colors.text,
+    maxFontSizeMultiplier: 1.5,
   },
   shoppingRecipes: {
     fontSize: 12,

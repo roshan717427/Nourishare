@@ -101,6 +101,12 @@ export function NextUpProvider({ children }) {
         ingredientsNeed: recipe.ingredientsNeed || recipe.ingredients_need || null,
         ingredientsMightHave:
           recipe.ingredientsMightHave || recipe.ingredients_might_have || null,
+        fromAiSuggestion: Boolean(
+          recipe.fromAiSuggestion ||
+            recipe.section === 'friend' ||
+            recipe.section === 'preference' ||
+            recipe.section === 'pantry'
+        ),
         addedAt: Date.now(),
       };
       setItems((prev) => {

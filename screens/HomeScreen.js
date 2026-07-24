@@ -20,7 +20,9 @@ import { useAuth } from '../context/AuthContext';
 import { API_URL } from '../config/api';
 import { withAuthHeaders, authFetch } from '../utils/apiAuth';
 import CookedWithTags from '../components/CookedWithTags';
+import { SafetyMenuButton } from '../components/SafetyMenuButton';
 import { colors, radii } from '../constants/theme';
+import { useContentMaxWidth } from '../hooks/useContentMaxWidth';
 
 const CARD_ACCENTS = [colors.primary, colors.accent, colors.secondary, colors.chipAmberText];
 const FEED_REFRESH_MS = 3 * 24 * 60 * 60 * 1000;
@@ -71,7 +73,7 @@ function StoryAvatar({ name, avatar, index, selected, hasSelection, onPress }) {
   );
 }
 
-function FeedCard({ item, onPress, onPressUser, accentColor }) {
+function FeedCard({ item, onPress, onPressUser, accentColor, viewerUsername, onBlocked }) {
   const authorName = item.user?.name || item.user?.username || item.username || 'Someone';
   const authorAvatar = item.user?.profilePhotoUrl;
   const authorUsername = item.user?.username || item.username;
@@ -101,6 +103,15 @@ function FeedCard({ item, onPress, onPressUser, accentColor }) {
             )}
           </TouchableOpacity>
           <Text style={styles.cardTime}>{timeAgo(item.created_at_ms)}</Text>
+          <View style={{ marginLeft: 'auto' }}>
+            <SafetyMenuButton
+              viewerUsername={viewerUsername}
+              targetUsername={authorUsername}
+              targetType="post"
+              targetId={item.id}
+              onBlocked={onBlocked}
+            />
+          </View>
         </View>
         <Text style={styles.cardTitle}>
           {authorName} cooked {item.title}
@@ -157,6 +168,7 @@ function EmptyFeed() {
 export default function HomeScreen({ navigation }) {
   const { user, following, refreshSocialState } = useAuth();
   const username = user?.username;
+  const { horizontalPadding } = useContentMaxWidth(720);
 
   const [feed, setFeed] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -309,7 +321,7 @@ export default function HomeScreen({ navigation }) {
   const showEmpty = !hasFollowing || (!loading && feed.length === 0);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, horizontalPadding > 0 && { paddingHorizontal: horizontalPadding }]}>
       <StatusBar style="dark" />
 
       <MunchableHeader
@@ -318,6 +330,8 @@ export default function HomeScreen({ navigation }) {
             onPress={() => navigation.navigate('Notifications')}
             activeOpacity={0.7}
             style={styles.bellButton}
+            accessibilityRole="button"
+            accessibilityLabel="Notifications"
           >
             <Ionicons name="notifications-outline" size={24} color="#fff" />
             {unreadNotifications > 0 ? (
@@ -392,6 +406,15 @@ export default function HomeScreen({ navigation }) {
                 <FeedCard
                   item={item}
                   accentColor={CARD_ACCENTS[index % CARD_ACCENTS.length]}
+                  viewerUsername={username}
+                  onBlocked={(blockedUsername) => {
+                    setFeed((prev) =>
+                      prev.filter(
+                        (p) =>
+                          (p.user?.username || p.username) !== blockedUsername
+                      )
+                    );
+                  }}
                   onPress={() => openPost(item)}
                   onPressUser={(targetUsername) =>
                     navigation.navigate('Profile', { username: targetUsername })

@@ -128,6 +128,12 @@ const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const {
   migrateEngagementForUsername,
 } = require('./_helpers/usernameMigration');
+const {
+  normalizeBlockedList,
+  getBlockedUsersFor,
+  isEitherBlocked,
+} = require('./_helpers/blockList');
+const { assertCleanText } = require('./_helpers/contentSafety');
 const { hasProfileData, rankRecommendations } = require('../utils/recommendFollows');
 const { requireAuth, requireAuthForUsername } = require('./_helpers/verifyAuth');
 const {
@@ -543,7 +549,10 @@ async function handleFeed(req, res) {
     .get();
 
   const followedUsers = followingSnapshot.docs.map(doc => doc.id);
-  if (followedUsers.length === 0) {
+  const blockedUsers = await getBlockedUsersFor(db, username);
+  const blockedSet = new Set(blockedUsers);
+  const visibleFollowed = followedUsers.filter((u) => !blockedSet.has(String(u).toLowerCase()));
+  if (visibleFollowed.length === 0) {
     return res.status(200).json({ recipe_posts: [] });
   }
 
@@ -551,7 +560,7 @@ async function handleFeed(req, res) {
   // We sort in memory (rather than orderBy) so neither collection needs a
   // composite index, and so logs (createdAt) and recipe_posts (created_at) can
   // be merged on a single normalized timestamp.
-  const chunks = chunk(followedUsers, 10);
+  const chunks = chunk(visibleFollowed, 10);
   const posts = [];
   for (const collectionName of POST_COLLECTIONS) {
     for (const batch of chunks) {
@@ -564,7 +573,9 @@ async function handleFeed(req, res) {
   }
 
   posts.sort((a, b) => b.created_at_ms - a.created_at_ms);
-  const trimmedPosts = posts.slice(0, FEED_LIMIT);
+  const trimmedPosts = posts
+    .filter((post) => !blockedSet.has(String(post.username || '').toLowerCase()))
+    .slice(0, FEED_LIMIT);
 
   const uniqueUsernames = [...new Set(trimmedPosts.map(post => post.username).filter(Boolean))];
   const userDocs = await Promise.all(
@@ -798,6 +809,11 @@ async function handleCheckUsername(req, res) {
     return res.status(400).json({ error: 'Valid username is required' });
   }
 
+  // Reserved handle used when accounts are deleted; treat as taken.
+  if (username === 'deleted_user') {
+    return res.status(200).json({ exists: true });
+  }
+
   const doc = await db.collection('users').doc(username).get();
   res.status(200).json({ exists: doc.exists });
 }
@@ -1012,7 +1028,15 @@ async function handleAddComment(req, res) {
   if (!auth) return;
 
   const validPostId = validatePostId(postId);
-  const commentText = sanitizeCommentText(text);
+  let commentText;
+  try {
+    commentText = assertCleanText(sanitizeCommentText(text), { field: 'comment', allowEmpty: false });
+  } catch (cleanErr) {
+    return res.status(cleanErr.status || 400).json({
+      error: cleanErr.code || 'invalid_text',
+      message: cleanErr.message,
+    });
+  }
   if (!validPostId || !commentText) {
     return res.status(400).json({ error: 'Valid postId and comment text are required' });
   }
@@ -1045,6 +1069,9 @@ async function handleAddComment(req, res) {
 
   if (!(await userFollows(auth.username, postDoc.data().username || null))) {
     return res.status(403).json({ error: 'Follow this user to comment on their posts' });
+  }
+  if (await isEitherBlocked(db, auth.username, postDoc.data().username || null)) {
+    return res.status(403).json({ error: 'You cannot interact with this user' });
   }
 
   const itemsRef = db.collection('post_comments').doc(validPostId).collection('items');
@@ -1682,6 +1709,132 @@ async function handleRecook(req, res) {
   res.status(200).json({ message: 'ok' });
 }
 
+async function handleReport(req, res) {
+  if (req.method !== 'POST') return methodNotAllowed(res);
+
+  const { username, targetType, targetId, targetUsername, reason } = req.body || {};
+  const auth = await requireAuthForUsername(req, res, username);
+  if (!auth) return;
+
+  const type = String(targetType || '')
+    .trim()
+    .toLowerCase();
+  const allowedTypes = new Set(['post', 'comment', 'photo', 'profile', 'user']);
+  if (!allowedTypes.has(type)) {
+    return res.status(400).json({ error: 'Valid targetType is required' });
+  }
+
+  let cleanReason;
+  try {
+    cleanReason = assertCleanText(sanitizeCommentText(reason) || 'Inappropriate content', {
+      field: 'reason',
+      allowEmpty: false,
+    });
+  } catch (err) {
+    return res.status(err.status || 400).json({ error: err.code || 'invalid_text', message: err.message });
+  }
+
+  const report = {
+    reporterUsername: auth.username,
+    reporterUid: auth.uid || null,
+    targetType: type,
+    targetId: validatePostId(targetId) || String(targetId || '').trim().slice(0, 128) || null,
+    targetUsername: normalizeUsername(targetUsername) || null,
+    reason: cleanReason.slice(0, 500),
+    status: 'open',
+    createdAt: new Date().toISOString(),
+  };
+
+  const ref = await db.collection('reports').add(report);
+  res.status(201).json({ message: 'Report submitted', reportId: ref.id });
+}
+
+async function handleBlock(req, res) {
+  if (req.method !== 'POST') return methodNotAllowed(res);
+
+  const { username, targetUsername } = req.body || {};
+  const auth = await requireAuthForUsername(req, res, username);
+  if (!auth) return;
+
+  const target = normalizeUsername(targetUsername);
+  if (!target) {
+    return res.status(400).json({ error: 'Valid targetUsername is required' });
+  }
+  if (target === auth.username) {
+    return res.status(400).json({ error: 'You cannot block yourself' });
+  }
+
+  const userRef = db.collection('users').doc(auth.username);
+  const userDoc = await userRef.get();
+  if (!userDoc.exists) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  const blockedUsers = normalizeBlockedList([
+    ...(userDoc.data()?.blockedUsers || []),
+    target,
+  ]);
+  await userRef.set({ blockedUsers, updatedAt: new Date().toISOString() }, { merge: true });
+
+  // Best-effort: drop follow edges both ways so feed/social stay clean.
+  try {
+    const batch = db.batch();
+    batch.delete(
+      db.collection('following').doc(auth.username).collection('user_following').doc(target)
+    );
+    batch.delete(
+      db.collection('followers').doc(target).collection('user_followers').doc(auth.username)
+    );
+    batch.delete(
+      db.collection('following').doc(target).collection('user_following').doc(auth.username)
+    );
+    batch.delete(
+      db.collection('followers').doc(auth.username).collection('user_followers').doc(target)
+    );
+    await batch.commit();
+  } catch (err) {
+    console.error('block follow cleanup failed:', err.message);
+  }
+
+  res.status(200).json({ message: 'User blocked', blockedUsers });
+}
+
+async function handleUnblock(req, res) {
+  if (req.method !== 'POST') return methodNotAllowed(res);
+
+  const { username, targetUsername } = req.body || {};
+  const auth = await requireAuthForUsername(req, res, username);
+  if (!auth) return;
+
+  const target = normalizeUsername(targetUsername);
+  if (!target) {
+    return res.status(400).json({ error: 'Valid targetUsername is required' });
+  }
+
+  const userRef = db.collection('users').doc(auth.username);
+  const userDoc = await userRef.get();
+  if (!userDoc.exists) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  const blockedUsers = normalizeBlockedList(userDoc.data()?.blockedUsers || []).filter(
+    (name) => name !== target
+  );
+  await userRef.set({ blockedUsers, updatedAt: new Date().toISOString() }, { merge: true });
+  res.status(200).json({ message: 'User unblocked', blockedUsers });
+}
+
+async function handleBlockedUsers(req, res) {
+  if (req.method !== 'GET') return methodNotAllowed(res);
+
+  const username = normalizeUsername(req.query.username);
+  const auth = await requireAuthForUsername(req, res, username);
+  if (!auth) return;
+
+  const blockedUsers = await getBlockedUsersFor(db, auth.username);
+  res.status(200).json({ blockedUsers });
+}
+
 const handlers = {
   follow: handleFollow,
   unfollow: handleUnfollow,
@@ -1712,6 +1865,10 @@ const handlers = {
   registerpushtoken: handleRegisterPushToken,
   unregisterpushtoken: handleUnregisterPushToken,
   recook: handleRecook,
+  report: handleReport,
+  block: handleBlock,
+  unblock: handleUnblock,
+  blockedusers: handleBlockedUsers,
   /**
    * One-off merge helper (no full-DB scans). Merges ai/meal docs by username,
    * then runs the targeted engagement migrator for likes/comments/tags.

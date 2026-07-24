@@ -6,7 +6,10 @@ const {
   validateEmail,
   validatePersonName,
   validateUrl,
+  validatePhotoUrl,
 } = require('./_helpers/validateInput');
+const { assertCleanText } = require('./_helpers/contentSafety');
+const { assertImageSafe } = require('./_helpers/imageSafety');
 
 let db;
 try {
@@ -43,6 +46,10 @@ module.exports = async (req, res) => {
     res.status(400).json({ error: 'Invalid username' });
     return;
   }
+  if (username === 'deleted_user') {
+    res.status(400).json({ error: 'That username is reserved' });
+    return;
+  }
 
   const email = validateEmail(req.body.email);
   if (!email) {
@@ -70,6 +77,52 @@ module.exports = async (req, res) => {
   const capitalLast = capitalizeFirst(lastName);
   const displayName = `${capitalFirst} ${capitalLast}`;
 
+  try {
+    assertCleanText(displayName, { field: 'name', allowEmpty: false });
+    assertCleanText(username, { field: 'username', allowEmpty: false });
+    assertCleanText(capitalFirst, { field: 'firstName', allowEmpty: false });
+    assertCleanText(capitalLast, { field: 'lastName', allowEmpty: false });
+    if (req.body.bio) assertCleanText(req.body.bio, { field: 'bio' });
+  } catch (cleanErr) {
+    res.status(cleanErr.status || 400).json({
+      error: cleanErr.code || 'content_blocked',
+      message: cleanErr.message,
+    });
+    return;
+  }
+
+  const acceptedTermsAt = req.body.acceptedTermsAt
+    ? String(req.body.acceptedTermsAt)
+    : null;
+  const acceptedTermsVersion = req.body.acceptedTermsVersion
+    ? String(req.body.acceptedTermsVersion).slice(0, 32)
+    : null;
+  if (!acceptedTermsAt || !acceptedTermsVersion) {
+    res.status(400).json({
+      error: 'terms_required',
+      message: 'You must accept the Terms of Service to create an account.',
+    });
+    return;
+  }
+
+  let profilePhotoUrl = validatePhotoUrl(
+    req.body.profilePhotoUrl ?? req.body.profile_photo_url
+  );
+  if (!profilePhotoUrl) {
+    profilePhotoUrl = validateUrl(req.body.profilePhotoUrl ?? req.body.profile_photo_url);
+  }
+  if (profilePhotoUrl) {
+    try {
+      await assertImageSafe(profilePhotoUrl);
+    } catch (imgErr) {
+      res.status(imgErr.status || 400).json({
+        error: imgErr.code || 'image_blocked',
+        message: imgErr.message,
+      });
+      return;
+    }
+  }
+
   const userData = {
     username,
     uid: auth.uid,
@@ -79,8 +132,11 @@ module.exports = async (req, res) => {
     firstName: capitalFirst,
     lastName: capitalLast,
     email,
+    acceptedTermsAt,
+    acceptedTermsVersion,
+    blockedUsers: [],
     bio: sanitizeText(req.body.bio, 500) || undefined,
-    profilePhotoUrl: validateUrl(req.body.profilePhotoUrl ?? req.body.profile_photo_url),
+    profilePhotoUrl: profilePhotoUrl || undefined,
     kitchenPersona: sanitizeText(req.body.kitchenPersona ?? req.body.kitchen_persona, 100) || undefined,
     topDishes: Array.isArray(req.body.topDishes ?? req.body.top_dishes)
       ? (req.body.topDishes ?? req.body.top_dishes)

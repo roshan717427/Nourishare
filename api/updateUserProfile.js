@@ -6,6 +6,8 @@ const { capitalizeList } = require('../utils/titleCase');
 const {
   migrateEngagementForUsername,
 } = require('./_helpers/usernameMigration');
+const { assertCleanText } = require('./_helpers/contentSafety');
+const { assertImageSafe } = require('./_helpers/imageSafety');
 
 let db;
 try {
@@ -307,6 +309,11 @@ module.exports = async (req, res) => {
     // SECTION 3: ATOMIC USERNAME MIGRATION ROUTINE LAYER
     // =========================================================================
     if (wantsUsernameChange) {
+      if (requestedNewUsername === 'deleted_user') {
+        res.status(400).json({ error: 'That username is reserved' });
+        return;
+      }
+
       const newUsernameRef = db.collection('users').doc(requestedNewUsername);
       const newUsernameDoc = await newUsernameRef.get();
       
@@ -411,6 +418,18 @@ module.exports = async (req, res) => {
 
     if (updates.kitchen_personality && updates.personality_edited_by_user !== false) {
       updates.personality_edited_by_user = true;
+    }
+
+    try {
+      if (updates.name) assertCleanText(updates.name, { field: 'name', allowEmpty: false });
+      if (updates.bio) assertCleanText(updates.bio, { field: 'bio' });
+      if (updates.profilePhotoUrl) await assertImageSafe(updates.profilePhotoUrl);
+    } catch (safetyErr) {
+      res.status(safetyErr.status || 400).json({
+        error: safetyErr.code || 'content_blocked',
+        message: safetyErr.message,
+      });
+      return;
     }
 
     await userRef.update(updates);

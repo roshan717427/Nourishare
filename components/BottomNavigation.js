@@ -45,6 +45,9 @@ export default function BottomNavigation({ navigation, activeTab = 'Home' }) {
             style={styles.tab}
             onPress={() => handleTabPress(tab.id)}
             activeOpacity={0.7}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: isActive }}
+            accessibilityLabel={tab.label}
           >
             <Ionicons
               name={isActive ? tab.activeIcon : tab.icon}

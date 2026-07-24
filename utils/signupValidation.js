@@ -21,6 +21,9 @@ export function validateUsername(username) {
   if (!trimmed) {
     return 'Please choose a username.';
   }
+  if (trimmed === 'deleted_user') {
+    return 'That username is reserved. Please choose another.';
+  }
   if (!USERNAME_RE.test(trimmed)) {
     return USERNAME_HINT;
   }

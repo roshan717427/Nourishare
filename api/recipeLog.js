@@ -22,6 +22,8 @@ const { requireAuthForUsername } = require('./_helpers/verifyAuth');
 const { validatePostId, sanitizeRecipeLogFields, sanitizeLogUpdates } = require('./_helpers/validateInput');
 const { resolveDisplayName, sendInteractionNotification } = require('./_helpers/notifications');
 const { partitionExistingUsernames } = require('./_helpers/userLookup');
+const { assertCleanText } = require('./_helpers/contentSafety');
+const { assertImageSafe } = require('./_helpers/imageSafety');
 
 let db;
 try {
@@ -48,6 +50,21 @@ async function handleCreate(req, res) {
   if (!auth) return;
 
   const fields = sanitizeRecipeLogFields(req.body);
+
+  try {
+    assertCleanText(fields.title, { field: 'title', allowEmpty: false });
+    assertCleanText(fields.ingredients, { field: 'ingredients', allowEmpty: false });
+    if (fields.notes) assertCleanText(fields.notes, { field: 'notes' });
+    if (fields.recipeInstructions) {
+      assertCleanText(fields.recipeInstructions, { field: 'recipeInstructions' });
+    }
+    if (fields.photoUrl) await assertImageSafe(fields.photoUrl);
+  } catch (safetyErr) {
+    return res.status(safetyErr.status || 400).json({
+      error: safetyErr.code || 'content_blocked',
+      message: safetyErr.message,
+    });
+  }
 
   // After const fields = sanitizeRecipeLogFields(req.body);
   if (fields.cookedWith.length > 0) {
@@ -164,6 +181,27 @@ async function handleUpdate(req, res) {
       });
     }
     filteredUpdates.cookedWith = existing;
+  }
+
+  try {
+    if (filteredUpdates.title != null) {
+      assertCleanText(filteredUpdates.title, { field: 'title', allowEmpty: false });
+    }
+    if (filteredUpdates.ingredients != null) {
+      assertCleanText(filteredUpdates.ingredients, { field: 'ingredients', allowEmpty: false });
+    }
+    if (filteredUpdates.notes != null) {
+      assertCleanText(filteredUpdates.notes, { field: 'notes' });
+    }
+    if (filteredUpdates.recipeInstructions != null) {
+      assertCleanText(filteredUpdates.recipeInstructions, { field: 'recipeInstructions' });
+    }
+    if (filteredUpdates.photoUrl) await assertImageSafe(filteredUpdates.photoUrl);
+  } catch (safetyErr) {
+    return res.status(safetyErr.status || 400).json({
+      error: safetyErr.code || 'content_blocked',
+      message: safetyErr.message,
+    });
   }
 
   const logRef = db.collection('logs').doc(logId);

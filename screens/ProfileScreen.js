@@ -12,6 +12,7 @@ import {
   Modal,
   TextInput,
   KeyboardAvoidingView,
+  Linking,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,7 +26,10 @@ import { useAuth } from '../context/AuthContext';
 import { clearOnboardingStorage } from '../context/OnboardingContext';
 import { useNextUp } from '../context/NextUpContext';
 import PortfolioGalleryModal from '../components/PortfolioGalleryModal';
+import { openSafetyActions } from '../components/SafetyMenuButton';
+import { blockUser, unblockUser, fetchBlockedUsers } from '../utils/moderationApi';
 import { API_URL } from '../config/api';
+import { PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from '../config/legal';
 import { authFetch, withAuthHeaders, normalizeUsername } from '../utils/apiAuth';
 import {
   friendlyError,
@@ -315,6 +319,8 @@ export default function ProfileScreen({ navigation, route }) {
   const [editSecondaryTraits, setEditSecondaryTraits] = useState('');
   const [editTopCuisines, setEditTopCuisines] = useState('');
   const [editFavoriteIngredients, setEditFavoriteIngredients] = useState('');
+  const [isUserBlocked, setIsUserBlocked] = useState(false);
+  const [blockBusy, setBlockBusy] = useState(false);
 
   const rawUsername = route?.params?.username || user?.username;
   const username = normalizeUsername(rawUsername) || rawUsername;
@@ -356,8 +362,26 @@ export default function ProfileScreen({ navigation, route }) {
     useCallback(() => {
       fetchProfile();
       fetchDishes();
+      let cancelled = false;
+      (async () => {
+        if (isOwnProfile || !user?.username || !username) {
+          if (!cancelled) setIsUserBlocked(false);
+          return;
+        }
+        try {
+          const list = await fetchBlockedUsers(user.username);
+          if (!cancelled) {
+            setIsUserBlocked(list.map((u) => String(u).toLowerCase()).includes(String(username).toLowerCase()));
+          }
+        } catch {
+          if (!cancelled) setIsUserBlocked(false);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [username, fetchDishes])
+    }, [username, fetchDishes, isOwnProfile, user?.username])
   );
 
   const handleToggleFollow = () => {
@@ -384,6 +408,44 @@ export default function ProfileScreen({ navigation, route }) {
     ).catch((err) => {
       console.log(`${action} request error:`, err.message);
     });
+  };
+
+  const handleToggleBlock = async () => {
+    if (!user?.username || !username || blockBusy) return;
+
+    if (isUserBlocked) {
+      setBlockBusy(true);
+      try {
+        await unblockUser(user.username, username);
+        setIsUserBlocked(false);
+        Alert.alert('Unblocked', `@${username} has been unblocked.`);
+      } catch (err) {
+        Alert.alert('Could not unblock', friendlyError(err));
+      } finally {
+        setBlockBusy(false);
+      }
+      return;
+    }
+
+    Alert.alert('Block user?', `You will no longer see content from @${username}.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Block',
+        style: 'destructive',
+        onPress: async () => {
+          setBlockBusy(true);
+          try {
+            await blockUser(user.username, username);
+            setIsUserBlocked(true);
+            Alert.alert('Blocked', `@${username} has been blocked.`);
+          } catch (err) {
+            Alert.alert('Could not block', friendlyError(err));
+          } finally {
+            setBlockBusy(false);
+          }
+        },
+      },
+    ]);
   };
 
   const fetchProfile = async () => {
@@ -882,23 +944,69 @@ export default function ProfileScreen({ navigation, route }) {
           ) : null}
 
           {!isOwnProfile && (
-            <TouchableOpacity
-              style={[
-                styles.followButton,
-                (followingUser || pendingFollow) && styles.followingButton,
-              ]}
-              onPress={handleToggleFollow}
-              activeOpacity={0.85}
-            >
-              <Text
-                style={[
-                  styles.followButtonText,
-                  (followingUser || pendingFollow) && styles.followingButtonText,
-                ]}
+            <View style={{ width: '100%', alignItems: 'center', gap: 10 }}>
+              <View style={styles.profileActionRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.followButton,
+                    styles.profileActionHalf,
+                    (followingUser || pendingFollow) && styles.followingButton,
+                  ]}
+                  onPress={handleToggleFollow}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel={followLabel}
+                >
+                  <Text
+                    style={[
+                      styles.followButtonText,
+                      (followingUser || pendingFollow) && styles.followingButtonText,
+                    ]}
+                  >
+                    {followLabel}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.blockToggleButton,
+                    styles.profileActionHalf,
+                    isUserBlocked && styles.blockToggleButtonActive,
+                  ]}
+                  onPress={handleToggleBlock}
+                  disabled={blockBusy}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel={isUserBlocked ? 'Unblock user' : 'Block user'}
+                >
+                  <Text
+                    style={[
+                      styles.blockToggleButtonText,
+                      isUserBlocked && styles.blockToggleButtonTextActive,
+                    ]}
+                  >
+                    {blockBusy ? '...' : isUserBlocked ? 'Unblock' : 'Block'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity
+                style={styles.blockButton}
+                onPress={() =>
+                  openSafetyActions({
+                    viewerUsername: user?.username,
+                    targetUsername: username,
+                    targetType: 'profile',
+                    targetId: username,
+                    onBlocked: () => {
+                      setIsUserBlocked(true);
+                    },
+                  })
+                }
+                accessibilityRole="button"
+                accessibilityLabel="Report user"
               >
-                {followLabel}
-              </Text>
-            </TouchableOpacity>
+                <Text style={styles.blockButtonText}>Report</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </LinearGradient>
 
@@ -1265,6 +1373,23 @@ export default function ProfileScreen({ navigation, route }) {
               </Text>
 
               <TouchableOpacity
+                style={styles.legalLinkButton}
+                onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}
+                accessibilityRole="link"
+                accessibilityLabel="Privacy Policy"
+              >
+                <Text style={styles.legalLinkText}>Privacy Policy</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.legalLinkButton}
+                onPress={() => Linking.openURL(TERMS_OF_SERVICE_URL)}
+                accessibilityRole="link"
+                accessibilityLabel="Terms of Service"
+              >
+                <Text style={styles.legalLinkText}>Terms of Service</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
                 style={styles.deleteAccountButton}
                 onPress={handleDeleteAccount}
                 activeOpacity={0.85}
@@ -1434,11 +1559,44 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.7)',
   },
   followButton: {
-    marginTop: 16,
+    marginTop: 0,
     backgroundColor: '#fff',
     borderRadius: radii.pill,
-    paddingHorizontal: 40,
+    paddingHorizontal: 24,
     paddingVertical: 12,
+    alignItems: 'center',
+  },
+  profileActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    marginTop: 16,
+    width: '100%',
+    paddingHorizontal: 16,
+  },
+  profileActionHalf: {
+    flex: 1,
+  },
+  blockToggleButton: {
+    backgroundColor: 'transparent',
+    borderRadius: radii.pill,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderWidth: 2,
+    borderColor: '#fff',
+    alignItems: 'center',
+  },
+  blockToggleButtonActive: {
+    backgroundColor: '#fff',
+  },
+  blockToggleButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  blockToggleButtonTextActive: {
+    color: colors.primary,
   },
   followingButton: {
     backgroundColor: 'transparent',
@@ -1452,6 +1610,16 @@ const styles = StyleSheet.create({
   },
   followingButtonText: {
     color: '#fff',
+  },
+  blockButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  blockButtonText: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 14,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
   section: {
     paddingHorizontal: 20,
@@ -1971,6 +2139,16 @@ const styles = StyleSheet.create({
     color: colors.error,
     fontSize: 15,
     fontWeight: '700',
+  },
+  legalLinkButton: {
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  legalLinkText: {
+    color: colors.primary,
+    fontSize: 15,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
   dishCard: {
     width: 140,

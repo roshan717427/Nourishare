@@ -15,6 +15,7 @@ import { toIngredientList, getRecipeSteps } from '../utils/recipeParsing';
 import RecipeSection, { hasRecipeContent } from '../components/RecipeSection';
 import { sectionSuggestionImage, suggestionImageSource } from '../utils/suggestionImages';
 import { formatSuggestionReasonBody } from '../utils/suggestionReason';
+import { AI_FOOD_SAFETY_DISCLAIMER } from '../constants/aiDisclaimer';
 
 
 /** Normalize API reason text for "Suggested because {reason}." */
@@ -33,6 +34,11 @@ export default function RecipeDetailScreen({ navigation, route }) {
   const inspiredBy = recipe.inspired_by || null;
   const inspiredByUsername = recipe.inspired_by_username || null;
   const why = formatSuggestionReasonBody(recipe.why_suggested);
+  const showAiDisclaimer =
+    Boolean(recipe.fromAiSuggestion) ||
+    recipe.section === 'friend' ||
+    recipe.section === 'preference' ||
+    recipe.section === 'pantry';
 
   const ingredients = toIngredientList(recipe.ingredients);
   const ingredientsHave = Array.isArray(recipe.ingredientsHave) ? recipe.ingredientsHave : [];
@@ -57,7 +63,12 @@ export default function RecipeDetailScreen({ navigation, route }) {
       <StatusBar style="dark" />
 
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>
@@ -79,7 +90,12 @@ export default function RecipeDetailScreen({ navigation, route }) {
         )}
 
         <View style={styles.body}>
-          <Text style={styles.title}>{name}</Text>
+          <Text style={styles.title} maxFontSizeMultiplier={1.5}>{name}</Text>
+          {showAiDisclaimer ? (
+            <Text style={styles.aiDisclaimer} maxFontSizeMultiplier={1.4}>
+              {AI_FOOD_SAFETY_DISCLAIMER}
+            </Text>
+          ) : null}
           {inspiredBy ? (
             <Text style={styles.byline}>
               Inspired by{' '}
@@ -274,6 +290,12 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 4,
   },
+  aiDisclaimer: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.textSecondary,
+    marginBottom: 12,
+  },
   byline: {
     fontSize: 15,
     color: colors.textSecondary,
@@ -403,6 +425,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text,
     lineHeight: 24,
+    maxFontSizeMultiplier: 1.5,
   },
   notesCard: {
     backgroundColor: colors.card,

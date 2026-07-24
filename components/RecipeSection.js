@@ -114,6 +114,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.text,
     lineHeight: 24,
+    maxFontSizeMultiplier: 1.5,
   },
   stepRow: {
     flexDirection: 'row',

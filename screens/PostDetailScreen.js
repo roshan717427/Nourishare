@@ -25,6 +25,7 @@ import { colors, radii, shadows } from '../constants/theme';
 import { toIngredientList } from '../utils/recipeParsing';
 import RecipeSection, { hasRecipeContent } from '../components/RecipeSection';
 import CookedWithTags from '../components/CookedWithTags';
+import { SafetyMenuButton } from '../components/SafetyMenuButton';
 
 function generateClientId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -445,7 +446,15 @@ export default function PostDetailScreen({ navigation, route }) {
               >
                 <Ionicons name="trash-outline" size={16} color={colors.error} />
               </TouchableOpacity>
-            ) : null}
+            ) : (
+              <SafetyMenuButton
+                viewerUsername={username}
+                targetUsername={c.username}
+                targetType="comment"
+                targetId={c.id}
+                size={16}
+              />
+            )}
           </View>
           <Text style={styles.commentText}>{c.text}</Text>
         </View>
@@ -517,7 +526,16 @@ export default function PostDetailScreen({ navigation, route }) {
             </TouchableOpacity>
           </View>
         ) : (
-          <View style={styles.backButton} />
+          <View style={styles.headerActions}>
+            <SafetyMenuButton
+              viewerUsername={username}
+              targetUsername={authorUsername}
+              targetType="post"
+              targetId={postId}
+              size={22}
+              color={colors.text}
+            />
+          </View>
         )}
       </View>
 
