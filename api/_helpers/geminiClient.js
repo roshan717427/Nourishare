@@ -9,9 +9,28 @@ const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GE
 
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
+const GEMINI_TIMEOUT_MS = 12000;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      const timeoutErr = new Error('Gemini request timed out');
+      timeoutErr.code = 'gemini_unavailable';
+      timeoutErr.status = 504;
+      throw timeoutErr;
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function classifyGemini429(message = '') {
@@ -44,17 +63,21 @@ function parseGeminiError(status, body) {
 }
 
 async function callGeminiOnce(apiKey, prompt) {
-  const response = await fetch(`${GEMINI_URL}?key=${encodeURIComponent(apiKey)}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        responseMimeType: 'application/json',
-        temperature: 0.85,
-      },
-    }),
-  });
+  const response = await fetchWithTimeout(
+    `${GEMINI_URL}?key=${encodeURIComponent(apiKey)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0.85,
+        },
+      }),
+    },
+    GEMINI_TIMEOUT_MS
+  );
 
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {

@@ -19,7 +19,7 @@ export const USERNAME_MIGRATION_BUSY =
 
 // AI suggestion generation limits (Gemini + app daily quota)
 export const AI_DAILY_LIMIT =
-  'You have used your 3 generations for today. Please try again tomorrow!';
+  'You have used your 3 generations for today (up to 18 recipes). Please try again tomorrow!';
 export const AI_SERVICE_BUSY =
   "Suggestions are unavailable right now (not your limit, the service is busy). Please try again shortly.";
 export const AI_RPM_LIMIT =

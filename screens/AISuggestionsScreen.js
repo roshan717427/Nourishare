@@ -34,6 +34,7 @@ import {
 } from '../utils/aiSuggestionsApi';
 import { friendlyAiError } from '../utils/errorMessages';
 import { extractFirstName } from '../utils/personalityCopy';
+import { AI_FOOD_SAFETY_DISCLAIMER } from '../constants/aiDisclaimer';
 
 const CARD_WIDTH = 200;
 const IMAGE_HEIGHT = 150;
@@ -552,7 +553,7 @@ export default function AISuggestionsScreen({ navigation }) {
       Alert.alert('Already in Cook Next', `"${recipe.name}" is already on your list.`);
       return;
     }
-    const added = addToNextUp(recipe);
+    const added = addToNextUp({ ...recipe, fromAiSuggestion: true });
     if (added) {
       Alert.alert('Saved to Cook Next', `"${recipe.name}" is on your private cooking queue.`);
     }
@@ -595,6 +596,7 @@ export default function AISuggestionsScreen({ navigation }) {
         </View>
         <Text style={styles.bigGenerateCount}>
           {generationsRemaining} of {dailyLimit} generations left today
+          {'\n'}(6 recipes each, up to 18 recipes/day)
         </Text>
       </TouchableOpacity>
       {statusMessage ? <Text style={styles.statusMessage}>{statusMessage}</Text> : null}
@@ -729,6 +731,7 @@ export default function AISuggestionsScreen({ navigation }) {
           keyboardDismissMode="interactive"
           automaticallyAdjustKeyboardInsets
         >
+        <Text style={styles.aiDisclaimer}>{AI_FOOD_SAFETY_DISCLAIMER}</Text>
 
         <View style={[styles.greetingCard, shadows.cardSoft]}>
           <LinearGradient
@@ -902,6 +905,15 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: spacing.lg,
+  },
+  aiDisclaimer: {
+    marginHorizontal: spacing.md + 4,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.textSecondary,
+    maxFontSizeMultiplier: 1.4,
   },
   generateWrap: {
     marginHorizontal: spacing.md + 4,

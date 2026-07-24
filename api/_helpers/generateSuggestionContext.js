@@ -162,6 +162,8 @@ ${pantrySummary}
 Rules:
 - Do NOT repeat exact dish names the user has already logged.
 - Do NOT use em dashes anywhere in your output; use commas, periods, or "to" for ranges.
+- NEVER suggest recipes that are dangerous, toxic, inedible, non-food, or unsafe (no bleach, antifreeze, poison, raw unsafe meat instructions that ignore food safety, etc.).
+- Prefer safe home-cooking techniques; remind implicitly via normal cook times and temperatures in steps when relevant.
 - Each recipe needs: name, ingredients (comma-separated string), cooking_time (e.g. "25 min"), difficulty_level (easy|medium|hard), description (1 sentence), steps (4-8 short cooking steps, semicolon-separated), why_suggested (short reason without leading "it").
 - Use concise ingredient names; avoid redundant words (e.g. "naan" not "naan bread", since naan means bread).
 - Do NOT include URLs or recipe links; only provide steps.

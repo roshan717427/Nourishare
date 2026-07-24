@@ -14,7 +14,8 @@
  *                  body { username, recipeId }
  *                  resp { status, message }
  *
- * Daily generation limit: 3 per user per UTC calendar day (server-enforced).
+ * Daily generation limit: 3 generations per user per UTC day (= up to 18 recipes;
+ * each generation aims for 6 recipes). Server-enforced.
  */
 const { initializeApp, cert, getApps } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
@@ -27,6 +28,7 @@ const {
   cacheGeneratedRecipes,
   hideRecipe,
   DAILY_GENERATION_LIMIT,
+  RECIPES_PER_GENERATION,
   saveCheckedIngredient,  
   loadCheckedIngredients,
 } = require('./_helpers/aiSuggestionStore');
@@ -36,6 +38,7 @@ const {
   normalizeGeminiRecipes,
 } = require('./_helpers/generateSuggestionContext');
 const { sectionSuggestionImage } = require('./_helpers/suggestionImagesServer');
+const { filterAiSuggestionPayload } = require('./_helpers/contentSafety');
 
 let db;
 try {
@@ -104,7 +107,7 @@ async function fetchRuleBasedFallback(username, pantryIngredients) {
   }
 
   const data = await response.json();
-  const friend = (data.friend_suggestions || []).slice(0, 2).map((r) => ({
+  const friend = (data.friend_suggestions || []).slice(0, 3).map((r) => ({
     section: 'friend',
     name: r.recipe_name || r.name,
     ingredients: r.ingredients || '',
@@ -116,7 +119,7 @@ async function fetchRuleBasedFallback(username, pantryIngredients) {
     ingredients_need: r.ingredients_need || [],
   }));
 
-  const preference = (data.preference_suggestions || []).slice(0, 2).map((r) => ({
+  const preference = (data.preference_suggestions || []).slice(0, 3).map((r) => ({
     section: 'preference',
     name: r.recipe_name || r.name,
     ingredients: r.ingredients || '',
@@ -143,7 +146,39 @@ async function fetchRuleBasedFallback(username, pantryIngredients) {
       ingredients_need: r.ingredients_need || [],
     }));
 
-  return [...friend, ...preference, ...pantrySource];
+  // Prefer 6 recipes: with pantry use 2+2+2; without pantry use up to 3+3.
+  if (pantryIngredients && pantryIngredients.length > 0) {
+    return [...friend.slice(0, 2), ...preference.slice(0, 2), ...pantrySource.slice(0, 2)];
+  }
+  return [...friend.slice(0, 3), ...preference.slice(0, 3)];
+}
+
+function recipeNameKey(recipe) {
+  return String(recipe?.name || recipe?.recipe_name || '')
+    .trim()
+    .toLowerCase();
+}
+
+async function topUpToSix(normalized, username, pantryIngredients) {
+  if ((normalized || []).length >= RECIPES_PER_GENERATION) {
+    return (normalized || []).slice(0, RECIPES_PER_GENERATION);
+  }
+  try {
+    const fallback = await fetchRuleBasedFallback(username, pantryIngredients);
+    const merged = [...(normalized || [])];
+    const seen = new Set(merged.map(recipeNameKey).filter(Boolean));
+    for (const recipe of fallback) {
+      if (merged.length >= RECIPES_PER_GENERATION) break;
+      const key = recipeNameKey(recipe);
+      if (key && seen.has(key)) continue;
+      if (key) seen.add(key);
+      merged.push(recipe);
+    }
+    return merged.slice(0, RECIPES_PER_GENERATION);
+  } catch (err) {
+    console.warn('top-up fallback failed:', err.message);
+    return (normalized || []).slice(0, RECIPES_PER_GENERATION);
+  }
 }
 
 async function generateSuggestions(username, pantryRaw) {
@@ -183,6 +218,21 @@ async function generateSuggestions(username, pantryRaw) {
     normalized = await fetchRuleBasedFallback(username, context.pantryIngredients);
     source = 'rule_based_fallback';
   }
+
+  normalized = (normalized || []).map(filterAiSuggestionPayload).filter(Boolean);
+
+  // Aim for 6 recipes per generation: top up from rule-based fallback if Gemini
+  // returned fewer, then cap so we never cache more than one generation's worth.
+  if (source === 'gemini' && normalized.length < RECIPES_PER_GENERATION) {
+    const before = normalized.length;
+    normalized = await topUpToSix(normalized, username, context.pantryIngredients);
+    normalized = (normalized || []).map(filterAiSuggestionPayload).filter(Boolean);
+    if (normalized.length > before) {
+      source = 'gemini_with_fallback_topup';
+    }
+  }
+
+  normalized = (normalized || []).slice(0, RECIPES_PER_GENERATION);
 
   // 4. Critical guard: If data arrays drop to zero, throw an explicit error to release daily quotas
   if (!normalized || !normalized.length) {
@@ -286,7 +336,7 @@ async function handleGenerate(req, res) {
     // without clobbering the snake_case suggestions arrays!
     res.status(200).json({
       status: 'success',
-      generated_count: result.generated_count || 6,
+      generated_count: result.generated_count || RECIPES_PER_GENERATION,
       has_logs: result.has_logs,
       has_friends: result.has_friends,
       generations_used_today: reservation.count,

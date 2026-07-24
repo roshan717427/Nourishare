@@ -11,6 +11,8 @@
 const { FieldValue } = require('firebase-admin/firestore');
 
 const DAILY_GENERATION_LIMIT = 3;
+/** Each generation aims for this many recipes (3 generations × 6 = 18 recipes/day). */
+const RECIPES_PER_GENERATION = 6;
 const VALID_SECTIONS = new Set(['friend', 'preference', 'pantry']);
 
 function recipesRef(db, username) {
@@ -72,6 +74,8 @@ async function loadCachedSuggestions(db, username) {
     generations_remaining: Math.max(0, DAILY_GENERATION_LIMIT - usage.count),
     generations_used_today: usage.count,
     daily_limit: DAILY_GENERATION_LIMIT,
+    recipes_per_generation: RECIPES_PER_GENERATION,
+    daily_recipe_target: DAILY_GENERATION_LIMIT * RECIPES_PER_GENERATION,
   };
 }
 
@@ -199,6 +203,7 @@ async function loadCheckedIngredients(db, username, dateRangeKey) {
 
 module.exports = {
   DAILY_GENERATION_LIMIT,
+  RECIPES_PER_GENERATION,
   utcDateKey,
   loadCachedSuggestions,
   getDailyUsage,
