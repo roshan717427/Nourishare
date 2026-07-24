@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
+  DeviceEventEmitter,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,9 +24,20 @@ import CookedWithTags from '../components/CookedWithTags';
 import { SafetyMenuButton } from '../components/SafetyMenuButton';
 import { colors, radii } from '../constants/theme';
 import { useContentMaxWidth } from '../hooks/useContentMaxWidth';
+import { FEED_POST_UPDATED, HOME_TAB_PRESS } from '../utils/feedEvents';
 
 const CARD_ACCENTS = [colors.primary, colors.accent, colors.secondary, colors.chipAmberText];
 const FEED_REFRESH_MS = 3 * 24 * 60 * 60 * 1000;
+/** Match server: hide posts older than 3 days from Home (still on profiles). */
+const FEED_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
+
+function isVisibleOnFeed(createdAtMs, now = Date.now()) {
+  return (
+    typeof createdAtMs === 'number' &&
+    createdAtMs > 0 &&
+    now - createdAtMs <= FEED_MAX_AGE_MS
+  );
+}
 
 function timeAgo(ms) {
   if (!ms) return '';
@@ -207,7 +219,7 @@ export default function HomeScreen({ navigation }) {
           const data = await res.json();
           apiPosts = Array.isArray(data.recipe_posts) ? data.recipe_posts : [];
         }
-        setFeed(apiPosts);
+        setFeed(apiPosts.filter((p) => isVisibleOnFeed(p.created_at_ms)));
         lastFeedFetchAtRef.current = Date.now();
       } catch (err) {
         console.log('Feed unavailable:', err.message);
@@ -245,6 +257,56 @@ export default function HomeScreen({ navigation }) {
       })();
     }, [loadFeed, refreshSocialState, username])
   );
+
+  // Drop posts that age out of the 3-day window while Home stays mounted.
+  useEffect(() => {
+    const id = setInterval(() => {
+      setFeed((prev) => {
+        const next = prev.filter((p) => isVisibleOnFeed(p.created_at_ms));
+        return next.length === prev.length ? prev : next;
+      });
+    }, 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Patch like/comment counts when PostDetail (or elsewhere) updates a post.
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(FEED_POST_UPDATED, (payload) => {
+      if (!payload?.postId) return;
+      setFeed((prev) =>
+        prev.map((p) => {
+          if (p.id !== payload.postId) return p;
+          if (
+            payload.collection &&
+            p.postSource &&
+            p.postSource !== payload.collection
+          ) {
+            return p;
+          }
+          return {
+            ...p,
+            ...(typeof payload.likes_count === 'number'
+              ? { likes_count: payload.likes_count }
+              : null),
+            ...(typeof payload.comments_count === 'number'
+              ? { comments_count: payload.comments_count }
+              : null),
+          };
+        })
+      );
+    });
+    return () => sub.remove();
+  }, []);
+
+  // Home tab press: scroll to top and force-refresh (same as pull-to-refresh).
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(HOME_TAB_PRESS, () => {
+      feedScrollRef.current?.scrollTo({ y: 0, animated: true });
+      setSelectedStoryUsername(null);
+      loadFeed(true);
+    });
+    return () => sub.remove();
+  }, [loadFeed]);
 
   const openPost = (item) => {
     navigation.navigate('PostDetail', {

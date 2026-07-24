@@ -596,7 +596,6 @@ export default function AISuggestionsScreen({ navigation }) {
         </View>
         <Text style={styles.bigGenerateCount}>
           {generationsRemaining} of {dailyLimit} generations left today
-          {'\n'}(6 recipes each, up to 18 recipes/day)
         </Text>
       </TouchableOpacity>
       {statusMessage ? <Text style={styles.statusMessage}>{statusMessage}</Text> : null}
@@ -731,8 +730,6 @@ export default function AISuggestionsScreen({ navigation }) {
           keyboardDismissMode="interactive"
           automaticallyAdjustKeyboardInsets
         >
-        <Text style={styles.aiDisclaimer}>{AI_FOOD_SAFETY_DISCLAIMER}</Text>
-
         <View style={[styles.greetingCard, shadows.cardSoft]}>
           <LinearGradient
             colors={[colors.cardWarm, colors.card]}
@@ -748,6 +745,11 @@ export default function AISuggestionsScreen({ navigation }) {
               <Text style={styles.greeting}>{greetingText}</Text>
             </View>
           </LinearGradient>
+        </View>
+
+        <View style={styles.aiDisclaimerCard}>
+          <Ionicons name="shield-checkmark-outline" size={16} color={colors.textSecondary} />
+          <Text style={styles.aiDisclaimer}>{AI_FOOD_SAFETY_DISCLAIMER}</Text>
         </View>
 
         {renderGenerateButton()}
@@ -906,12 +908,23 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: spacing.lg,
   },
-  aiDisclaimer: {
+  aiDisclaimerCard: {
     marginHorizontal: spacing.md + 4,
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
-    fontSize: 13,
-    lineHeight: 18,
+    marginTop: spacing.sm + 2,
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.lg,
+    backgroundColor: colors.cardWarm,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  aiDisclaimer: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 17,
     color: colors.textSecondary,
     maxFontSizeMultiplier: 1.4,
   },

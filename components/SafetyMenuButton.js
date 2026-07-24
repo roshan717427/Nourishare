@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, TouchableOpacity } from 'react-native';
+import { Alert, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/theme';
 import { reportContent, blockUser } from '../utils/moderationApi';
@@ -97,7 +97,7 @@ export function SafetyMenuButton({
   size = 20,
 }) {
   if (!viewerUsername || !targetUsername || viewerUsername === targetUsername) {
-    return null;
+    return <View style={{ width: size, height: size }} />;
   }
 
   return (

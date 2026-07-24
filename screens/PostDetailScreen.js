@@ -26,6 +26,7 @@ import { toIngredientList } from '../utils/recipeParsing';
 import RecipeSection, { hasRecipeContent } from '../components/RecipeSection';
 import CookedWithTags from '../components/CookedWithTags';
 import { SafetyMenuButton } from '../components/SafetyMenuButton';
+import { emitFeedPostUpdated } from '../utils/feedEvents';
 
 function generateClientId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -146,13 +147,16 @@ export default function PostDetailScreen({ navigation, route }) {
   const toggleLike = async () => {
     if (!username || !postId || !canInteract) return;
     const willLike = !liked;
+    const nextCount = Math.max(0, likesCount + (willLike ? 1 : -1));
     setLiked(willLike);
-    setLikesCount((c) => Math.max(0, c + (willLike ? 1 : -1)));
+    setLikesCount(nextCount);
     setLikes((prev) =>
       willLike
         ? [...prev, { username, name: user?.name }]
         : prev.filter((l) => l.username !== username)
     );
+    // Keep Home feed cards in sync when user navigates back.
+    emitFeedPostUpdated({ postId, collection, likes_count: nextCount });
 
     try {
       const res = await fetch(`${API_URL}/social?action=${willLike ? 'like' : 'unlike'}`, {
@@ -162,7 +166,10 @@ export default function PostDetailScreen({ navigation, route }) {
       });
       if (res.ok) {
         const data = await res.json();
-        if (typeof data.likes_count === 'number') setLikesCount(data.likes_count);
+        if (typeof data.likes_count === 'number') {
+          setLikesCount(data.likes_count);
+          emitFeedPostUpdated({ postId, collection, likes_count: data.likes_count });
+        }
       }
     } catch (err) {
       console.log('Like request failed:', err.message);

@@ -1136,7 +1136,7 @@ export default function ProfileScreen({ navigation, route }) {
           </View>
         </View>
 
-        {(isOwnProfile || topCuisines.length > 0) && (
+        {isOwnProfile || topCuisines.length > 0 ? (
           <View style={styles.section}>
             <View style={styles.sectionTitleRow}>
               <Ionicons name="earth-outline" size={20} color={colors.primary} />
@@ -1155,9 +1155,9 @@ export default function ProfileScreen({ navigation, route }) {
               <Text style={styles.sectionEditHint}>Go to account settings to select.</Text>
             ) : null}
           </View>
-        )}
+        ) : null}
 
-        {(isOwnProfile || favoriteIngredients.length > 0) && (
+        {isOwnProfile || favoriteIngredients.length > 0 ? (
           <View style={styles.section}>
             <View style={styles.sectionTitleRow}>
               <Ionicons name="leaf-outline" size={20} color={colors.accent} />
@@ -1176,7 +1176,7 @@ export default function ProfileScreen({ navigation, route }) {
               <Text style={styles.sectionEditHint}>Go to account settings to select.</Text>
             ) : null}
           </View>
-        )}
+        ) : null}
 
         <View style={styles.section}>
           <View style={styles.sectionTitleRow}>

@@ -2,6 +2,7 @@ import React from 'react';
 import { View, TouchableOpacity, StyleSheet, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/theme';
+import { emitHomeTabPress } from '../utils/feedEvents';
 
 const TABS = [
   { id: 'Home', label: 'Home', icon: 'home-outline', activeIcon: 'home' },
@@ -13,11 +14,16 @@ const TABS = [
 
 export default function BottomNavigation({ navigation, activeTab = 'Home' }) {
   const handleTabPress = (tabId) => {
+    if (tabId === 'Home') {
+      if (activeTab !== 'Home') {
+        navigation.navigate('Home');
+      }
+      // Re-tap (or press while navigating home): scroll to top + refresh feed.
+      emitHomeTabPress();
+      return;
+    }
     if (tabId === activeTab) return;
     switch (tabId) {
-      case 'Home':
-        navigation.navigate('Home');
-        break;
       case 'AI':
         navigation.navigate('AISuggestions');
         break;

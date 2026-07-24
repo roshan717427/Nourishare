@@ -26,6 +26,7 @@ function FollowRequestRow({
   onAccept,
   onDecline,
   onFollowBack,
+  onDismiss,
   onPressProfile,
   acting,
 }) {
@@ -34,6 +35,17 @@ function FollowRequestRow({
 
   return (
     <View style={styles.card}>
+      <TouchableOpacity
+        style={styles.dismissBtn}
+        onPress={onDismiss}
+        hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+        accessibilityRole="button"
+        accessibilityLabel="Dismiss notification"
+        activeOpacity={0.7}
+      >
+        <Ionicons name="close" size={18} color={colors.textMuted} />
+      </TouchableOpacity>
+
       <TouchableOpacity style={styles.cardMain} onPress={onPressProfile} activeOpacity={0.7}>
         <View style={styles.avatarPlaceholder}>
           <Text style={styles.avatarText}>
@@ -217,6 +229,13 @@ export default function NotificationsScreen({ navigation }) {
   const handleFollowBack = async (targetUsername) => {
     if (!username) return;
     requestFollow(targetUsername);
+    setNotifications((prev) =>
+      prev.map((n) =>
+        n.fromUsername === targetUsername
+          ? { ...n, followedBackAt: Date.now() }
+          : n
+      )
+    );
     try {
       const headers = await withAuthHeaders();
       await fetch(`${API_URL}/social?action=follow`, {
@@ -226,6 +245,29 @@ export default function NotificationsScreen({ navigation }) {
       });
     } catch (err) {
       console.log('Follow back request error:', err.message);
+    }
+  };
+
+  const handleDismiss = async (item) => {
+    if (!username) return;
+    const id = item.id || item.fromUsername;
+    setNotifications((prev) =>
+      prev.filter((n) => (n.id || n.fromUsername) !== id)
+    );
+    try {
+      const headers = await withAuthHeaders();
+      const res = await fetch(`${API_URL}/social?action=dismissNotification`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ username, notificationId: id }),
+      });
+      if (!res.ok) {
+        console.log('Dismiss notification failed');
+        loadNotifications(true);
+      }
+    } catch (err) {
+      console.log('Dismiss notification error:', err.message);
+      loadNotifications(true);
     }
   };
 
@@ -291,6 +333,7 @@ export default function NotificationsScreen({ navigation }) {
               onAccept={() => handleAccept(item.fromUsername)}
               onDecline={() => handleDecline(item.fromUsername)}
               onFollowBack={() => handleFollowBack(item.fromUsername)}
+              onDismiss={() => handleDismiss(item)}
               onPressProfile={() => openProfile(item.fromUsername)}
               acting={actingOn === item.fromUsername}
             />
@@ -374,14 +417,29 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: radii.lg,
     padding: spacing.md,
+    paddingTop: spacing.md + 4,
     marginBottom: spacing.sm + 4,
     borderWidth: 1,
     borderColor: colors.borderLight,
+    position: 'relative',
+  },
+  dismissBtn: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 2,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.cardWarm,
   },
   cardMain: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: spacing.sm + 4,
+    paddingRight: 28,
   },
   avatarPlaceholder: {
     width: 48,
