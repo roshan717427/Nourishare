@@ -308,4 +308,5 @@ async function migrateEngagementForUsername(db, oldUsername, newUsername) {
 module.exports = {
   migrateEngagementForUsername,
   uniqueUsernames,
+  listAllPostIds,
 };
