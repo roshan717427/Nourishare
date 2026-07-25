@@ -81,6 +81,16 @@ async function commitUpdates(updates) {
   }
 }
 
+/** Delete all docs matching a query, in chunks (avoids leaving leftovers past one page). */
+async function deleteMatchingDocs(buildQuery) {
+  for (;;) {
+    const snap = await buildQuery().limit(DELETE_BATCH_SIZE).get();
+    if (snap.empty) break;
+    await commitDeletes(snap.docs.map((d) => d.ref));
+    if (snap.size < DELETE_BATCH_SIZE) break;
+  }
+}
+
 /** Delete comments, comment likes, and post likes for a post (avoids orphaned trees). */
 async function deletePostSocialTree(postId) {
   const refs = [];
@@ -444,19 +454,35 @@ async function cleanupDeletedUserData(username, { uid = null, email = null } = {
     }
   });
 
-  // Clear this username from other users' blockedUsers lists (bounded scan).
+  // Clear this username from other users' blockedUsers lists (blocks are stored
+  // as arrays on user docs — the deleted user's own list goes away with their
+  // profile doc). Loop until no matches remain.
   await bestEffort('blocked_by_others', async () => {
-    const snap = await db
-      .collection('users')
-      .where('blockedUsers', 'array-contains', username)
-      .limit(100)
-      .get();
-    for (const doc of snap.docs) {
-      const next = (doc.data()?.blockedUsers || []).filter(
-        (u) => String(u).toLowerCase() !== username
-      );
-      await doc.ref.set({ blockedUsers: next }, { merge: true });
+    for (;;) {
+      const snap = await db
+        .collection('users')
+        .where('blockedUsers', 'array-contains', username)
+        .limit(100)
+        .get();
+      if (snap.empty) break;
+      for (const doc of snap.docs) {
+        const next = (doc.data()?.blockedUsers || []).filter(
+          (u) => String(u).toLowerCase() !== username
+        );
+        await doc.ref.set({ blockedUsers: next }, { merge: true });
+      }
+      if (snap.size < 100) break;
     }
+  });
+
+  // Delete report docs where this user was the reporter or the target.
+  await bestEffort('reports', async () => {
+    await deleteMatchingDocs(() =>
+      db.collection('reports').where('reporterUsername', '==', username)
+    );
+    await deleteMatchingDocs(() =>
+      db.collection('reports').where('targetUsername', '==', username)
+    );
   });
 }
 
