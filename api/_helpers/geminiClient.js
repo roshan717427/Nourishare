@@ -7,9 +7,11 @@
 const GEMINI_MODEL = 'gemini-3.5-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
-const MAX_RETRIES = 3;
+const MAX_RETRIES = 2;
 const BASE_DELAY_MS = 1000;
-const GEMINI_TIMEOUT_MS = 12000;
+// Gemini 3.5 Flash may use thinking tokens; 12s was too aggressive and caused
+// empty generations after retries + a failed rule-based fallback.
+const GEMINI_TIMEOUT_MS = 35000;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));

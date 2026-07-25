@@ -762,40 +762,38 @@ export default function AISuggestionsScreen({ navigation }) {
           automaticallyAdjustKeyboardInsets
         >
         {!greetingDismissed ? (
-          <>
-            <View style={[styles.greetingCard, shadows.cardSoft]}>
-              <TouchableOpacity
-                style={styles.greetingDismissBtn}
-                onPress={handleDismissGreeting}
-                hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
-                accessibilityRole="button"
-                accessibilityLabel="Dismiss welcome message"
-                activeOpacity={0.7}
-              >
-                <Ionicons name="close" size={18} color={colors.textMuted} />
-              </TouchableOpacity>
-              <LinearGradient
-                colors={[colors.cardWarm, colors.card]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.greetingGradient}
-              >
-                <View style={styles.greetingAccent} />
-                <View style={styles.greetingContent}>
-                  <View style={styles.greetingIconWrap}>
-                    <Ionicons name="bulb-outline" size={18} color={colors.primary} />
-                  </View>
-                  <Text style={styles.greeting}>{greetingText}</Text>
+          <View style={[styles.greetingCard, shadows.cardSoft]}>
+            <TouchableOpacity
+              style={styles.greetingDismissBtn}
+              onPress={handleDismissGreeting}
+              hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss welcome message"
+              activeOpacity={0.7}
+            >
+              <Ionicons name="close" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+            <LinearGradient
+              colors={[colors.cardWarm, colors.card]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.greetingGradient}
+            >
+              <View style={styles.greetingAccent} />
+              <View style={styles.greetingContent}>
+                <View style={styles.greetingIconWrap}>
+                  <Ionicons name="bulb-outline" size={18} color={colors.primary} />
                 </View>
-              </LinearGradient>
-            </View>
-
-            <View style={styles.aiDisclaimerCard}>
-              <Ionicons name="shield-checkmark-outline" size={16} color={colors.textSecondary} />
-              <Text style={styles.aiDisclaimer}>{AI_FOOD_SAFETY_DISCLAIMER}</Text>
-            </View>
-          </>
+                <Text style={styles.greeting}>{greetingText}</Text>
+              </View>
+            </LinearGradient>
+          </View>
         ) : null}
+
+        <View style={styles.aiDisclaimerCard}>
+          <Ionicons name="shield-checkmark-outline" size={16} color={colors.textSecondary} />
+          <Text style={styles.aiDisclaimer}>{AI_FOOD_SAFETY_DISCLAIMER}</Text>
+        </View>
 
         {renderGenerateButton()}
 

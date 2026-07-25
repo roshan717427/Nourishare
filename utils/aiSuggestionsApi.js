@@ -3,7 +3,8 @@ import { API_URL } from '../config/api';
 import { httpError } from './errorMessages';
 
 const BASE = `${API_URL}/aiSuggestions`;
-const GENERATE_TIMEOUT_MS = 45000;
+/** Must exceed server Gemini timeout × retries + fallback work. */
+const GENERATE_TIMEOUT_MS = 90000;
 
 async function fetchWithTimeout(url, options, timeoutMs) {
   const controller = new AbortController();

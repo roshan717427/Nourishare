@@ -20,7 +20,11 @@ const BLOCKED_PATTERNS = [
   /\bkys\b/i,
 ];
 
-/** Extra terms blocked in AI-generated recipe text / prompts. */
+/** Extra terms blocked in AI-generated recipe text / prompts.
+ * Keep these specific to dangerous substances/instructions — bare words like
+ * "toxic" / "poison" / "inedible" false-positive on normal safety prose
+ * ("non-toxic", "food poisoning risk") and can wipe an entire generation.
+ */
 const AI_DANGER_PATTERNS = [
   /\bbleach\b/i,
   /\bantifreeze\b/i,
@@ -29,11 +33,9 @@ const AI_DANGER_PATTERNS = [
   /\bcyanide\b/i,
   /\barsenic\b/i,
   /\braw\s+chicken\s+blood\b/i,
-  /\bundercooked\s+pork\b/i,
-  /\bpoison\b/i,
-  /\btoxic\b/i,
-  /\binedible\b/i,
-  /\bnon[- ]?food\b/i,
+  /\bdrain\s*cleaner\b/i,
+  /\boven\s*cleaner\b/i,
+  /\bhousehold\s+cleaner\b/i,
 ];
 
 function findMatch(text, patterns) {
@@ -71,13 +73,21 @@ function textContainsAiDanger(text) {
 
 function filterAiSuggestionPayload(suggestion) {
   if (!suggestion || typeof suggestion !== 'object') return null;
+  const asText = (value) => {
+    if (Array.isArray(value)) return value.filter(Boolean).join(' ');
+    return value == null ? '' : String(value);
+  };
   const blob = [
+    suggestion.name,
+    suggestion.recipe_name,
     suggestion.title,
     suggestion.description,
     suggestion.summary,
-    ...(Array.isArray(suggestion.ingredients) ? suggestion.ingredients : []),
-    ...(Array.isArray(suggestion.steps) ? suggestion.steps : []),
-    ...(Array.isArray(suggestion.instructions) ? suggestion.instructions : []),
+    suggestion.why_suggested,
+    suggestion.reason,
+    asText(suggestion.ingredients),
+    asText(suggestion.steps),
+    asText(suggestion.instructions),
   ]
     .filter(Boolean)
     .join(' ');

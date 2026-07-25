@@ -159,12 +159,21 @@ function recipeNameKey(recipe) {
     .toLowerCase();
 }
 
+async function safeRuleBasedFallback(username, pantryIngredients) {
+  try {
+    return await fetchRuleBasedFallback(username, pantryIngredients);
+  } catch (err) {
+    console.error('Rule-based fallback failed:', err.message);
+    return [];
+  }
+}
+
 async function topUpToSix(normalized, username, pantryIngredients) {
   if ((normalized || []).length >= RECIPES_PER_GENERATION) {
     return (normalized || []).slice(0, RECIPES_PER_GENERATION);
   }
   try {
-    const fallback = await fetchRuleBasedFallback(username, pantryIngredients);
+    const fallback = await safeRuleBasedFallback(username, pantryIngredients);
     const merged = [...(normalized || [])];
     const seen = new Set(merged.map(recipeNameKey).filter(Boolean));
     for (const recipe of fallback) {
@@ -211,11 +220,11 @@ async function generateSuggestions(username, pantryRaw) {
         console.error('Gemini generation failed, falling back:', err.message);
       }
       // Await your local system fallback array loop
-      normalized = await fetchRuleBasedFallback(username, context.pantryIngredients);
+      normalized = await safeRuleBasedFallback(username, context.pantryIngredients);
       source = 'rule_based_fallback';
     }
   } else {
-    normalized = await fetchRuleBasedFallback(username, context.pantryIngredients);
+    normalized = await safeRuleBasedFallback(username, context.pantryIngredients);
     source = 'rule_based_fallback';
   }
 
@@ -280,16 +289,14 @@ async function handleLoadCached(req, res) {
   const auth = await requireAuthForUsername(req, res, username);
   if (!auth) return;
 
-  const [cached, context] = await Promise.all([
-    loadCachedSuggestions(db, username),
-    gatherGenerationContext(db, username, null),
-  ]);
+  // Cache-only: do NOT call gatherGenerationContext here. That scans the user's
+  // logs and every followed user's logs/recipe_posts to build a Gemini prompt —
+  // appropriate for generate, not for opening the AI tab.
+  const cached = await loadCachedSuggestions(db, username);
 
   res.status(200).json({
     status: 'success',
     ...cached,
-    has_logs: context.has_logs,
-    has_friends: context.has_friends,
     friend_suggestions: attachImages(cached.friend_suggestions),
     preference_suggestions: attachImages(cached.preference_suggestions),
     pantry_suggestions: attachImages(cached.pantry_suggestions),
