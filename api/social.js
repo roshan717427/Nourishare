@@ -155,6 +155,7 @@ const {
   resolveDisplayName,
   sendInteractionNotification,
 } = require('./_helpers/notifications');
+const { fetchUsersByUsernames } = require('./_helpers/userLookup');
 
 const SEARCH_RESULT_LIMIT = 20;
 const RECOMMENDED_CANDIDATE_LIMIT = 50;
@@ -445,17 +446,19 @@ async function handleFollowers(req, res) {
     .orderBy('timestamp', 'desc')
     .get();
 
-  const followers = [];
-  for (const followerDoc of snapshot.docs) {
+  const followerIds = snapshot.docs.map((doc) => doc.id);
+  const userMap = await fetchUsersByUsernames(db, followerIds);
+
+  const followers = snapshot.docs.map((followerDoc) => {
     const followerId = followerDoc.id;
-    const followerData = await db.collection('users').doc(followerId).get();
-    followers.push({
+    const data = userMap.get(followerId);
+    return {
       username: followerId,
-      name: followerData.exists ? followerData.data().name : undefined,
-      profilePhotoUrl: followerData.exists ? followerData.data().profilePhotoUrl || null : null,
+      name: data ? data.name : undefined,
+      profilePhotoUrl: data ? data.profilePhotoUrl || null : null,
       timestamp: followerDoc.data().timestamp || null
-    });
-  }
+    };
+  });
 
   res.status(200).json({ followers });
 }
@@ -484,17 +487,19 @@ async function handleFollowing(req, res) {
     .orderBy('timestamp', 'desc')
     .get();
 
-  const following = [];
-  for (const followedDoc of snapshot.docs) {
+  const followedIds = snapshot.docs.map((doc) => doc.id);
+  const userMap = await fetchUsersByUsernames(db, followedIds);
+
+  const following = snapshot.docs.map((followedDoc) => {
     const followedId = followedDoc.id;
-    const followedData = await db.collection('users').doc(followedId).get();
-    following.push({
+    const data = userMap.get(followedId);
+    return {
       username: followedId,
-      name: followedData.exists ? followedData.data().name : undefined,
-      profilePhotoUrl: followedData.exists ? followedData.data().profilePhotoUrl || null : null,
+      name: data ? data.name : undefined,
+      profilePhotoUrl: data ? data.profilePhotoUrl || null : null,
       timestamp: followedDoc.data().timestamp || null
-    });
-  }
+    };
+  });
 
   res.status(200).json({ following });
 }
@@ -522,6 +527,13 @@ function normalizePost(doc, collectionName) {
     id: doc.id,
     postSource: collectionName,
     username: data.username,
+    // Denormalized author display fields (written on recipe log create).
+    authorName: data.name || data.authorName || data.author_name || null,
+    authorProfilePhotoUrl:
+      data.profilePhotoUrl ||
+      data.authorProfilePhotoUrl ||
+      data.author_profile_photo_url ||
+      null,
     title: data.title || data.recipe_name || 'Untitled dish',
     description: data.notes || data.cooking_notes || '',
     photoUrl: data.photoUrl || data.photo_url || data.image || null,
@@ -601,15 +613,37 @@ async function handleFeed(req, res) {
         snapshot.forEach((doc) => posts.push(normalizePost(doc, collectionName)));
       } catch (queryErr) {
         // Index still building, or mixed timestamp types — fall back to a
-        // bounded in-memory filter (may read more until indexes are ready).
+        // still-bounded query (never scan unbounded history for username in batch).
         console.warn(
           `feed query fallback (${collectionName}/${timeField}):`,
           queryErr.message
         );
-        const snapshot = await db
-          .collection(collectionName)
-          .where('username', 'in', batch)
-          .get();
+        let snapshot;
+        try {
+          // Prefer keeping the 3-day window even without orderBy.
+          snapshot = await db
+            .collection(collectionName)
+            .where('username', 'in', batch)
+            .where(timeField, '>=', feedCutoffTs)
+            .limit(FEED_LIMIT)
+            .get();
+          console.warn(
+            `feed query fallback used time+limit (${collectionName}/${timeField})`
+          );
+        } catch (timeErr) {
+          console.warn(
+            `feed query fallback time filter failed (${collectionName}/${timeField}):`,
+            timeErr.message
+          );
+          snapshot = await db
+            .collection(collectionName)
+            .where('username', 'in', batch)
+            .limit(FEED_LIMIT)
+            .get();
+          console.warn(
+            `feed query fallback used limit-only (${collectionName}/${timeField})`
+          );
+        }
         snapshot.forEach((doc) => {
           const post = normalizePost(doc, collectionName);
           if (post.created_at_ms > 0 && post.created_at_ms >= feedCutoffMs) {
@@ -627,20 +661,40 @@ async function handleFeed(req, res) {
     .slice(0, FEED_LIMIT);
 
   const uniqueUsernames = [...new Set(trimmedPosts.map(post => post.username).filter(Boolean))];
-  const userDocs = await Promise.all(
-    uniqueUsernames.map(user => db.collection('users').doc(user).get())
-  );
+  // Prefer denormalized author fields on the post; only fetch profiles for
+  // legacy posts that lack a display name.
+  const needProfileFetch = uniqueUsernames.filter((username) => {
+    const sample = trimmedPosts.find((p) => p.username === username);
+    return !(sample && sample.authorName);
+  });
+  const fetchedMap = await fetchUsersByUsernames(db, needProfileFetch);
 
   const userMap = {};
-  userDocs.forEach(doc => {
-    if (doc.exists) {
-      userMap[doc.id] = toPublicProfile(doc.data()); // 🔘 Stable, case-validated reference alignment
+  uniqueUsernames.forEach((username) => {
+    const sample = trimmedPosts.find((p) => p.username === username);
+    const fetched = fetchedMap.get(username);
+    if (fetched && Object.keys(fetched).length > 0) {
+      userMap[username] = toPublicProfile({ ...fetched, username });
+      return;
     }
+    if (sample && sample.authorName) {
+      userMap[username] = {
+        username,
+        name: sample.authorName,
+        profilePhotoUrl: sample.authorProfilePhotoUrl || null,
+      };
+      return;
+    }
+    userMap[username] = { username };
   });
 
   const recipePosts = trimmedPosts.map(post => ({
     ...post,
-    user: userMap[post.username] || { username: post.username }
+    user: userMap[post.username] || {
+      username: post.username,
+      name: post.authorName || undefined,
+      profilePhotoUrl: post.authorProfilePhotoUrl || null,
+    },
   }));
 
   res.status(200).json({ recipe_posts: recipePosts });
@@ -1368,8 +1422,13 @@ async function handleUserLogs(req, res) {
       .get();
   } catch (orderErr) {
     // Fall back without orderBy when older docs lack createdAt / index.
+    // Always keep a hard limit — never unbounded .get() of all user logs.
     console.log('userLogs orderBy unavailable, falling back:', orderErr.message);
-    snapshot = await db.collection('logs').where('username', '==', username).get();
+    snapshot = await db
+      .collection('logs')
+      .where('username', '==', username)
+      .limit(USER_LOGS_LIMIT)
+      .get();
   }
 
   const logs = snapshot.docs.map((doc) => normalizePost(doc, 'logs'));

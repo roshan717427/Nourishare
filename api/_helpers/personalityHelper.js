@@ -6,6 +6,9 @@
 
 const { capitalizeList } = require('../../utils/titleCase');
 
+/** Bound log reads when recomputing personality (write-path refresh). */
+const PERSONALITY_LOGS_LIMIT = 100;
+
 const CUISINE_CATEGORIES = {
   italian: ['pasta', 'pizza', 'risotto', 'bruschetta', 'tiramisu'],
   asian: ['sushi', 'stir-fry', 'curry', 'dumplings', 'ramen'],
@@ -196,7 +199,22 @@ function analyzeRecipes(recipes) {
 }
 
 async function fetchUserRecipes(db, username) {
-  const snapshot = await db.collection('logs').where('username', '==', username).get();
+  let snapshot;
+  try {
+    snapshot = await db
+      .collection('logs')
+      .where('username', '==', username)
+      .orderBy('createdAt', 'desc')
+      .limit(PERSONALITY_LOGS_LIMIT)
+      .get();
+  } catch (orderErr) {
+    console.warn('personality logs orderBy unavailable, falling back:', orderErr.message);
+    snapshot = await db
+      .collection('logs')
+      .where('username', '==', username)
+      .limit(PERSONALITY_LOGS_LIMIT)
+      .get();
+  }
   return snapshot.docs.map((doc) => mapLogToRecipe(doc.data()));
 }
 

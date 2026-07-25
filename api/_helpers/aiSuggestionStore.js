@@ -13,6 +13,8 @@ const { FieldValue } = require('firebase-admin/firestore');
 const DAILY_GENERATION_LIMIT = 3;
 /** Each generation aims for this many recipes (3 generations × 6 = 18 recipes/day). */
 const RECIPES_PER_GENERATION = 6;
+/** Enough for a few generations of 6; older recipes stay in Firestore. */
+const CACHE_LOAD_LIMIT = 42;
 const VALID_SECTIONS = new Set(['friend', 'preference', 'pantry']);
 
 function recipesRef(db, username) {
@@ -62,7 +64,7 @@ function splitBySection(recipes) {
 async function loadCachedSuggestions(db, username) {
   const snapshot = await recipesRef(db, username)
     .orderBy('createdAt', 'desc')
-    .limit(200)
+    .limit(CACHE_LOAD_LIMIT)
     .get();
 
   const recipes = snapshot.docs.map(serializeRecipeDoc);

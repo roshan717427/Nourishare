@@ -95,14 +95,32 @@ async function handleCreate(req, res) {
     return res.status(400).json({ error: 'Time is required' });
   }
 
+  let authorName = auth.username;
+  let authorProfilePhotoUrl = null;
+  try {
+    const authorDoc = await db.collection('users').doc(auth.username).get();
+    if (authorDoc.exists) {
+      const authorData = authorDoc.data() || {};
+      authorName = authorData.name || auth.username;
+      authorProfilePhotoUrl = authorData.profilePhotoUrl || null;
+    }
+  } catch (authorErr) {
+    console.warn('Could not load author profile for denormalized fields:', authorErr.message);
+  }
+
   const logData = {
     username: auth.username,
+    // Denormalized for feed/home so clients can render without N+1 profile reads.
+    name: authorName,
+    profilePhotoUrl: authorProfilePhotoUrl,
     title: fields.title,
     ingredients: fields.ingredients,
     recipeInstructions: fields.recipeInstructions,
     rating: fields.rating,
     difficulty: fields.difficulty,
     time: fields.time,
+    likes_count: 0,
+    comments_count: 0,
     createdAt: FieldValue.serverTimestamp(),
   };
 

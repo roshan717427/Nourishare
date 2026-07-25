@@ -1,10 +1,12 @@
 const { initializeApp, cert, getApps } = require('firebase-admin/app');
 const { getAuth } = require('firebase-admin/auth');
 const { getFirestore } = require('firebase-admin/firestore');
-const { refreshUserPersonality, isPersonalityStale } = require('./_helpers/personalityHelper');
 const { capitalizeList } = require('../utils/titleCase');
 const { normalizeUsername } = require('./_helpers/validateInput');
 const { verifyAuth, verifyToken, resolveUsernameFromToken } = require('./_helpers/verifyAuth');
+
+/** Cap profile log scan for frequency/avg — personality refreshes on write path. */
+const PROFILE_LOGS_LIMIT = 100;
 
 // Fields that must never be exposed to a non-owner / unauthenticated caller.
 // Owners (authenticated, viewing self) still receive these. Push token fields
@@ -241,20 +243,49 @@ module.exports = async (req, res) => {
         return res.status(404).json({ error: 'Profile setup incomplete', needsSetup: true });
       }
     }
-    // Compute live stats so the profile reflects real activity:
-    //  - total_recipes / avg_rating from the `logs` collection (source of truth;
-    //    self-heals any drift in the cookingStats counter maintained by
-    //    createRecipeLog).
-    //  - followers / following counts from the top-level follow collections used
-    //    across the social API.
-    const [logsSnap, followersSnap, followingSnap] = await Promise.all([
-      db.collection('logs').where('username', '==', username).get(),
+    // Live social counts + bounded log sample for frequency/avg.
+    // Personality is refreshed on recipe create/delete (write path) — do not
+    // re-scan all logs on every profile GET.
+    const storedPersonality = data.kitchen_personality || {};
+    const storedStats = storedPersonality.cooking_stats || {};
+    const storedCookingStats = data.cookingStats || {};
+
+    let logsSnap;
+    try {
+      logsSnap = await db
+        .collection('logs')
+        .where('username', '==', username)
+        .orderBy('createdAt', 'desc')
+        .limit(PROFILE_LOGS_LIMIT)
+        .get();
+    } catch (orderErr) {
+      console.warn('profile logs orderBy unavailable, falling back:', orderErr.message);
+      logsSnap = await db
+        .collection('logs')
+        .where('username', '==', username)
+        .limit(PROFILE_LOGS_LIMIT)
+        .get();
+    }
+
+    const [followersSnap, followingSnap] = await Promise.all([
       db.collection('followers').doc(username).collection('user_followers').get(),
       db.collection('following').doc(username).collection('user_following').get(),
     ]);
 
-    const totalRecipes = logsSnap.size;
-    let avgRating = null;
+    // Prefer stored totals (kept in sync by recipeLog + personality refresh).
+    // Bounded sample can undercount heavy cooks, so never overwrite a larger
+    // stored total with a truncated scan size.
+    const sampleCount = logsSnap.size;
+    const totalRecipes = Math.max(
+      sampleCount,
+      Number(storedStats.total_recipes) || 0,
+      Number(storedCookingStats.total_recipes) || 0
+    );
+
+    let avgRating =
+      storedStats.avg_rating != null && !Number.isNaN(Number(storedStats.avg_rating))
+        ? Number(storedStats.avg_rating)
+        : null;
     const ratings = [];
     logsSnap.forEach((logDoc) => {
       const r = logDoc.data().rating;
@@ -262,27 +293,20 @@ module.exports = async (req, res) => {
       if (!Number.isNaN(num) && num > 0) ratings.push(num);
     });
     if (ratings.length > 0) {
-      avgRating = Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 10) / 10;
+      const sampleAvg = Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 10) / 10;
+      // Prefer live sample avg when we have ratings; fall back to stored.
+      avgRating = sampleAvg;
     }
 
     const followersCount = followersSnap.size;
     const followingCount = followingSnap.size;
 
-    // Re-analyze personality when log count drifted from stored stats.
-    let personality = data.kitchen_personality || {};
-    if (isPersonalityStale(personality, totalRecipes)) {
-      try {
-        const refreshed = await refreshUserPersonality(db, username);
-        if (refreshed) personality = refreshed;
-      } catch (refreshErr) {
-        console.error('Failed to refresh stale personality:', refreshErr.message);
-      }
-    }
+    // Always return last saved persona fields — never blank them on read.
+    const personality =
+      storedPersonality && Object.keys(storedPersonality).length > 0
+        ? storedPersonality
+        : {};
 
-    // Merge computed stats over the stored profile. Only override the cooking
-    // stats when the user has real logs; otherwise keep whatever the stored
-    // profile had (e.g. seeded demo data) so existing profiles aren't zeroed out.
-    const storedStats = personality.cooking_stats || {};
     const mergedCookingStats = { ...storedStats };
     if (totalRecipes > 0) {
       mergedCookingStats.total_recipes = totalRecipes;
