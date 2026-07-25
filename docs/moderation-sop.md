@@ -18,6 +18,8 @@
    - Set report fields: `status: "resolved"` or `"dismissed"`, `resolvedAt: <ISO timestamp>`, `moderatorNote: <short note>`.
 5. Confirm no `status: "open"` reports older than 24 hours remain.
 
+**Account delete:** When a user deletes their account, `api/deleteUserProfile.js` removes `reports` where they are `reporterUsername` or `targetUsername`, and strips their username from other users’ `blockedUsers` arrays.
+
 ## App Review notes (paste into App Store Connect)
 
 > Nourishare supports user-generated recipes, photos, and comments. Users must accept Terms at signup (zero tolerance for explicit images, bullying, and hate). In-app Report and Block are available on posts, comments, and profiles. Reports are stored in Firestore (`reports`) and reviewed in the Firebase Console within 24 hours. Automated profanity filtering and Gemini-based image checks reject severe content on upload when available. AI suggestions include a food-safety disclaimer.

@@ -18,7 +18,7 @@ We aim to respond within 1–2 business days.
 
 1. Open the post, comment, or profile.
 2. Tap the safety / menu control (⋯ or flag icon).
-3. Choose Report and pick a reason (Inappropriate, Harassment, or Spam).
+3. Choose Report and pick a reason (Inappropriate, Harassment, Spam, or Other). For Other, type a short explanation.
 
 Our team reviews reports within 24 hours.
 

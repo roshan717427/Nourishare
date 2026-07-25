@@ -18,6 +18,7 @@ import MealPlanScreen from './screens/MealPlanScreen';
 import PostDetailScreen from './screens/PostDetailScreen';
 import RecipeDetailScreen from './screens/RecipeDetailScreen';
 import OnboardingTour, { ONBOARDING_STEPS } from './components/OnboardingTour';
+import { ReportOtherReasonModalHost } from './components/SafetyMenuButton';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { OnboardingProvider } from './context/OnboardingContext';
 import { NextUpProvider } from './context/NextUpContext';
@@ -155,6 +156,7 @@ function AppShell() {
     <OnboardingProvider totalSteps={ONBOARDING_STEPS.length}>
       <RootNavigator />
       {!initializing && user && profileStatus === 'ready' ? <OnboardingTour /> : null}
+      <ReportOtherReasonModalHost />
     </OnboardingProvider>
   );
 }
