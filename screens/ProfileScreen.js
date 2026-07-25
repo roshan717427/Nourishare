@@ -970,6 +970,8 @@ export default function ProfileScreen({ navigation, route }) {
           </View>
         ) : null}
 
+        {isOwnProfile ? <View style={styles.sectionDivider} /> : null}
+
         {isOwnProfile ? (
           <View style={styles.section}>
             <View style={styles.cookNextHeader}>
@@ -1061,6 +1063,8 @@ export default function ProfileScreen({ navigation, route }) {
           )}
         </View>
 
+        <View style={styles.sectionDivider} />
+
         <View style={styles.section}>
           <View style={styles.sectionTitleRow}>
             <Ionicons name="flame" size={20} color={colors.secondary} />
@@ -1124,6 +1128,8 @@ export default function ProfileScreen({ navigation, route }) {
           </View>
         ) : null}
 
+        <View style={styles.sectionDivider} />
+
         <View style={styles.section}>
           <View style={styles.sectionTitleRow}>
             <Ionicons name="stats-chart-outline" size={20} color={colors.chipAmberText} />
@@ -1169,6 +1175,8 @@ export default function ProfileScreen({ navigation, route }) {
             <BarChart data={cookingFrequencyData} />
           </View>
         ) : null}
+
+        <View style={styles.sectionDivider} />
 
         {isOwnProfile ? (
           <View style={styles.signOutSection}>
@@ -1318,33 +1326,35 @@ export default function ProfileScreen({ navigation, route }) {
                 Your cooking stats still update automatically. Custom traits and tags stay as you set them.
               </Text>
 
-              {SUPPORT_URL ? (
+              <View style={styles.legalLinksRow}>
                 <TouchableOpacity
                   style={styles.legalLinkButton}
-                  onPress={() => Linking.openURL(SUPPORT_URL)}
-                  activeOpacity={0.7}
+                  onPress={() => Linking.openURL(TERMS_OF_SERVICE_URL)}
                   accessibilityRole="link"
-                  accessibilityLabel="Open Support"
+                  accessibilityLabel="Terms of Service"
                 >
-                  <Text style={styles.legalLinkText}>Support</Text>
+                  <Text style={styles.legalLinkText}>Terms of Service</Text>
                 </TouchableOpacity>
-              ) : null}
-              <TouchableOpacity
-                style={styles.legalLinkButton}
-                onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}
-                accessibilityRole="link"
-                accessibilityLabel="Privacy Policy"
-              >
-                <Text style={styles.legalLinkText}>Privacy Policy</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.legalLinkButton}
-                onPress={() => Linking.openURL(TERMS_OF_SERVICE_URL)}
-                accessibilityRole="link"
-                accessibilityLabel="Terms of Service"
-              >
-                <Text style={styles.legalLinkText}>Terms of Service</Text>
-              </TouchableOpacity>
+                {SUPPORT_URL ? (
+                  <TouchableOpacity
+                    style={styles.legalLinkButton}
+                    onPress={() => Linking.openURL(SUPPORT_URL)}
+                    activeOpacity={0.7}
+                    accessibilityRole="link"
+                    accessibilityLabel="Open Support"
+                  >
+                    <Text style={styles.legalLinkText}>Support</Text>
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity
+                  style={styles.legalLinkButton}
+                  onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}
+                  accessibilityRole="link"
+                  accessibilityLabel="Privacy Policy"
+                >
+                  <Text style={styles.legalLinkText}>Privacy Policy</Text>
+                </TouchableOpacity>
+              </View>
 
               <TouchableOpacity
                 style={styles.deleteAccountButton}
@@ -1484,7 +1494,15 @@ const styles = StyleSheet.create({
   },
   editProfileSection: {
     paddingHorizontal: 20,
-    paddingTop: 14,
+    paddingTop: 28,
+  },
+  sectionDivider: {
+    height: 3,
+    backgroundColor: '#2E6F40',
+    borderStyle: 'dotted',
+    marginHorizontal: 16,
+    marginTop: 28,
+    borderRadius: 2,
   },
   editProfileButton: {
     flexDirection: 'row',
@@ -2084,13 +2102,22 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
-  legalLinkButton: {
-    paddingVertical: 10,
+  legalLinksRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
     alignItems: 'center',
+    gap: 12,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  legalLinkButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 4,
   },
   legalLinkText: {
     color: colors.primary,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
     textDecorationLine: 'underline',
   },
@@ -2154,9 +2181,10 @@ const styles = StyleSheet.create({
   },
   signOutSection: {
     paddingHorizontal: 20,
-    paddingTop: 32,
+    paddingTop: 40,
     paddingBottom: 8,
     alignItems: 'center',
+
   },
   signOutButton: {
     flexDirection: 'row',

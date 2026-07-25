@@ -4,8 +4,6 @@ import {
   TextInput, 
   TouchableOpacity,
   StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
   ScrollView,
   Alert,
   View,
@@ -186,10 +184,7 @@ export default function SignUpScreen({ navigation, route }) {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <View style={styles.container}>
       <StatusBar style="light" />
       <LinearGradient
         colors={[colors.gradientAuthStart, colors.gradientAuthEnd]}
@@ -198,140 +193,146 @@ export default function SignUpScreen({ navigation, route }) {
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
+          automaticallyAdjustKeyboardInsets={false}
+          contentInsetAdjustmentBehavior="never"
         >
-          <View style={styles.logoRow}>
-            <Image
-              source={require('../assets/logo.png')}
-              style={{ width: 48, height: 48 }}
-              resizeMode="contain"
-            />
-            <Text style={styles.brand}>Nourishare</Text>
-          </View>
-          <Text style={styles.title}>Create account</Text>
-          <Text style={styles.subtitle}>Join the community & start logging!</Text>
+          <View style={styles.contentCluster}>
+            <View style={styles.topBlock}>
+              <View style={styles.logoRow}>
+                <Image
+                  source={require('../assets/logo.png')}
+                  style={{ width: 44, height: 44 }}
+                  resizeMode="contain"
+                />
+                <Text style={styles.brand}>Nourishare</Text>
+              </View>
+              <Text style={styles.subtitle}>Join the community & start logging!</Text>
+            </View>
 
-          <View style={styles.formCard}>
-            <TextInput
-              style={styles.input}
-              placeholder="First name"
-              placeholderTextColor={colors.textMuted}
-              value={firstName}
-              onChangeText={setFirstName}
-            />
-
-            <TextInput
-              style={styles.input}
-              placeholder="Last name"
-              placeholderTextColor={colors.textMuted}
-              value={lastName}
-              onChangeText={setLastName}
-            />
-
-            <TextInput
-              style={styles.input}
-              placeholder="Email"
-              placeholderTextColor={colors.textMuted}
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="email-address"
-            />
-
-            <TextInput
-              style={styles.input}
-              placeholder="Username"
-              placeholderTextColor={colors.textMuted}
-              value={username}
-              onChangeText={(text) => setUsername(text.toLowerCase())}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            <Text style={styles.helperText}>{USERNAME_HINT}</Text>
-
-            <View style={styles.passwordRow}>
+            <View style={styles.formCard}>
               <TextInput
-                style={styles.passwordInput}
-                placeholder="Password"
+                style={styles.input}
+                placeholder="First name"
                 placeholderTextColor={colors.textMuted}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-                autoCapitalize="none"
+                value={firstName}
+                onChangeText={setFirstName}
               />
+
+              <TextInput
+                style={styles.input}
+                placeholder="Last name"
+                placeholderTextColor={colors.textMuted}
+                value={lastName}
+                onChangeText={setLastName}
+              />
+
+              <TextInput
+                style={styles.input}
+                placeholder="Email"
+                placeholderTextColor={colors.textMuted}
+                value={email}
+                onChangeText={setEmail}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+              />
+
+              <TextInput
+                style={styles.input}
+                placeholder="Username"
+                placeholderTextColor={colors.textMuted}
+                value={username}
+                onChangeText={(text) => setUsername(text.toLowerCase())}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <Text style={styles.helperText}>{USERNAME_HINT}</Text>
+
+              <View style={styles.passwordRow}>
+                <TextInput
+                  style={styles.passwordInput}
+                  placeholder="Password"
+                  placeholderTextColor={colors.textMuted}
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                />
+                <TouchableOpacity
+                  style={styles.passwordToggle}
+                  onPress={() => setShowPassword((prev) => !prev)}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  <Ionicons
+                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                    size={22}
+                    color={colors.textMuted}
+                  />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.helperText}>{PASSWORD_HINT}</Text>
+
               <TouchableOpacity
-                style={styles.passwordToggle}
-                onPress={() => setShowPassword((prev) => !prev)}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                style={styles.termsRow}
+                onPress={() => setAcceptedTerms((prev) => !prev)}
+                activeOpacity={0.8}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: acceptedTerms }}
+                accessibilityLabel="Accept Terms of Service"
               >
                 <Ionicons
-                  name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                  name={acceptedTerms ? 'checkbox' : 'square-outline'}
                   size={22}
-                  color={colors.textMuted}
+                  color={acceptedTerms ? colors.primary : colors.textMuted}
                 />
+                <Text style={styles.termsText}>
+                  I agree to the{' '}
+                  <Text
+                    style={styles.termsLink}
+                    onPress={() => Linking.openURL(TERMS_OF_SERVICE_URL)}
+                  >
+                    Terms of Service
+                  </Text>
+                  {' '}and{' '}
+                  <Text
+                    style={styles.termsLink}
+                    onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}
+                  >
+                    Privacy Policy
+                  </Text>
+                  . Explicit images, bullying, and hate speech result in an immediate ban.
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.signUpButton, isSubmitting && styles.signUpButtonDisabled]}
+                onPress={handleSignUp}
+                activeOpacity={0.85}
+                disabled={isSubmitting}
+              >
+                <Text style={styles.signUpButtonText}>
+                  {isSubmitting ? 'Creating...' : 'Sign up'}
+                </Text>
               </TouchableOpacity>
             </View>
-            <Text style={styles.helperText}>{PASSWORD_HINT}</Text>
 
             <TouchableOpacity
-              style={styles.termsRow}
-              onPress={() => setAcceptedTerms((prev) => !prev)}
-              activeOpacity={0.8}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: acceptedTerms }}
-              accessibilityLabel="Accept Terms of Service"
+              style={styles.loginRow}
+              activeOpacity={0.7}
+              onPress={() => navigation.navigate('Login')}
             >
-              <Ionicons
-                name={acceptedTerms ? 'checkbox' : 'square-outline'}
-                size={22}
-                color={acceptedTerms ? colors.primary : colors.textMuted}
-              />
-              <Text style={styles.termsText}>
-                I agree to the{' '}
-                <Text
-                  style={styles.termsLink}
-                  onPress={() => Linking.openURL(TERMS_OF_SERVICE_URL)}
-                >
-                  Terms of Service
-                </Text>
-                {' '}and{' '}
-                <Text
-                  style={styles.termsLink}
-                  onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}
-                >
-                  Privacy Policy
-                </Text>
-                . Explicit images, bullying, and hate speech result in an immediate ban.
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.signUpButton, isSubmitting && styles.signUpButtonDisabled]}
-              onPress={handleSignUp}
-              activeOpacity={0.85}
-              disabled={isSubmitting}
-            >
-              <Text style={styles.signUpButtonText}>
-                {isSubmitting ? 'Creating...' : 'Sign up'}
+              <Text style={styles.loginText}>
+                Already have an account? <Text style={styles.loginLink}>Log in</Text>
               </Text>
             </TouchableOpacity>
           </View>
-
-          <TouchableOpacity
-            style={styles.loginRow}
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate('Login')}
-          >
-            <Text style={styles.loginText}>
-              Already have an account? <Text style={styles.loginLink}>Log in</Text>
-            </Text>
-          </TouchableOpacity>
         </ScrollView>
       </LinearGradient>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -346,38 +347,39 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     paddingHorizontal: 24,
-    paddingVertical: 40,
+    paddingVertical: 28,
+  },
+  contentCluster: {
+    width: '100%',
+  },
+  topBlock: {
+    alignItems: 'center',
+    marginBottom: 14,
   },
   logoRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
-    gap: 12,
+    marginBottom: 8,
+    gap: 10,
   },
   brand: {
-    fontSize: 42,
+    fontSize: 40,
     fontWeight: '800',
     color: '#fff',
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.9)',
-    textAlign: 'center',
-    marginBottom: 8,
   },
   subtitle: {
     fontSize: 15,
     color: 'rgba(255,255,255,0.85)',
     textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 22,
+    lineHeight: 21,
   },
   formCard: {
     backgroundColor: colors.card,
     borderRadius: radii.xl,
-    padding: 20,
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
@@ -387,24 +389,24 @@ const styles = StyleSheet.create({
   input: {
     backgroundColor: colors.inputBg,
     borderRadius: radii.md,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     fontSize: 16,
     color: colors.text,
-    marginBottom: 12,
+    marginBottom: 10,
     borderWidth: 1,
     borderColor: colors.border,
   },
   passwordRow: {
     position: 'relative',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   passwordInput: {
     backgroundColor: colors.inputBg,
     borderRadius: radii.md,
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
     paddingRight: 48,
-    paddingVertical: 14,
+    paddingVertical: 12,
     fontSize: 16,
     color: colors.text,
     borderWidth: 1,
@@ -421,14 +423,14 @@ const styles = StyleSheet.create({
   helperText: {
     fontSize: 11,
     color: colors.textMuted,
-    marginTop: -6,
-    marginBottom: 16,
+    marginTop: -4,
+    marginBottom: 12,
     marginLeft: 4,
   },
   signUpButton: {
     backgroundColor: colors.primary,
     borderRadius: radii.md,
-    paddingVertical: 16,
+    paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -437,19 +439,19 @@ const styles = StyleSheet.create({
   },
   signUpButtonText: {
     color: '#fff',
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
   },
   termsRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 10,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   termsText: {
     flex: 1,
     fontSize: 13,
-    lineHeight: 19,
+    lineHeight: 18,
     color: colors.textSecondary,
   },
   termsLink: {
@@ -458,8 +460,8 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
   loginRow: {
-    marginTop: 24,
     alignItems: 'center',
+    marginTop: 14,
   },
   loginText: {
     fontSize: 16,

@@ -415,12 +415,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md + 4,
     paddingTop: spacing.lg,
     paddingBottom: spacing.sm,
+    alignItems: 'center',
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '800',
     color: colors.text,
     marginBottom: spacing.md,
+    textAlign: 'center',
+    alignSelf: 'stretch',
   },
   recsLoader: {
     marginVertical: spacing.md,
@@ -430,6 +433,9 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     lineHeight: 22,
     marginBottom: spacing.sm,
+    textAlign: 'center',
+    alignSelf: 'stretch',
+    paddingHorizontal: spacing.md,
   },
   recCard: {
     flexDirection: 'row',
@@ -440,6 +446,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm + 4,
     borderWidth: 1,
     borderColor: colors.borderLight,
+    alignSelf: 'stretch',
   },
   recCardMain: {
     flex: 1,
@@ -553,8 +560,10 @@ const styles = StyleSheet.create({
   },
   hint: {
     alignItems: 'center',
+    justifyContent: 'center',
     paddingTop: spacing.xl,
-    paddingHorizontal: 48,
+    paddingHorizontal: 40,
+    width: '100%',
   },
   hintText: {
     fontSize: 15,
@@ -562,5 +571,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm + 4,
     textAlign: 'center',
     lineHeight: 22,
+    alignSelf: 'stretch',
   },
 });
