@@ -4,6 +4,7 @@ const { getAuth } = require('firebase-admin/auth');
 const { requireAuthForUsername } = require('./_helpers/verifyAuth');
 const { normalizeUsername } = require('./_helpers/validateInput');
 const { listAllPostIds } = require('./_helpers/usernameMigration');
+const { commitDeletes, deletePostSocialTree, DELETE_BATCH_SIZE } = require('./_helpers/deletePostSocialTree');
 
 const DELETED_USERNAME = 'deleted_user';
 const DELETED_DISPLAY_NAME = 'Deleted User';
@@ -24,20 +25,6 @@ try {
   adminAuth = getAuth();
 } catch (error) {
   console.error('Firebase initialization error:', error);
-}
-
-// Firestore batches allow up to 500 writes; stay safely under that.
-const DELETE_BATCH_SIZE = 400;
-
-// Commit deletes for an arbitrary list of doc refs in chunked batches.
-async function commitDeletes(refs) {
-  for (let i = 0; i < refs.length; i += DELETE_BATCH_SIZE) {
-    const batch = db.batch();
-    for (const ref of refs.slice(i, i + DELETE_BATCH_SIZE)) {
-      batch.delete(ref);
-    }
-    await batch.commit();
-  }
 }
 
 // Run a cleanup step without letting its failure abort account deletion.
@@ -86,41 +73,9 @@ async function deleteMatchingDocs(buildQuery) {
   for (;;) {
     const snap = await buildQuery().limit(DELETE_BATCH_SIZE).get();
     if (snap.empty) break;
-    await commitDeletes(snap.docs.map((d) => d.ref));
+    await commitDeletes(db, snap.docs.map((d) => d.ref));
     if (snap.size < DELETE_BATCH_SIZE) break;
   }
-}
-
-/** Delete comments, comment likes, and post likes for a post (avoids orphaned trees). */
-async function deletePostSocialTree(postId) {
-  const refs = [];
-
-  const commentsSnap = await db
-    .collection('post_comments')
-    .doc(postId)
-    .collection('items')
-    .get();
-  for (const commentDoc of commentsSnap.docs) {
-    refs.push(commentDoc.ref);
-    const commentLikesSnap = await db
-      .collection('comment_likes')
-      .doc(commentDoc.id)
-      .collection('users')
-      .get();
-    commentLikesSnap.docs.forEach((d) => refs.push(d.ref));
-    refs.push(db.collection('comment_likes').doc(commentDoc.id));
-  }
-  refs.push(db.collection('post_comments').doc(postId));
-
-  const postLikesSnap = await db
-    .collection('post_likes')
-    .doc(postId)
-    .collection('users')
-    .get();
-  postLikesSnap.docs.forEach((d) => refs.push(d.ref));
-  refs.push(db.collection('post_likes').doc(postId));
-
-  await commitDeletes(refs);
 }
 
 // Best-effort removal of the deleted user's own data and the dangling
@@ -142,11 +97,11 @@ async function cleanupDeletedUserData(username, { uid = null, email = null } = {
     for (const col of POST_COLLECTIONS) {
       const snap = await db.collection(col).where('username', '==', username).get();
       snap.docs.forEach((d) => postIds.add(d.id));
-      await commitDeletes(snap.docs.map((d) => d.ref));
+      await commitDeletes(db, snap.docs.map((d) => d.ref));
     }
     for (const postId of postIds) {
       try {
-        await deletePostSocialTree(postId);
+        await deletePostSocialTree(db, postId);
       } catch (err) {
         console.warn('delete post social tree failed:', postId, err.message);
       }
@@ -158,17 +113,17 @@ async function cleanupDeletedUserData(username, { uid = null, email = null } = {
   // deleted account's meal plan and AI-suggested recipes.
   await bestEffort('meal_plans', async () => {
     const snap = await db.collection('meal_plans').doc(username).collection('entries').get();
-    await commitDeletes(snap.docs.map((d) => d.ref));
+    await commitDeletes(db, snap.docs.map((d) => d.ref));
     await db.collection('meal_plans').doc(username).delete();
   });
   await bestEffort('ai_suggestions', async () => {
     const snap = await db.collection('ai_suggestions').doc(username).collection('recipes').get();
-    await commitDeletes(snap.docs.map((d) => d.ref));
+    await commitDeletes(db, snap.docs.map((d) => d.ref));
     await db.collection('ai_suggestions').doc(username).delete();
   });
   await bestEffort('ai_usage', async () => {
     const snap = await db.collection('ai_usage').doc(username).collection('daily').get();
-    await commitDeletes(snap.docs.map((d) => d.ref));
+    await commitDeletes(db, snap.docs.map((d) => d.ref));
     await db.collection('ai_usage').doc(username).delete();
   });
 
@@ -191,7 +146,7 @@ async function cleanupDeletedUserData(username, { uid = null, email = null } = {
           .doc(username)
       );
     }
-    await commitDeletes(refs);
+    await commitDeletes(db, refs);
   });
 
   // Inbound follow edges + the mirror on each follower's following list.
@@ -213,7 +168,7 @@ async function cleanupDeletedUserData(username, { uid = null, email = null } = {
           .doc(username)
       );
     }
-    await commitDeletes(refs);
+    await commitDeletes(db, refs);
   });
 
   // Pending follow requests: own trees + peer mirrors so others don't keep
@@ -236,7 +191,7 @@ async function cleanupDeletedUserData(username, { uid = null, email = null } = {
           .doc(username)
       );
     }
-    await commitDeletes(refs);
+    await commitDeletes(db, refs);
   });
   await bestEffort('follow_requests_outgoing', async () => {
     const snap = await db
@@ -263,7 +218,7 @@ async function cleanupDeletedUserData(username, { uid = null, email = null } = {
           .doc(username)
       );
     }
-    await commitDeletes(refs);
+    await commitDeletes(db, refs);
   });
   await bestEffort('notifications', async () => {
     const snap = await db
@@ -271,7 +226,7 @@ async function cleanupDeletedUserData(username, { uid = null, email = null } = {
       .doc(username)
       .collection('items')
       .get();
-    await commitDeletes(snap.docs.map((d) => d.ref));
+    await commitDeletes(db, snap.docs.map((d) => d.ref));
   });
   // Any leftover notifs keyed by this sender on other users' inboxes.
   await bestEffort('peer_notifications', async () => {
@@ -283,7 +238,7 @@ async function cleanupDeletedUserData(username, { uid = null, email = null } = {
       const refs = snap.docs
         .filter((d) => d.ref.path.includes('notifications/'))
         .map((d) => d.ref);
-      await commitDeletes(refs);
+      await commitDeletes(db, refs);
     } catch (err) {
       console.warn('peer notifications collectionGroup skipped:', err.message);
     }
@@ -435,7 +390,7 @@ async function cleanupDeletedUserData(username, { uid = null, email = null } = {
     }
 
     const likeRefs = [...deletedLikePaths].map((path) => db.doc(path));
-    await commitDeletes(likeRefs);
+    await commitDeletes(db, likeRefs);
 
     for (const postId of recountPosts) {
       try {

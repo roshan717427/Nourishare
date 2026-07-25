@@ -24,6 +24,7 @@ const { resolveDisplayName, sendInteractionNotification } = require('./_helpers/
 const { partitionExistingUsernames } = require('./_helpers/userLookup');
 const { assertCleanText } = require('./_helpers/contentSafety');
 const { assertImageSafe } = require('./_helpers/imageSafety');
+const { deletePostSocialTree } = require('./_helpers/deletePostSocialTree');
 
 let db;
 try {
@@ -238,6 +239,12 @@ async function handleDelete(req, res) {
   }
 
   await logRef.delete();
+
+  try {
+    await deletePostSocialTree(db, logId);
+  } catch (socialErr) {
+    console.error('Failed to delete post social tree after log delete:', socialErr.message);
+  }
 
   try {
     const userRef = db.collection('users').doc(auth.username);
