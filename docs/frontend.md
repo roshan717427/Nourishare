@@ -1,141 +1,98 @@
 # Nourishare Frontend
 
-React Native mobile app built with Expo and React Navigation.
+React Native mobile app built with **Expo SDK 54**, React Navigation, and Firebase Auth.
+Talks to the Vercel API at `https://nourishare.vercel.app/api` (see `config/api.js`).
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js (v18 or later)
-- npm or yarn
-- Expo CLI: `npm install -g expo-cli`
-- Expo Go app on your iOS/Android device, or iOS Simulator / Android Emulator
+- Node.js 18+ (20+ recommended)
+- npm
+- Expo Go for light UI work, **or** iOS Simulator / Android Emulator
+- For push notifications and production-parity testing: an **EAS development build** or **TestFlight** install
 
-### Installation
-
-1. Install dependencies:
 ```bash
 npm install
+npm start                 # Metro bundler
+npm run ios               # native iOS (requires Xcode / ios/ project)
+npm run android           # native Android
+npm run start:tunnel      # Expo tunnel (helpful across networks)
 ```
 
-2. Start the Expo development server:
-```bash
-npm start
-```
-
-3. Run on specific platform:
-```bash
-# iOS
-npm run ios
-
-# Android
-npm run android
-
-# Web
-npm run web
-```
+Prefer `npx expo …` / project scripts over a global `expo-cli` install.
 
 ### Project Structure
 
 ```
 /
-├── App.js                    # Main app entry point with navigation
-├── app.json                  # Expo configuration
-├── screens/                  # Screen components
-│   ├── HomeScreen.js        # Home screen
-│   └── LogMealScreen.js     # Log a meal form screen
-├── components/               # Reusable components
-│   └── BottomNavigation.js  # Bottom tab navigation
-├── config/                   # Configuration files
-│   └── api.js               # API endpoint configuration
-└── assets/                   # Images, fonts, etc.
+├── App.js                 # Auth gate + stack navigation + push deep links
+├── app.json               # Expo / iOS / Android config
+├── screens/               # UI screens (auth, home, explore, AI, profile, etc.)
+├── components/            # Shared UI (bottom nav, safety menu, onboarding, …)
+├── context/               # AuthContext, OnboardingContext, NextUpContext
+├── config/                # api.js, firebase.js, legal.js
+├── utils/                 # auth helpers, push, errors, feed helpers
+├── constants/             # theme tokens
+├── assets/                # images / icons
+└── ios/                   # native iOS (EAS)
 ```
 
-## Features
+### Screens (current)
 
-### Log Meal Screen
+Auth: `Login`, `SignUp`, `ForgotPassword`, `FinishProfile`  
+Main: `Home`, `Explore`, `LogMeal`, `AISuggestions`, `MealPlan`, `Profile`, `Notifications`  
+Detail: `PostDetail`, `RecipeDetail`, `FollowList`
 
-The Log Meal screen allows users to:
-- Enter meal name
-- Add a photo (from camera or photo library)
-- Add ingredients
-- Add notes
-- Rate the meal (1-5)
-- Select difficulty (Easy, Medium, Hard)
-- Enter cooking time
-- Enter recipe source
-- Submit the meal log to the backend API
+Bottom navigation is implemented in `components/BottomNavigation.js`.
 
-### API Integration
+## Features (high level)
 
-The app connects to the backend API at:
-- Production: `https://nourishare.vercel.app/api`
-- Development: `http://localhost:3000/api` (when using local backend)
+- Email/password auth (Firebase) and username profiles
+- Social feed, follow request/accept, likes, comments, Report/Block
+- Meal logging with camera/library photos (stored as data URLs on log docs — not Firebase Storage)
+- Meal plans (“Cook Next”) via `/api/mealPlan?action=…` and portfolio favorites
+- AI suggestions via `/api/aiSuggestions?action=loadCached|generate|hide` (Gemini + daily limits)
+- Push notifications (Expo Push) on a real device / store build
+- Account deletion via API
 
-Update the API URL in `config/api.js` if needed.
+## API Integration
 
-## Environment Variables
-
-Create a `.env` file in the root directory for environment-specific variables:
-
-```
-API_URL=https://nourishare.vercel.app/api
+```js
+// config/api.js
+export const API_URL = 'https://nourishare.vercel.app/api';
+// For local API: uncomment localhost override in that file
 ```
 
-Note: For Expo, you may need to use `expo-constants` or `react-native-config` to access environment variables.
+Protected calls send `Authorization: Bearer <Firebase ID token>` (`utils/apiAuth.js`).
+Helpers: `utils/aiSuggestionsApi.js`, `utils/mealPlanApi.js`.
 
 ## Authentication
 
-Currently, the app uses a hardcoded username (`'current_user'`). You'll need to:
-1. Implement authentication (Firebase Auth, Auth0, etc.)
-2. Store the authenticated user's information
-3. Pass the username from the auth context to the LogMealScreen
+Handled by `context/AuthContext.js` (Firebase Auth + profile readiness / Finish Profile flow).
+Username login resolves email via `social?action=signInEmail` before Firebase
+`signInWithEmailAndPassword`. There is **no** hardcoded `current_user` username.
 
-## Photo Upload
+## Photos
 
-The photo picker currently stores the image URI locally. To fully implement photo upload:
-1. Upload images to Firebase Storage or similar service
-2. Get the public URL of the uploaded image
-3. Pass the URL (not the local URI) to the API
+`expo-image-picker` captures a local image and sends a **base64 data URL** as `photoUrl` on create/update log.
+Uploads are safety-checked on the server (Gemini) when configured.
 
 ## Navigation
 
-The app uses React Navigation:
-- Stack Navigator for main navigation
-- Bottom Tab Navigator for bottom navigation (to be fully implemented)
-
-## Next Steps
-
-- [ ] Implement user authentication
-- [ ] Add photo upload to Firebase Storage
-- [ ] Create remaining screens (Search, Suggestions, Profile)
-- [ ] Implement social feed screen
-- [ ] Add recipe viewing and editing screens
-- [ ] Add pull-to-refresh functionality
-- [ ] Implement offline support
+- React Navigation **stack** for auth vs main flows and detail screens
+- Custom **bottom tab** bar (`BottomNavigation`) for Home / Explore / AI / Post / Profile
 
 ## Troubleshooting
 
-### Image Picker Issues
-- Make sure camera/photo library permissions are granted
-- On iOS, add camera usage description to `app.json`:
-```json
-"ios": {
-  "infoPlist": {
-    "NSCameraUsageDescription": "We need access to your camera to take photos of meals.",
-    "NSPhotoLibraryUsageDescription": "We need access to your photo library to select meal photos."
-  }
-}
-```
-
-### API Connection Issues
-- Check that the API URL in `config/api.js` is correct
-- Verify your device/simulator can reach the API endpoint
-- Check backend logs for errors
+- Camera / library permissions: declared in `app.json` `ios.infoPlist` and the image-picker plugin
+- API issues: confirm `config/api.js`, device can reach Vercel, and the Firebase token is valid
+- Metro / EMFILE: [metro-troubleshooting.md](./metro-troubleshooting.md)
+- Device connection: [expo-guide.md](./expo-guide.md)
 
 ## Resources
 
 - [Expo Documentation](https://docs.expo.dev/)
 - [React Navigation](https://reactnavigation.org/)
 - [React Native Documentation](https://reactnative.dev/)
-
+- [Firebase Auth](https://firebase.google.com/docs/auth)

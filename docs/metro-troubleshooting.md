@@ -5,6 +5,7 @@
 This error occurs on macOS when the system limit for open file descriptors is too low for Metro bundler.
 
 ### Quick Fix (Temporary)
+
 ```bash
 ulimit -n 4096
 npm start
@@ -13,70 +14,59 @@ npm start
 ### Permanent Fix (macOS)
 
 1. **Check current limit:**
+
 ```bash
 ulimit -n
 ```
 
-2. **Increase the limit permanently:**
-   - Edit or create `~/.zshrc` (for Zsh) or `~/.bash_profile` (for Bash):
+2. **Increase the limit for your shell** — edit `~/.zshrc` (Zsh) or `~/.bash_profile` (Bash):
+
 ```bash
 echo "ulimit -n 4096" >> ~/.zshrc
 source ~/.zshrc
 ```
 
-   - Or for a system-wide fix, create/edit `/etc/launchd.conf`:
-```bash
-sudo nano /etc/launchd.conf
-```
-   Add: `limit maxfiles 4096 8192`
+3. **Recommended: use Watchman**
 
-   - Then restart your computer or run:
-```bash
-launchctl limit maxfiles 4096 8192
-```
-
-3. **Alternative: Use Watchman (Recommended)**
 ```bash
 brew install watchman
 ```
 
-Watchman is Facebook's file watching service and handles file watching more efficiently than the default Node.js watcher.
+After installing Watchman, restart the terminal and run:
 
-After installing watchman, restart your terminal and run:
 ```bash
 npm start
 ```
 
-## React Native Version Mismatch
+## React Native / Expo Version Issues
 
-If you see warnings about React Native version mismatches:
+This project pins versions via Expo SDK **54** (`react-native@0.81.x` in `package.json`).
+Do **not** manually install an arbitrary React Native version (e.g. an old `0.73.x`).
+
+If you see version mismatch warnings:
 
 ```bash
-npm install react-native@0.73.6
+npx expo install --fix
 npm install
 ```
 
-## Clear Expo Cache
-
-If you encounter weird errors or build issues:
+## Clear Expo / Metro Cache
 
 ```bash
-# Clear Expo cache
-expo start -c
+npx expo start -c
 
-# Or clear everything
-rm -rf node_modules
-rm -rf .expo
+# Or a full reset
+rm -rf node_modules .expo
 npm install
-expo start -c
+npx expo start -c
 ```
 
 ## Metro Bundler Issues
 
-If Metro bundler is slow or crashes:
+If Metro is slow or crashes:
 
-1. Check `.watchmanconfig` exists (it should)
-2. Restart watchman: `watchman shutdown-server`
-3. Clear Metro cache: `expo start -c`
+1. Confirm `.watchmanconfig` exists
+2. Restart Watchman: `watchman shutdown-server`
+3. Clear cache: `npx expo start -c`
 
 > For device connection and QR-code issues, see [expo-guide.md](./expo-guide.md).

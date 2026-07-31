@@ -22,7 +22,14 @@
 
 ## App Review notes (paste into App Store Connect)
 
-> Nourishare supports user-generated recipes, photos, and comments. Users must accept Terms at signup (zero tolerance for explicit images, bullying, and hate). In-app Report and Block are available on posts, comments, and profiles. Reports are stored in Firestore (`reports`) and reviewed in the Firebase Console within 24 hours. Automated profanity filtering and Gemini-based image checks reject severe content on upload when available. AI suggestions include a food-safety disclaimer.
+> Nourishare supports user-generated recipes, photos, and comments. Users must accept Terms at signup (zero tolerance for explicit images, bullying, and hate). In-app Report and Block are available on posts, comments, and profiles. Reports are stored in Firestore (`reports`) and reviewed within 24 hours. Automated filtering and Gemini-based image checks reject severe content on upload when available. AI suggestions include a food-safety disclaimer.
+>
+> How to verify:
+> 1. Sign in with the demo account above.
+> 2. Home feed → post menu → Report.
+> 3. Open another user’s profile → Block.
+> 4. AI Suggestions → read the food-safety disclaimer; optionally generate suggestions.
+> 5. Please do not use Delete account on the demo account. (Account deletion is under Profile → Account Settings.)
 
 ## Image moderation (Spark-compatible)
 

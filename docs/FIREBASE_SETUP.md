@@ -40,7 +40,8 @@ You can supply the config in **either** location:
 
 ### Option A — directly in `config/firebase.js`
 
-Replace the `PLACEHOLDER_*` strings in `config/firebase.js` with your values.
+Set the `firebaseConfig` defaults in `config/firebase.js` (or leave them and
+override via Option B).
 
 ### Option B — via `app.json` (keeps it out of `config/firebase.js`)
 
@@ -80,21 +81,21 @@ new values are picked up.
   `auth`. It uses `initializeAuth` with `getReactNativePersistence(AsyncStorage)`
   so sessions survive app restarts, falling back to `getAuth` if needed.
 - **Auth state:** `context/AuthContext.js` subscribes to `onAuthStateChanged`
-  and maps the Firebase user to `{ uid, email, username, name }`. The social API
-  (`following`, `follow`, `unfollow`, `isFollowing`) is unchanged.
+  and maps the Firebase user to `{ uid, email, username, name }`. Social graph
+  mutations go through `/api/social?action=…` with a Bearer token.
 
 ### Username vs email
 
 Firebase auth keys off **email**, but the app's social features key off a
 public **username**. We reconcile them as follows:
 
-- **Sign up:** the account is created with email + password, the Firebase
-  `displayName` is set to the chosen username, and the public profile is created
-  in Firestore via `POST /api/createUserProfile` (username + name + email).
-- **Log in:** the "username" field accepts a username **or** an email. If it's a
+- **Sign up:** the account is created with email + password, then the public
+  profile is created via `POST /api/createUserProfile` (username, first/last
+  name, email, terms acceptance).
+- **Log in:** the identifier field accepts a username **or** an email. If it's a
   username, the app looks up the stored email via
-  `GET /api/getUserProfile?username=` and then signs in with email + password.
-  If you type an email directly (contains `@`), it's used as-is.
+  `GET /api/social?action=signInEmail&username=` and then signs in with email +
+  password. If you type an email directly (contains `@`), it's used as-is.
 
 Auth errors (wrong password, user not found, email already in use, weak
 password, etc.) are surfaced to the user via `Alert`.
