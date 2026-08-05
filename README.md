@@ -14,6 +14,8 @@ Includes AI recipe suggestions (Google Gemini) with a Python rule-based fallback
 - `docs/` — documentation (see below)
 - `archive/` — unused alternate backends (Flask / Firebase Functions), reference only
 
+
+
 ## Getting Started
 
 ```bash
@@ -21,7 +23,7 @@ npm install
 npm start          # or ./scripts/START_EXPO.sh
 ```
 
-Production API (configured in `config/api.js`): `https://nourishare.vercel.app/api`
+Point the client at your API base URL in `config/api.js`.
 
 For a device/simulator walkthrough, see [docs/expo-guide.md](docs/expo-guide.md).
 Full app features (push notifications, store builds) use an EAS development build or TestFlight — not Expo Go alone.
@@ -34,7 +36,3 @@ Full app features (push notifications, store builds) use an EAS development buil
 - [docs/api-testing.md](docs/api-testing.md) — API endpoint reference and curl examples
 - [docs/FIREBASE_SETUP.md](docs/FIREBASE_SETUP.md) — Firebase Auth / project notes
 
-## Secrets
-
-Do **not** commit service-account JSON, `.env` files, Gemini keys, or `INTERNAL_API_SECRET`.
-Server secrets live in Vercel (and EAS where needed). `serviceAccountKey.json` and `.env*` are gitignored.
