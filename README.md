@@ -14,16 +14,16 @@ Includes AI recipe suggestions (Google Gemini) with a Python rule-based fallback
 - `docs/` — documentation (see below)
 - `archive/` — unused alternate backends (Flask / Firebase Functions), reference only
 
-
-
 ## Getting Started
 
 ```bash
 npm install
-npm start          # or ./scripts/START_EXPO.sh
+npm run start:tunnel   # Expo Go across networks (needs expo login)
+# npm start            # same Wi‑Fi / simulator
 ```
 
 Point the client at your API base URL in `config/api.js`.
+For Firebase Auth and project setup, see [docs/FIREBASE_SETUP.md](docs/FIREBASE_SETUP.md).
 
 For a device/simulator walkthrough, see [docs/expo-guide.md](docs/expo-guide.md).
 Full app features (push notifications, store builds) use an EAS development build or TestFlight — not Expo Go alone.
