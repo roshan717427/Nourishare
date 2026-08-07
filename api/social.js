@@ -49,7 +49,13 @@
  *                   Aggregates posts authored by the people <u> follows from BOTH
  *                   the `logs` collection (real meals logged via createRecipeLog)
  *                   and the legacy/demo `recipe_posts` collection, normalized to a
- *                   common shape and sorted newest-first.
+ *                   common shape and sorted newest-first. Includes viewer-pinned
+ *                   posts (bypass the 3-day window) marked with pinnedByMe.
+ *   - pinPost       POST  ?action=pinPost
+ *                   body  { username, postId, collection? }
+ *                   Pins a post to the caller's Home feed (persists past 3 days).
+ *   - unpinPost     POST  ?action=unpinPost
+ *                   body  { username, postId, collection? }
  *   - login         POST  ?action=login
  *                   body  { username } | { email }
  *                   resp  { ...publicProfile, username }  (email/uid/push tokens stripped)
@@ -164,6 +170,16 @@ const RECOMMENDED_RESULT_LIMIT = 6;
 const FEED_LIMIT = 50;
 /** Home feed only shows posts from the last 3 days (older posts stay in profiles/DB). */
 const FEED_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
+/** Max viewer-pinned posts merged into Home (bypass the 3-day window). */
+const PINNED_FEED_LIMIT = 40;
+
+function pinnedFeedDocId(collectionName, postId) {
+  return `${collectionName}_${postId}`;
+}
+
+function normalizePostCollection(value) {
+  return value === 'recipe_posts' ? 'recipe_posts' : 'logs';
+}
 /** Accepted + followed-back notifications drop off the list after this. */
 const RESOLVED_NOTIFICATION_HIDE_MS = 24 * 60 * 60 * 1000;
 
@@ -332,8 +348,13 @@ async function handleFollow(req, res) {
   const fromName = userDoc.data().name || auth.username;
 
   await Promise.all([
-    requestRef.set({ status: 'pending', createdAt: timestamp }),
-    outgoingRef.set({ createdAt: timestamp }),
+    requestRef.set({
+      status: 'pending',
+      createdAt: timestamp,
+      fromUsername: auth.username,
+      toUsername: targetUser,
+    }),
+    outgoingRef.set({ createdAt: timestamp, toUsername: targetUser }),
     notificationRef.set({
       type: 'follow_request',
       fromUsername: auth.username,
@@ -661,36 +682,92 @@ async function handleFeed(req, res) {
     .filter((post) => post.created_at_ms > 0 && post.created_at_ms >= feedCutoffMs)
     .slice(0, FEED_LIMIT);
 
-  const uniqueUsernames = [...new Set(trimmedPosts.map(post => post.username).filter(Boolean))];
+  // Viewer pins: keep specific posts on Home past the 3-day window.
+  const followedSet = new Set(visibleFollowed.map((u) => String(u).toLowerCase()));
+  const pinSnap = await db
+    .collection('users')
+    .doc(username)
+    .collection('pinned_feed_posts')
+    .limit(PINNED_FEED_LIMIT)
+    .get();
+
+  const pinMetaByKey = new Map();
+  for (const pinDoc of pinSnap.docs) {
+    const data = pinDoc.data() || {};
+    const collectionName = normalizePostCollection(data.collection);
+    const postId = String(data.postId || '').trim();
+    if (!postId) continue;
+    pinMetaByKey.set(`${collectionName}:${postId}`, {
+      collection: collectionName,
+      postId,
+      authorUsername: normalizeUsername(data.authorUsername) || null,
+    });
+  }
+
+  const mergedByKey = new Map();
+  for (const post of trimmedPosts) {
+    mergedByKey.set(`${post.postSource}:${post.id}`, post);
+  }
+
+  const missingPins = [];
+  for (const [key, meta] of pinMetaByKey) {
+    if (mergedByKey.has(key)) continue;
+    missingPins.push(meta);
+  }
+
+  if (missingPins.length > 0) {
+    const pinDocs = await Promise.all(
+      missingPins.map((meta) =>
+        db.collection(meta.collection).doc(meta.postId).get()
+      )
+    );
+    pinDocs.forEach((doc, index) => {
+      if (!doc.exists) return;
+      const meta = missingPins[index];
+      const post = normalizePost(doc, meta.collection);
+      const authorKey = String(post.username || '').toLowerCase();
+      if (!authorKey || blockedSet.has(authorKey)) return;
+      // Only keep pins for people you still follow (or your own posts).
+      if (authorKey !== String(username).toLowerCase() && !followedSet.has(authorKey)) return;
+      mergedByKey.set(`${post.postSource}:${post.id}`, post);
+    });
+  }
+
+  const mergedPosts = Array.from(mergedByKey.values()).sort(
+    (a, b) => b.created_at_ms - a.created_at_ms
+  );
+
+  const uniqueUsernames = [...new Set(mergedPosts.map(post => post.username).filter(Boolean))];
   // Prefer denormalized author fields on the post; only fetch profiles for
   // legacy posts that lack a display name.
-  const needProfileFetch = uniqueUsernames.filter((username) => {
-    const sample = trimmedPosts.find((p) => p.username === username);
+  const needProfileFetch = uniqueUsernames.filter((uname) => {
+    const sample = mergedPosts.find((p) => p.username === uname);
     return !(sample && sample.authorName);
   });
   const fetchedMap = await fetchUsersByUsernames(db, needProfileFetch);
 
   const userMap = {};
-  uniqueUsernames.forEach((username) => {
-    const sample = trimmedPosts.find((p) => p.username === username);
-    const fetched = fetchedMap.get(username);
+  uniqueUsernames.forEach((uname) => {
+    const sample = mergedPosts.find((p) => p.username === uname);
+    const fetched = fetchedMap.get(uname);
     if (fetched && Object.keys(fetched).length > 0) {
-      userMap[username] = toPublicProfile({ ...fetched, username });
+      userMap[uname] = toPublicProfile({ ...fetched, username: uname });
       return;
     }
     if (sample && sample.authorName) {
-      userMap[username] = {
-        username,
+      userMap[uname] = {
+        username: uname,
         name: sample.authorName,
         profilePhotoUrl: sample.authorProfilePhotoUrl || null,
       };
       return;
     }
-    userMap[username] = { username };
+    userMap[uname] = { username: uname };
   });
 
-  const recipePosts = trimmedPosts.map(post => ({
+  const recipePosts = mergedPosts.map(post => ({
     ...post,
+    pinnedByMe: pinMetaByKey.has(`${post.postSource}:${post.id}`),
     user: userMap[post.username] || {
       username: post.username,
       name: post.authorName || undefined,
@@ -699,6 +776,63 @@ async function handleFeed(req, res) {
   }));
 
   res.status(200).json({ recipe_posts: recipePosts });
+}
+
+async function handlePinPost(req, res) {
+  if (req.method !== 'POST') return methodNotAllowed(res);
+
+  const { username, postId, collection } = req.body || {};
+  const auth = await requireAuthForUsername(req, res, username);
+  if (!auth) return;
+
+  const id = String(postId || '').trim();
+  if (!id) {
+    return res.status(400).json({ error: 'postId is required' });
+  }
+  const collectionName = normalizePostCollection(collection);
+
+  const postDoc = await db.collection(collectionName).doc(id).get();
+  if (!postDoc.exists) {
+    return res.status(404).json({ error: 'Post not found' });
+  }
+
+  const authorUsername = normalizeUsername(postDoc.data()?.username);
+  await db
+    .collection('users')
+    .doc(auth.username)
+    .collection('pinned_feed_posts')
+    .doc(pinnedFeedDocId(collectionName, id))
+    .set({
+      postId: id,
+      collection: collectionName,
+      authorUsername: authorUsername || null,
+      pinnedAt: new Date().toISOString(),
+    });
+
+  res.status(200).json({ message: 'Post pinned to feed', pinned: true });
+}
+
+async function handleUnpinPost(req, res) {
+  if (req.method !== 'POST') return methodNotAllowed(res);
+
+  const { username, postId, collection } = req.body || {};
+  const auth = await requireAuthForUsername(req, res, username);
+  if (!auth) return;
+
+  const id = String(postId || '').trim();
+  if (!id) {
+    return res.status(400).json({ error: 'postId is required' });
+  }
+  const collectionName = normalizePostCollection(collection);
+
+  await db
+    .collection('users')
+    .doc(auth.username)
+    .collection('pinned_feed_posts')
+    .doc(pinnedFeedDocId(collectionName, id))
+    .delete();
+
+  res.status(200).json({ message: 'Post unpinned from feed', pinned: false });
 }
 
 async function handleLogin(req, res) {
@@ -1829,12 +1963,16 @@ async function handleRegisterPushToken(req, res) {
   if (!auth) return;
 
   if (!token || typeof token !== 'string') {
-    return res.status(400).json({ error: 'Valid Expo push token is required' });
+    return res.status(400).json({
+      error: "We couldn't enable push notifications on this device. Please try again later.",
+    });
   }
 
   const stored = await storePushToken(db, auth.username, token);
   if (!stored) {
-    return res.status(400).json({ error: 'Invalid Expo push token' });
+    return res.status(400).json({
+      error: "We couldn't enable push notifications on this device. Please try again later.",
+    });
   }
 
   res.status(200).json({ message: 'Push token registered' });
@@ -2024,6 +2162,8 @@ const handlers = {
   followers: handleFollowers,
   following: handleFollowing,
   feed: handleFeed,
+  pinpost: handlePinPost,
+  unpinpost: handleUnpinPost,
   login: handleLogin,
   signinemail: handleSignInEmail,
   searchusers: handleSearchUsers,
@@ -2145,11 +2285,47 @@ const handlers = {
       );
       totalMigratedCount += engagement.migrated || 0;
 
+      // Orphan follow_requests/{target}/requests/{old} (accepted/declined leftovers
+      // that username rename used to miss).
+      let orphanRequestsMoved = 0;
+      try {
+        const requestGroupSnap = await firestore.collectionGroup('requests').get();
+        const orphanBatch = firestore.batch();
+        let orphanOps = 0;
+        for (const doc of requestGroupSnap.docs) {
+          if (doc.id !== oldTarget) continue;
+          if (!doc.ref.path.startsWith('follow_requests/')) continue;
+          const target = doc.ref.parent.parent?.id;
+          if (!target || target === oldTarget || target === myTrueNewUsername) continue;
+          const newRef = firestore
+            .collection('follow_requests')
+            .doc(target)
+            .collection('requests')
+            .doc(myTrueNewUsername);
+          orphanBatch.set(newRef, {
+            ...(doc.data() || {}),
+            fromUsername: myTrueNewUsername,
+            toUsername: target,
+          });
+          orphanBatch.delete(doc.ref);
+          orphanOps += 2;
+          orphanRequestsMoved += 1;
+          if (orphanOps >= 400) break; // stay under batch limit; re-run if needed
+        }
+        // Also drop empty parent follow_requests/{old} if it still exists.
+        orphanBatch.delete(firestore.collection('follow_requests').doc(oldTarget));
+        orphanBatch.delete(firestore.collection('follow_requests_outgoing').doc(oldTarget));
+        await orphanBatch.commit();
+      } catch (orphanErr) {
+        console.warn('cleansocial orphan follow_requests cleanup skipped:', orphanErr.message);
+      }
+
       return res.status(200).json({
         status: 'success',
         message: `Merged account docs and migrated engagement into '${myTrueNewUsername}'`,
         totalRecordsProcessed: totalMigratedCount,
         engagementMigrated: engagement.migrated || 0,
+        orphanFollowRequestsMoved: orphanRequestsMoved,
       });
     } catch (err) {
       console.error('cleansocial failed:', err);

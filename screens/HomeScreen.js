@@ -30,8 +30,11 @@ const CARD_ACCENTS = [colors.primary, colors.accent, colors.secondary, colors.ch
 const FEED_REFRESH_MS = 3 * 24 * 60 * 60 * 1000;
 /** Match server: hide posts older than 3 days from Home (still on profiles). */
 const FEED_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
+const PIN_ICON_COLOR = '#47A168';
 
-function isVisibleOnFeed(createdAtMs, now = Date.now()) {
+function isVisibleOnFeed(post, now = Date.now()) {
+  if (post?.pinnedByMe) return true;
+  const createdAtMs = post?.created_at_ms;
   return (
     typeof createdAtMs === 'number' &&
     createdAtMs > 0 &&
@@ -85,7 +88,16 @@ function StoryAvatar({ name, avatar, index, selected, hasSelection, onPress }) {
   );
 }
 
-function FeedCard({ item, onPress, onPressUser, accentColor, viewerUsername, onBlocked }) {
+function FeedCard({
+  item,
+  onPress,
+  onPressUser,
+  accentColor,
+  viewerUsername,
+  onBlocked,
+  onTogglePin,
+  pinBusy,
+}) {
   const authorName = item.user?.name || item.user?.username || item.username || 'Someone';
   const authorAvatar = item.user?.profilePhotoUrl;
   const authorUsername = item.user?.username || item.username;
@@ -93,6 +105,7 @@ function FeedCard({ item, onPress, onPressUser, accentColor, viewerUsername, onB
     item.rating != null && item.rating !== '' ? ` · rated ${item.rating}/5` : '';
   const description =
     item.description || `${authorName} cooked ${item.title}${ratingText}`;
+  const pinned = !!item.pinnedByMe;
 
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85}>
@@ -115,7 +128,23 @@ function FeedCard({ item, onPress, onPressUser, accentColor, viewerUsername, onB
             )}
           </TouchableOpacity>
           <Text style={styles.cardTime}>{timeAgo(item.created_at_ms)}</Text>
-          <View style={{ marginLeft: 'auto' }}>
+          <View style={styles.cardHeaderActions}>
+            <TouchableOpacity
+              onPress={(e) => {
+                e?.stopPropagation?.();
+                onTogglePin?.(item);
+              }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              disabled={pinBusy || !viewerUsername}
+              accessibilityLabel={pinned ? 'Unpin from feed' : 'Pin to feed'}
+              style={styles.pinButton}
+            >
+              <Ionicons
+                name={pinned ? 'pin' : 'pin-outline'}
+                size={18}
+                color={pinned ? PIN_ICON_COLOR : colors.textMuted}
+              />
+            </TouchableOpacity>
             <SafetyMenuButton
               viewerUsername={viewerUsername}
               targetUsername={authorUsername}
@@ -187,6 +216,7 @@ export default function HomeScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedStoryUsername, setSelectedStoryUsername] = useState(null);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [pinBusyKey, setPinBusyKey] = useState(null);
 
   const feedScrollRef = useRef(null);
   const postOffsetsRef = useRef({});
@@ -219,7 +249,7 @@ export default function HomeScreen({ navigation }) {
           const data = await res.json();
           apiPosts = Array.isArray(data.recipe_posts) ? data.recipe_posts : [];
         }
-        setFeed(apiPosts.filter((p) => isVisibleOnFeed(p.created_at_ms)));
+        setFeed(apiPosts.filter((p) => isVisibleOnFeed(p)));
         lastFeedFetchAtRef.current = Date.now();
       } catch (err) {
         console.log('Feed unavailable:', err.message);
@@ -230,6 +260,58 @@ export default function HomeScreen({ navigation }) {
       }
     },
     [username, following]
+  );
+
+  const togglePin = useCallback(
+    async (item) => {
+      if (!username || !item?.id) return;
+      const postKey = `${item.postSource || 'logs'}:${item.id}`;
+      if (pinBusyKey === postKey) return;
+
+      const nextPinned = !item.pinnedByMe;
+      setPinBusyKey(postKey);
+      setFeed((prev) =>
+        prev.map((p) =>
+          p.id === item.id && (p.postSource || 'logs') === (item.postSource || 'logs')
+            ? { ...p, pinnedByMe: nextPinned }
+            : p
+        )
+      );
+
+      try {
+        const action = nextPinned ? 'pinPost' : 'unpinPost';
+        const res = await authFetch(`${API_URL}/social?action=${action}`, {
+          method: 'POST',
+          body: JSON.stringify({
+            username,
+            postId: item.id,
+            collection: item.postSource || 'logs',
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || 'Could not update pin');
+        }
+        if (nextPinned) {
+          Alert.alert('Post pinned to feed!');
+        }
+      } catch (err) {
+        setFeed((prev) =>
+          prev.map((p) =>
+            p.id === item.id && (p.postSource || 'logs') === (item.postSource || 'logs')
+              ? { ...p, pinnedByMe: !nextPinned }
+              : p
+          )
+        );
+        Alert.alert(
+          'Pin failed',
+          err.message || 'Could not update pin. Please try again.'
+        );
+      } finally {
+        setPinBusyKey(null);
+      }
+    },
+    [username, pinBusyKey]
   );
 
   useFocusEffect(
@@ -258,11 +340,12 @@ export default function HomeScreen({ navigation }) {
     }, [loadFeed, refreshSocialState, username])
   );
 
-  // Drop posts that age out of the 3-day window while Home stays mounted.
+  // Drop posts that age out of the 3-day window while Home stays mounted
+  // (pinned posts stay).
   useEffect(() => {
     const id = setInterval(() => {
       setFeed((prev) => {
-        const next = prev.filter((p) => isVisibleOnFeed(p.created_at_ms));
+        const next = prev.filter((p) => isVisibleOnFeed(p));
         return next.length === prev.length ? prev : next;
       });
     }, 60 * 1000);
@@ -469,6 +552,8 @@ export default function HomeScreen({ navigation }) {
                   item={item}
                   accentColor={CARD_ACCENTS[index % CARD_ACCENTS.length]}
                   viewerUsername={username}
+                  pinBusy={pinBusyKey === postKey}
+                  onTogglePin={togglePin}
                   onBlocked={(blockedUsername) => {
                     setFeed((prev) =>
                       prev.filter(
@@ -636,6 +721,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 6,
+  },
+  cardHeaderActions: {
+    marginLeft: 'auto',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  pinButton: {
+    paddingHorizontal: 4,
+    paddingVertical: 2,
   },
   cardAvatar: {
     width: 28,

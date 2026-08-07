@@ -18,7 +18,7 @@ export const ONBOARDING_STEPS = [
     icon: 'home',
     title: 'Welcome to Nourishare!',
     description:
-      'Your home feed shows what friends are cooking. Drop likes, leave comments, and get inspired!',
+      'Your home feed shows what friends are cooking, and is always up-to-date. Drop likes, leave comments, pin posts, and get inspired! ',
     tabLabel: 'Home',
   },
   {

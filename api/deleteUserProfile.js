@@ -126,6 +126,14 @@ async function cleanupDeletedUserData(username, { uid = null, email = null } = {
     await commitDeletes(db, snap.docs.map((d) => d.ref));
     await db.collection('ai_usage').doc(username).delete();
   });
+  await bestEffort('pinned_feed_posts', async () => {
+    const snap = await db
+      .collection('users')
+      .doc(username)
+      .collection('pinned_feed_posts')
+      .get();
+    await commitDeletes(db, snap.docs.map((d) => d.ref));
+  });
 
   // Outgoing follow edges + the mirror on each target user's followers list.
   await bestEffort('outgoing_follows', async () => {
