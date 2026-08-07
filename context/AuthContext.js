@@ -220,10 +220,17 @@ export function AuthProvider({ children }) {
     const uploadToken = async (token) => {
       if (!token || cancelled) return;
       try {
-        await authFetch(`${API_URL}/social?action=registerPushToken`, {
+        const res = await authFetch(`${API_URL}/social?action=registerPushToken`, {
           method: 'POST',
           body: JSON.stringify({ username, token }),
         });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          console.log(
+            data.error ||
+              "We couldn't enable push notifications on this device. Please try again later."
+          );
+        }
       } catch (err) {
         console.log('Could not register push token:', err.message);
       }
@@ -231,6 +238,10 @@ export function AuthProvider({ children }) {
 
     (async () => {
       const token = await registerForPushNotificationsAsync();
+      if (!token) {
+        console.log('No Expo push token available to upload for', username);
+        return;
+      }
       await uploadToken(token);
     })();
 

@@ -55,14 +55,22 @@ export async function registerForPushNotificationsAsync() {
       finalStatus = status;
     }
     if (finalStatus !== 'granted') {
+      console.log('Push permission not granted:', finalStatus);
       return null;
     }
 
     const projectId = getProjectId();
+    if (!projectId) {
+      console.log('Push registration skipped: missing EAS projectId');
+    }
     const tokenResponse = await Notifications.getExpoPushTokenAsync(
       projectId ? { projectId } : undefined
     );
-    return tokenResponse?.data || null;
+    const token = tokenResponse?.data || null;
+    if (!token) {
+      console.log('Push registration returned empty token');
+    }
+    return token;
   } catch (err) {
     console.log('Could not register for push notifications:', err.message);
     return null;

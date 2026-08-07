@@ -4,7 +4,7 @@ Source mirror for the published Google Doc. Edit the live Doc for App Store / in
 
 **Published URL:** https://docs.google.com/document/d/e/2PACX-1vQlaWeZYYZsoTow2-kly2NKsrwc5Gga48A60GED7dRvOykKD9GvgFXxYig0qGaNTSLiIjNRp-aV-Cz6/pub
 
-Effective date: July 24, 2026
+Effective date: August 7, 2026
 
 Contact: roshpaul117@gmail.com
 
@@ -18,7 +18,9 @@ Nourishare (“we”, “us”) is a cooking and social recipe app. This policy 
 
 - Account data: email address, password (stored by Firebase Authentication), username, display name, and optional profile photo.
 
-- Profile and cooking data: kitchen preferences, personality traits, meal logs, ratings, photos of meals, meal plans, pantry ingredients you enter, and AI suggestion history tied to your account.
+- Photos: meal and profile images you take with the camera or choose from your photo library.
+
+- Profile and cooking data: kitchen preferences, personality traits, meal logs, ratings, meal plans, pantry ingredients you enter, and AI suggestion history tied to your account.
 
 - Social data: follows and follow requests, likes, comments, reports you submit, and users you block.
 

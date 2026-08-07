@@ -20,11 +20,15 @@
       "appleTeamID": "862RFB9H5Y",
       "buildNumber": "37",
       "supportsTablet": true,
+      "entitlements": {
+        "aps-environment": "production"
+      },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSCameraUsageDescription": "Nourishare uses your camera to take photos of meals you log.",
-        "NSPhotoLibraryUsageDescription": "Nourishare uses your photo library so you can add meal and profile photos.",
-        "CFBundleDisplayName": "Nourishare"
+        "NSCameraUsageDescription": "Nourishare uses the camera so you can photograph a dish when logging a recipe, for example taking a picture of tonight's pasta to attach to your meal log.",
+        "NSPhotoLibraryUsageDescription": "Nourishare uses your photo library so you can choose meal and profile photos, for example attaching a saved picture of a dish to a recipe log.",
+        "CFBundleDisplayName": "Nourishare",
+        "UIBackgroundModes": ["remote-notification"]
       }
     },
     "android": {
@@ -45,15 +49,16 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Nourishare uses your photos so you can add them to meals and your profile.",
-          "cameraPermission": "Nourishare uses your camera to take photos of meals you log.",
+          "photosPermission": "Nourishare uses your photo library so you can choose meal and profile photos, for example attaching a saved picture of a dish to a recipe log.",
+          "cameraPermission": "Nourishare uses the camera so you can photograph a dish when logging a recipe, for example taking a picture of tonight's pasta to attach to your meal log.",
           "microphonePermission": false
         }
       ],
       [
         "expo-notifications",
         {
-          "color": "#FF6B6B"
+          "color": "#FF6B6B",
+          "enableBackgroundRemoteNotifications": true
         }
       ],
       "expo-asset"
